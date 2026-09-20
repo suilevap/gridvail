@@ -1,0 +1,11 @@
+[package]
+name = "pav_ecs_game_bevy_port"
+version = "0.1.0"
+edition = "2021"
+description = "Bevy Rust port of PavEcsGame (C# LeoECSLite console roguelike)"
+license = "MIT"
+
+[dependencies]
+bevy = "0.16"
+rand = "0.8"
+bitflags = "2"
