@@ -34,9 +34,16 @@ next to this file.
 - One Bevy `World` + resources instead of `EcsUniverse` type-worlds.
 - `TileSystem` computes masks two-phased; the original mutates neighbour
   masks mid-iteration and drops links asymmetrically.
-- FOV caches also key on the occupancy revision; the original ignores
-  obstacle changes and serves stale shadows after actors move.
-- The static-light XOR version counter is an explicit dirty flag.
+- FOV caches also key on the occupancy revision so changing walls invalidates
+  shadows. Moving actors have `Speed` and do not block sight in either version.
+- FOV output clamps floating-point roundoff to `[0, 1]`; circular shadow
+  intervals are enabled through both constructors, including Bevy defaults.
+- Bound decorations update after collision resolution, eliminating the
+  reference's one-pass visual lag.
+- Turn phase uses remaining executable work instead of the reference's
+  per-system work flags. Tokenless commands never block fresh input.
+- The static-light XOR version counter is an explicit dirty flag; source
+  removal, FOV changes, and brightness/type edits invalidate the layer.
 - The player has no direction tile (its Lite rule name is null, which
   throws in the original rule dictionary); the classic `@` stays.
 - Keyboard input is read once per frame and dropped outside `TickUpdate`.
@@ -58,17 +65,44 @@ src/vision.rs      FOV requests, FOV fields, visibility layers
 src/lighting.rs    light math + palettes
 src/render.rs      light layers, frame composition, cells, HUD
 tests/full_map.rs  headless map1 boot + settle integration test
+tests/gameplay.rs  timed input, movement, collision, and vision regressions
+tests/reference_parity.rs  independent C# FOV/light/palette fixtures
+tools/generate_reference.py  regenerate fixtures from the pinned checkout
 assets/maps/       map1/2/3, map1_test, lightTest
 assets/rules/      wall + three direction rules
+assets/fonts/      DejaVu Sans Mono + redistribution license
 ```
 
 ## Run and verify
 
 ```sh
 cargo run    # arrows or WASD to step the @ player
-cargo test   # 24 unit + 1 headless integration test
-cargo clippy # clean
+cargo test   # 36 tests, including independent C# comparisons
+cargo clippy --all-targets -- -D warnings
+cargo fmt --check
 ```
 
 Note: if your cargo home is not writable, point it somewhere writable,
 e.g. `CARGO_HOME=/tmp/cargo-home cargo run`.
+
+
+The window uses a bundled Unicode font, console-shaped cells, and a camera
+that fits the full map when resized. Capture the actual rendered window:
+
+```sh
+cargo run -- --screenshot screenshots/bevy-map1.png
+cargo run -- --screenshot screenshots/bevy-explored.png --walk LLLUUURRRRRRRDDDDDDDDDDDDDDD
+```
+
+Screenshot mode uses deterministic 16ms frames, optionally replays `UDLR`
+through the real keyboard system, saves a PNG, then exits. It requires GPU
+and window-server access. Normal play uses Bevy's real clock. Screenshots
+are local artifacts and are excluded from Git.
+
+See [the comparison report](REFERENCE_COMPARISON.md) for what was verified
+against upstream and what intentionally differs. Regenerate the C# fixtures
+with .NET 10 and a clean checkout at the pinned commit:
+
+```sh
+python3 tools/generate_reference.py /path/to/PavEcsGame
+```
