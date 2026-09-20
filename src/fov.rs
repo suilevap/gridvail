@@ -38,7 +38,7 @@ pub struct Ranges {
 impl Ranges {
     pub fn new_circular() -> Self {
         Self {
-            data: Vec::new(),
+            data: Vec::with_capacity(64),
             circular: true,
         }
     }
@@ -201,13 +201,14 @@ impl FovComputer {
         out: &mut Vec<FovSample>,
     ) {
         out.clear();
-        self.ranges.clear();
+        let FovComputer { ranges, rings } = self;
+        ranges.clear();
         out.push(FovSample {
             delta: IVec2::ZERO,
             value: 1.0,
         });
         for r in 1..=radius.max(0) {
-            let ring = self.rings.ring(r).to_vec();
+            let ring = rings.ring(r);
             if ring.is_empty() {
                 continue;
             }
@@ -217,7 +218,7 @@ impl FovComputer {
                     start: (index as f32 - 0.5) * cell,
                     end: (index as f32 + 0.5) * cell,
                 };
-                let occluded = self.ranges.intersect_length(range) / cell;
+                let occluded = ranges.intersect_length(range) / cell;
                 out.push(FovSample {
                     delta: *delta,
                     // Roundoff in interval division can exceed 1 by a few
@@ -225,7 +226,7 @@ impl FovComputer {
                     value: (1.0 - occluded).clamp(0.0, 1.0),
                 });
                 if occluded < 1.0 && is_obstacle(origin, *delta) {
-                    self.ranges.add(range);
+                    ranges.add(range);
                 }
             }
         }

@@ -13,6 +13,7 @@
 //! per-source FOV revisions.
 
 use bevy::prelude::*;
+use std::fmt::Write;
 
 use crate::components::*;
 use crate::lighting::{light_to_palette, merge_light, LightContext, DARK_RED};
@@ -47,18 +48,26 @@ pub fn render_light_layers(
     if dynamic.data.len() != n {
         dynamic.data = vec![LightCell::default(); n];
     }
-    let seen: Vec<(Entity, u64)> = static_sources
-        .iter()
-        .map(|(e, _, _, fov)| (e, fov.revision))
-        .collect();
+    static_layer.current_revisions.clear();
+    static_layer.current_revisions.extend(
+        static_sources
+            .iter()
+            .map(|(e, _, _, fov)| (e, fov.revision)),
+    );
+    let revisions_changed = static_layer.current_revisions != static_layer.last_seen_revisions;
     if static_layer.dirty
-        || seen != static_layer.last_seen_revisions
+        || revisions_changed
         || static_sources
             .iter()
             .any(|(_, _, light, _)| light.is_changed())
     {
         static_layer.dirty = false;
-        static_layer.last_seen_revisions = seen;
+        let StaticLight {
+            last_seen_revisions,
+            current_revisions,
+            ..
+        } = &mut *static_layer;
+        std::mem::swap(last_seen_revisions, current_revisions);
         static_layer.data.fill(LightCell {
             value: 1,
             kind: LightKind::None,
@@ -176,11 +185,8 @@ pub fn flush_cells(
         };
         if buffers.current[idx] != buffers.previous[idx] {
             let c = buffers.current[idx];
-            text.0 = if c.ch == '\0' {
-                " ".to_string()
-            } else {
-                c.ch.to_string()
-            };
+            text.0.clear();
+            text.0.push(if c.ch == '\0' { ' ' } else { c.ch });
             color.0 = crate::lighting::palette_color(c.color);
         }
     }
@@ -200,7 +206,9 @@ pub fn update_hud(
         .map(|(p, t)| (p.0, t.count))
         .unwrap_or((IVec2::ZERO, 0));
     for mut text in hud.iter_mut() {
-        text.0 = format!(
+        text.0.clear();
+        write!(
+            text.0,
             "PavEcsGame Lite Bevy port | arrows/WASD\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | enemies {} | bumps {}",
             turn.tick,
             turn.phase_name(),
@@ -211,7 +219,8 @@ pub fn update_hud(
             ptok,
             enemies.iter().count(),
             collisions.0.len(),
-        );
+        )
+        .expect("writing to String cannot fail");
     }
 }
 

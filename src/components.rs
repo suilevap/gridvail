@@ -5,7 +5,6 @@
 //! renderer flips Y for Bevy's Y-up world space.
 
 use bevy::prelude::*;
-use std::collections::HashMap;
 
 /// Console-shaped cells match the bundled monospace font's advance at 20px.
 pub const CELL_SIZE: Vec2 = Vec2::new(12.0, 20.0);
@@ -86,8 +85,10 @@ pub struct Friction(pub i32);
 
 /// Movement intent with three states (mirrors `NewPositionComponent?
 /// — absent / move-to / remove-from-map`).
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PendingPos {
+    #[default]
+    None,
     MoveTo(IVec2),
     RemoveFromMap,
 }
@@ -97,10 +98,11 @@ pub enum PendingPos {
 pub struct PrevPos(pub IVec2);
 
 /// Queued step from input or AI (mirrors `MoveCommandComponent`).
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MoveCommand {
     pub target: IVec2,
     pub relative: bool,
+    pub active: bool,
 }
 
 /// Marked for destruction (mirrors `DestroyRequestTag`).
@@ -159,12 +161,6 @@ pub struct LightSource {
     pub value: u8,
 }
 
-/// FOV recompute request (mirrors `FieldOfViewRequestEvent`).
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FovRequest {
-    pub radius: i32,
-}
-
 /// Cached fractional-visibility field (mirrors `AreaResultComponent<float>`).
 #[derive(Component, Clone, Debug)]
 pub struct FovResult {
@@ -217,9 +213,18 @@ pub struct CollisionBuffer(pub Vec<CollisionEvent>);
 pub struct MapGrid {
     pub width: i32,
     pub height: i32,
-    /// Bumped on every occupancy change; FOV caches key off it.
+    /// Bumped on every occupancy change.
     pub revision: u64,
-    cells: HashMap<IVec2, Entity>,
+    /// Bumped only when the static obstacle layout changes. Moving actors do
+    /// not invalidate every cached FOV in the world.
+    pub blocker_revision: u64,
+    cells: Vec<Option<MapOccupant>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct MapOccupant {
+    entity: Entity,
+    blocks_vision: bool,
 }
 
 impl MapGrid {
@@ -228,7 +233,8 @@ impl MapGrid {
             width: width.max(1),
             height: height.max(1),
             revision: 0,
-            cells: HashMap::new(),
+            blocker_revision: 0,
+            cells: vec![None; (width.max(1) * height.max(1)) as usize],
         }
     }
 
@@ -243,20 +249,51 @@ impl MapGrid {
     }
 
     pub fn get(&self, p: IVec2) -> Option<Entity> {
-        self.cells.get(&p).copied()
+        self.idx(p)
+            .and_then(|i| self.cells[i].map(|occupant| occupant.entity))
     }
 
+    /// Insert an obstacle. Kept as the convenient default for walls and for
+    /// compatibility with small tests that build grids directly.
     pub fn set(&mut self, p: IVec2, e: Entity) {
-        if self.cells.get(&p) != Some(&e) {
-            self.cells.insert(p, e);
+        self.set_with_blocking(p, e, true);
+    }
+
+    pub fn set_with_blocking(&mut self, p: IVec2, e: Entity, blocks_vision: bool) {
+        let Some(i) = self.idx(p) else { return };
+        let next = Some(MapOccupant {
+            entity: e,
+            blocks_vision,
+        });
+        if self.cells[i] != next {
+            let old_blocker = self.cells[i].is_some_and(|cell| cell.blocks_vision);
+            self.cells[i] = next;
             self.revision += 1;
+            if old_blocker != blocks_vision {
+                self.blocker_revision += 1;
+            }
         }
     }
 
     pub fn clear(&mut self, p: IVec2) {
-        if self.cells.remove(&p).is_some() {
+        let Some(i) = self.idx(p) else { return };
+        if let Some(old) = self.cells[i].take() {
             self.revision += 1;
+            if old.blocks_vision {
+                self.blocker_revision += 1;
+            }
         }
+    }
+
+    pub fn blocks_vision(&self, p: IVec2) -> bool {
+        self.idx(p)
+            .and_then(|i| self.cells[i])
+            .is_some_and(|cell| cell.blocks_vision)
+    }
+
+    pub fn idx(&self, p: IVec2) -> Option<usize> {
+        self.is_valid(p)
+            .then_some((p.y * self.width + p.x) as usize)
     }
 }
 
@@ -347,6 +384,7 @@ pub struct StaticLight {
     pub data: Vec<LightCell>,
     pub dirty: bool,
     pub last_seen_revisions: Vec<(Entity, u64)>,
+    pub current_revisions: Vec<(Entity, u64)>,
 }
 
 impl StaticLight {
@@ -357,6 +395,7 @@ impl StaticLight {
             data: vec![LightCell::default()],
             dirty: true,
             last_seen_revisions: Vec::new(),
+            current_revisions: Vec::new(),
         }
     }
 
@@ -366,6 +405,7 @@ impl StaticLight {
         self.data = vec![LightCell::default(); (self.width * self.height) as usize];
         self.dirty = true;
         self.last_seen_revisions.clear();
+        self.current_revisions.clear();
     }
 }
 

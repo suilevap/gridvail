@@ -40,13 +40,12 @@ impl Plugin for GamePlugin {
             .init_resource::<vision::FovShared>()
             .init_resource::<StaticLight>()
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(42)))
-            .add_systems(Startup, setup)
+            .add_systems(Startup, (setup, sim::tile_system).chain())
             .add_systems(
                 Update,
                 (
                     (
                         sim::turn_tick,
-                        sim::tile_system,
                         sim::recharge_tokens,
                         sim::player_input,
                         sim::enemy_ai,
@@ -59,13 +58,11 @@ impl Plugin for GamePlugin {
                         sim::resolve_commit,
                         sim::relative_position,
                         sim::verify_map,
-                        sim::destroy_unmap,
-                        sim::destroy_despawn,
+                        sim::destroy_entities.run_if(sim::has_destroy_requests),
                         sim::direction_tiles,
                     )
                         .chain(),
                     (
-                        vision::ensure_fov_requests,
                         vision::compute_fov,
                         crate::render::render_light_layers,
                         vision::player_visibility,
@@ -83,6 +80,7 @@ impl Plugin for GamePlugin {
 
 fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
     let (width, height, cells) = parse_map(MAP_TEXT);
+    let cell_count = (width * height) as usize;
     commands.spawn((
         Camera2d,
         Projection::Orthographic(OrthographicProjection {
@@ -126,7 +124,12 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
                         Active,
                         Collider,
                         Pos(cell.pos),
-                        Speed::default(),
+                        (
+                            Speed::default(),
+                            MoveCommand::default(),
+                            PendingPos::default(),
+                            PrevPos(cell.pos),
+                        ),
                         Glyph::new('@', 1, WHITE),
                         Player(0),
                         Tokens::new(1),
@@ -139,6 +142,13 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
                             kind: LightKind::None,
                             value: 32,
                         },
+                        (
+                            initial_fov(cell_count),
+                            VisibilityMap {
+                                revision: u64::MAX,
+                                data: vec![Vis::empty(); cell_count],
+                            },
+                        ),
                     ))
                     .id();
                 // Bound 'i' direction marker, one step ahead of the player
@@ -150,6 +160,8 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
                         offset: IVec2::new(1, 0),
                         offset_dir: IVec2::new(1, 0),
                     },
+                    Pos(cell.pos + IVec2::X),
+                    PrevPos(cell.pos + IVec2::X),
                     Facing::default(),
                     DirectionTile {
                         rule: "direction_triangle_rule".to_string(),
@@ -165,6 +177,9 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
                     Enemy,
                     Pos(cell.pos),
                     Speed::default(),
+                    MoveCommand::default(),
+                    PendingPos::default(),
+                    PrevPos(cell.pos),
                     Glyph::new('☺', 1, RED),
                     Tokens::new(1),
                     Friction(1),
@@ -186,6 +201,7 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
                         kind: LightKind::Electricity,
                         value: 32,
                     },
+                    initial_fov(cell_count),
                 ))
                 .id(),
             SpawnKind::Light => commands
@@ -199,6 +215,7 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
                         kind: LightKind::Fire,
                         value: 196,
                     },
+                    initial_fov(cell_count),
                 ))
                 .id(),
             SpawnKind::Acid => commands
@@ -212,6 +229,7 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
                         kind: LightKind::Acid,
                         value: 32,
                     },
+                    initial_fov(cell_count),
                 ))
                 .id(),
         };
@@ -221,11 +239,12 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
                 cell.kind,
                 SpawnKind::Wall | SpawnKind::Player | SpawnKind::Enemy
             ) {
-                grid.set(cell.pos, entity);
+                grid.set_with_blocking(cell.pos, entity, matches!(cell.kind, SpawnKind::Wall));
             }
         }
     }
     commands.insert_resource(grid);
+    commands.insert_resource(sim::CommitBuffer::sized(width, height));
 
     commands.insert_resource(Rules {
         wall: TileRule::parse(WALL_RULE_TEXT),
@@ -242,9 +261,11 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
     for y in 0..height {
         for x in 0..width {
             let p = IVec2::new(x, y);
+            let mut cell_text = String::with_capacity(4);
+            cell_text.push(' ');
             commands.spawn((
                 MapCell(p),
-                Text2d::new(" "),
+                Text2d::new(cell_text),
                 TextFont {
                     font: font.clone(),
                     font_size: 20.0,
@@ -256,9 +277,10 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
         }
     }
 
+    let hud_text = String::with_capacity(192);
     commands.spawn((
         HudText,
-        Text::new(""),
+        Text::new(hud_text),
         TextFont {
             font,
             font_size: 15.0,
@@ -272,4 +294,14 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
             ..default()
         },
     ));
+}
+
+fn initial_fov(cell_count: usize) -> FovResult {
+    FovResult {
+        revision: 0,
+        obstacle_revision: u64::MAX,
+        pos: IVec2::splat(i32::MIN),
+        radius: -1,
+        data: vec![0.0; cell_count],
+    }
 }

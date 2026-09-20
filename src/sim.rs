@@ -40,7 +40,31 @@ struct MoveCommit {
 }
 
 #[derive(Resource, Debug, Default)]
-pub struct CommitBuffer(Vec<MoveCommit>);
+pub struct CommitBuffer {
+    commits: Vec<MoveCommit>,
+    order: Vec<(Entity, Option<IVec2>, IVec2)>,
+    reserved: Vec<Option<Entity>>,
+}
+
+impl CommitBuffer {
+    pub fn sized(width: i32, height: i32) -> Self {
+        Self {
+            commits: Vec::with_capacity((width * height).max(0) as usize),
+            order: Vec::with_capacity((width * height).max(0) as usize),
+            reserved: vec![None; (width * height).max(0) as usize],
+        }
+    }
+
+    fn prepare(&mut self, cell_count: usize) {
+        self.commits.clear();
+        self.order.clear();
+        if self.reserved.len() != cell_count {
+            self.reserved.resize(cell_count, None);
+        } else {
+            self.reserved.fill(None);
+        }
+    }
+}
 
 /// Advance the turn counter on quiet frames (mirrors `TurnManager.Run`).
 pub fn turn_tick(mut turn: ResMut<TurnState>) {
@@ -72,8 +96,7 @@ pub fn recharge_tokens(
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
     turn: Res<TurnState>,
-    mut players: Query<(Entity, &Player), (With<Active>, Without<DestroyRequested>)>,
-    mut commands: Commands,
+    mut players: Query<&mut MoveCommand, (With<Player>, With<Active>, Without<DestroyRequested>)>,
 ) {
     if turn.simulation {
         return;
@@ -90,11 +113,10 @@ pub fn player_input(
         None
     };
     if let Some(d) = dir {
-        for (e, _) in players.iter_mut() {
-            commands.entity(e).insert(MoveCommand {
-                target: d,
-                relative: true,
-            });
+        for mut command in players.iter_mut() {
+            command.target = d;
+            command.relative = true;
+            command.active = true;
         }
     }
 }
@@ -104,8 +126,7 @@ pub fn player_input(
 pub fn enemy_ai(
     turn: Res<TurnState>,
     mut rng: ResMut<SharedRng>,
-    enemies: Query<Entity, (With<Enemy>, With<Active>, Without<DestroyRequested>)>,
-    mut commands: Commands,
+    mut enemies: Query<&mut MoveCommand, (With<Enemy>, With<Active>, Without<DestroyRequested>)>,
 ) {
     if turn.simulation {
         return;
@@ -117,29 +138,27 @@ pub fn enemy_ai(
         IVec2::new(0, 1),
         IVec2::new(0, -1),
     ];
-    for e in enemies.iter() {
+    for mut command in enemies.iter_mut() {
         let m = MOVES[rng.0.gen_range(0..MOVES.len())];
-        commands.entity(e).insert(MoveCommand {
-            target: m,
-            relative: true,
-        });
+        command.target = m;
+        command.relative = true;
+        command.active = true;
     }
 }
 
 /// Mirrors `MoveCommandSystem`: relative commands become speed, spending one
 /// token. Requires a held token; tokenless commands wait.
 pub fn move_commands(
-    mut commands: Commands,
-    mut movers: Query<(Entity, &MoveCommand, &mut Speed, &mut Tokens), Without<DestroyRequested>>,
+    mut movers: Query<(&mut MoveCommand, &mut Speed, &mut Tokens), Without<DestroyRequested>>,
 ) {
-    for (e, cmd, mut speed, mut tokens) in movers.iter_mut() {
-        if tokens.count <= 0 {
+    for (mut command, mut speed, mut tokens) in movers.iter_mut() {
+        if !command.active || tokens.count <= 0 {
             continue;
         }
-        if cmd.relative {
-            speed.0 = cmd.target;
+        if command.relative {
+            speed.0 = command.target;
         }
-        commands.entity(e).remove::<MoveCommand>();
+        command.active = false;
         tokens.count -= 1;
     }
 }
@@ -159,18 +178,12 @@ pub fn update_direction(
 /// Entities mid-destruction are skipped (nothing in the Lite container
 /// destroys moving entities, so this path is unobservable there).
 pub fn movement(
-    mut commands: Commands,
     grid: Res<MapGrid>,
-    movers: Query<
-        (Entity, &Pos, &Speed),
-        (With<Active>, Without<DestroyRequested>, Without<PendingPos>),
-    >,
+    mut movers: Query<(&Pos, &Speed, &mut PendingPos), (With<Active>, Without<DestroyRequested>)>,
 ) {
-    for (e, pos, speed) in movers.iter() {
-        if speed.0 != IVec2::ZERO {
-            commands
-                .entity(e)
-                .insert(PendingPos::MoveTo(grid.safe_pos(pos.0 + speed.0)));
+    for (pos, speed, mut pending) in movers.iter_mut() {
+        if speed.0 != IVec2::ZERO && *pending == PendingPos::None {
+            *pending = PendingPos::MoveTo(grid.safe_pos(pos.0 + speed.0));
         }
     }
 }
@@ -181,27 +194,24 @@ pub fn movement(
 /// A missing parent (or one without position/facing) leaves the child
 /// untouched instead of crashing on a stale link.
 pub fn relative_position(
-    mut commands: Commands,
-    children: Query<
-        (Entity, &BoundTo, Option<&Pos>, Option<&Facing>),
+    mut children: Query<
+        (&BoundTo, &mut Pos, &mut PrevPos, &mut Facing),
         (Without<Collider>, Without<DestroyRequested>),
     >,
-    parents: Query<(&Pos, &Facing)>,
+    parents: Query<(&Pos, &Facing), With<Collider>>,
 ) {
-    for (e, bound, pos, facing) in children.iter() {
+    for (bound, mut pos, mut previous, mut facing) in children.iter_mut() {
         let Ok((parent_pos, parent_facing)) = parents.get(bound.parent) else {
             continue;
         };
         let new_pos = parent_pos.0 + rotate(bound.offset, parent_facing.0);
-        if pos.map(|p| p.0) != Some(new_pos) {
-            if let Some(pos) = pos {
-                commands.entity(e).insert(PrevPos(pos.0));
-            }
-            commands.entity(e).insert(Pos(new_pos));
+        if pos.0 != new_pos {
+            previous.0 = pos.0;
+            pos.0 = new_pos;
         }
         let new_dir = rotate(bound.offset_dir, parent_facing.0);
-        if facing.map(|f| f.0) != Some(new_dir) {
-            commands.entity(e).insert(Facing(new_dir));
+        if facing.0 != new_dir {
+            facing.0 = new_dir;
         }
     }
 }
@@ -215,57 +225,55 @@ pub fn relative_position(
 /// old cell and emit a [`CollisionEvent`] (recorded only — the Lite
 /// container has no collision consumer).
 pub fn resolve_collect(
-    mut commands: Commands,
     grid: Res<MapGrid>,
     mut collisions: ResMut<CollisionBuffer>,
     mut commits: ResMut<CommitBuffer>,
-    claimants: Query<
-        (Entity, Option<&Pos>, &PendingPos),
+    mut claimants: Query<
+        (Entity, Option<&Pos>, &mut PendingPos),
         (With<Collider>, Without<DestroyRequested>),
     >,
 ) {
     collisions.0.clear();
-    commits.0.clear();
-    let mut order: Vec<(Entity, Option<IVec2>, IVec2)> = Vec::new();
-    for (e, pos, pending) in claimants.iter() {
-        if let PendingPos::MoveTo(dest) = pending {
-            order.push((e, pos.map(|p| p.0), grid.safe_pos(*dest)));
+    commits.prepare((grid.width * grid.height) as usize);
+    for (e, pos, pending) in claimants.iter_mut() {
+        if let PendingPos::MoveTo(dest) = *pending {
+            commits
+                .order
+                .push((e, pos.map(|p| p.0), grid.safe_pos(dest)));
         }
     }
     // Stable creation-order processing (stands in for EcsLite filter order).
-    order.sort_by_key(|(e, _, _)| (e.index(), e.generation()));
-    let mut reserved = std::collections::HashSet::new();
-    for (e, from, to) in order {
+    commits
+        .order
+        .sort_by_key(|(e, _, _)| (e.index(), e.generation()));
+    for i in 0..commits.order.len() {
+        let (e, from, to) = commits.order[i];
         match grid.get(to) {
             Some(other) if other != e => {
                 collisions.0.push(CollisionEvent {
                     source: e,
                     target: other,
                 });
-                commands.entity(e).remove::<PendingPos>();
+                *claimants.get_mut(e).expect("claimant").2 = PendingPos::None;
             }
-            _ if reserved.contains(&to) => {
+            _ if commits.reserved[grid.idx(to).expect("wrapped destination")].is_some() => {
                 // Lost the race for a free cell; the winner already owns it.
-                let winner = commits
-                    .0
-                    .iter()
-                    .find(|c| c.to == to)
-                    .map(|c| c.entity)
-                    .unwrap_or(e);
+                let winner =
+                    commits.reserved[grid.idx(to).expect("wrapped destination")].unwrap_or(e);
                 if winner != e {
                     collisions.0.push(CollisionEvent {
                         source: e,
                         target: winner,
                     });
                 }
-                commands.entity(e).remove::<PendingPos>();
+                *claimants.get_mut(e).expect("claimant").2 = PendingPos::None;
             }
             _ => {
-                reserved.insert(to);
+                commits.reserved[grid.idx(to).expect("wrapped destination")] = Some(e);
                 // Commit exactly the wrapped destination whose occupancy
                 // was checked, including first placements and direct intents.
-                commands.entity(e).insert(PendingPos::MoveTo(to));
-                commits.0.push(MoveCommit {
+                *claimants.get_mut(e).expect("claimant").2 = PendingPos::MoveTo(to);
+                commits.commits.push(MoveCommit {
                     entity: e,
                     from,
                     to,
@@ -282,7 +290,10 @@ pub fn resolve_unmap(
     mut grid: ResMut<MapGrid>,
     movers: Query<(Entity, Option<&Pos>, &PendingPos), With<Collider>>,
 ) {
-    for (e, pos, _) in movers.iter() {
+    for (e, pos, pending) in movers.iter() {
+        if *pending == PendingPos::None {
+            continue;
+        }
         if let Some(p) = pos {
             if grid.get(p.0) == Some(e) {
                 grid.clear(p.0);
@@ -292,29 +303,56 @@ pub fn resolve_unmap(
 }
 
 /// Resolve phase C: record previous positions and apply intents
-/// (mirrors `UpdatePrevPos` + `MoveToNewPos`; position is optional, so
-/// first-time placements land here too).
+/// (mirrors `UpdatePrevPos` + `MoveToNewPos`). Runtime actors keep their
+/// movement components stable; position-less bootstrap uses the next system.
 pub fn resolve_commit(
-    mut commands: Commands,
     mut grid: ResMut<MapGrid>,
-    movers: Query<(Entity, Option<&Pos>, &PendingPos, Option<&Collider>)>,
+    mut movers: Query<(
+        Entity,
+        &mut Pos,
+        &mut PendingPos,
+        Option<&Collider>,
+        Option<&Speed>,
+        Option<&mut PrevPos>,
+    )>,
 ) {
-    for (e, pos, pending, collider) in movers.iter() {
-        if let Some(p) = pos {
-            commands.entity(e).insert(PrevPos(p.0));
+    for (e, mut pos, mut pending, collider, speed, previous) in movers.iter_mut() {
+        if *pending == PendingPos::None {
+            continue;
         }
-        match pending {
+        if let Some(mut previous) = previous {
+            previous.0 = pos.0;
+        }
+        match *pending {
             PendingPos::MoveTo(dest) => {
-                commands.entity(e).insert(Pos(*dest));
+                pos.0 = dest;
                 if collider.is_some() {
-                    grid.set(*dest, e);
+                    grid.set_with_blocking(dest, e, speed.is_none());
                 }
             }
-            PendingPos::RemoveFromMap => {
-                commands.entity(e).remove::<Pos>();
-            }
+            PendingPos::RemoveFromMap => {}
+            PendingPos::None => {}
         }
-        commands.entity(e).remove::<PendingPos>();
+        *pending = PendingPos::None;
+    }
+}
+
+/// Bootstrap path for position-less colliders. Runtime actors should spawn
+/// with their stable component set; this path is kept for parity tests and
+/// external one-shot spawns, where allocation is expected.
+pub fn resolve_missing_positions(
+    mut commands: Commands,
+    mut grid: ResMut<MapGrid>,
+    movers: Query<
+        (Entity, &PendingPos, Option<&Speed>),
+        (With<Collider>, Without<Pos>, Without<DestroyRequested>),
+    >,
+) {
+    for (e, pending, speed) in movers.iter() {
+        if let PendingPos::MoveTo(dest) = *pending {
+            commands.entity(e).insert((Pos(dest), PrevPos(dest)));
+            grid.set_with_blocking(dest, e, speed.is_none());
+        }
     }
 }
 
@@ -339,24 +377,25 @@ pub fn friction(mut movers: Query<(&mut Speed, &Friction), With<Active>>) {
     }
 }
 
-/// Mirrors `DestroyEntitySystem` stage 1: positioned victims are scheduled
-/// for map removal (overwriting any move intent, like `Ensure` does).
-pub fn destroy_unmap(
-    mut commands: Commands,
-    victims: Query<Entity, (With<Pos>, With<DestroyRequested>, Without<PendingPos>)>,
-) {
-    for e in victims.iter() {
-        commands.entity(e).insert(PendingPos::RemoveFromMap);
-    }
+pub fn has_destroy_requests(doomed: Query<(), With<DestroyRequested>>) -> bool {
+    !doomed.is_empty()
 }
 
-/// Mirrors `DestroyEntitySystem` stage 2: entities off the map despawn.
-pub fn destroy_despawn(
+/// Destruction is exceptional and may allocate in Bevy's command queue. It
+/// is guarded by [`has_destroy_requests`], so the normal frame never creates
+/// that queue or pays archetype transition costs.
+pub fn destroy_entities(
     mut commands: Commands,
-    gone: Query<Entity, (With<DestroyRequested>, Without<Pos>, Without<PendingPos>)>,
+    mut grid: ResMut<MapGrid>,
+    doomed: Query<(Entity, Option<&Pos>), With<DestroyRequested>>,
 ) {
-    for e in gone.iter() {
-        commands.entity(e).despawn();
+    for (entity, pos) in doomed.iter() {
+        if let Some(pos) = pos {
+            if grid.get(pos.0) == Some(entity) {
+                grid.clear(pos.0);
+            }
+        }
+        commands.entity(entity).despawn();
     }
 }
 
@@ -425,14 +464,16 @@ pub fn direction_tiles(
 /// wait without holding the simulation open.
 pub fn turn_update(
     mut turn: ResMut<TurnState>,
-    commands_q: Query<&Tokens, (With<MoveCommand>, With<Speed>, Without<DestroyRequested>)>,
+    commands_q: Query<(&MoveCommand, &Tokens), (With<Speed>, Without<DestroyRequested>)>,
     speeds: Query<&Speed, (With<Active>, Without<DestroyRequested>)>,
-    pendings: Query<(), With<PendingPos>>,
+    pendings: Query<&PendingPos>,
     doomed: Query<(), With<DestroyRequested>>,
 ) {
-    turn.simulation = commands_q.iter().any(|t| t.count > 0)
+    turn.simulation = commands_q
+        .iter()
+        .any(|(command, tokens)| command.active && tokens.count > 0)
         || speeds.iter().any(|s| s.0 != IVec2::ZERO)
-        || !pendings.is_empty()
+        || pendings.iter().any(|pending| *pending != PendingPos::None)
         || !doomed.is_empty();
 }
 
@@ -484,13 +525,13 @@ pub mod test_app {
                     movement,
                     resolve_collect,
                     resolve_unmap,
+                    resolve_missing_positions,
                     resolve_commit,
                     relative_position,
                     friction,
-                    destroy_unmap,
-                    destroy_despawn,
+                    destroy_entities,
                     turn_update,
-                    vision::ensure_fov_requests,
+                    vision::ensure_fov_storage,
                     vision::compute_fov,
                     vision::player_visibility,
                 )
@@ -582,7 +623,7 @@ mod tests {
         // Both blocked: positions unchanged, intents consumed, cells kept.
         assert_eq!(app.world().get::<Pos>(a).unwrap().0, IVec2::new(1, 1));
         assert_eq!(app.world().get::<Pos>(b).unwrap().0, IVec2::new(2, 1));
-        assert!(app.world().get::<PendingPos>(a).is_none());
+        assert_eq!(app.world().get::<PendingPos>(a), Some(&PendingPos::None));
         let grid = app.world().resource::<MapGrid>();
         assert_eq!(grid.get(IVec2::new(1, 1)), Some(a));
         assert_eq!(grid.get(IVec2::new(2, 1)), Some(b));

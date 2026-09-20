@@ -34,8 +34,8 @@ next to this file.
 - One Bevy `World` + resources instead of `EcsUniverse` type-worlds.
 - `TileSystem` computes masks two-phased; the original mutates neighbour
   masks mid-iteration and drops links asymmetrically.
-- FOV caches also key on the occupancy revision so changing walls invalidates
-  shadows. Moving actors have `Speed` and do not block sight in either version.
+- FOV caches key on a static-blocker revision, so changing walls invalidates
+  shadows while moving actors do not invalidate every light and sensor.
 - FOV output clamps floating-point roundoff to `[0, 1]`; circular shadow
   intervals are enabled through both constructors, including Bevy defaults.
 - Bound decorations update after collision resolution, eliminating the
@@ -66,6 +66,7 @@ src/lighting.rs    light math + palettes
 src/render.rs      light layers, frame composition, cells, HUD
 tests/full_map.rs  headless map1 boot + settle integration test
 tests/gameplay.rs  timed input, movement, collision, and vision regressions
+tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
 tests/reference_parity.rs  independent C# FOV/light/palette fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
 assets/maps/       map1/2/3, map1_test, lightTest
@@ -77,7 +78,7 @@ assets/fonts/      DejaVu Sans Mono + redistribution license
 
 ```sh
 cargo run    # arrows or WASD to step the @ player
-cargo test   # 36 tests, including independent C# comparisons
+cargo test   # 37 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
@@ -100,6 +101,26 @@ and window-server access. Capture mode uses synchronous rendering to avoid
 a Bevy 0.16 macOS shutdown deadlock, and returns failure if saving fails.
 Normal play uses Bevy's real clock and pipelined renderer. Screenshots
 are local artifacts and are excluded from Git.
+
+## Memory and steady-state allocation policy
+
+The simulation follows the C# version's reuse-first design. The occupancy
+map is a fixed dense array; movement claims, reservations, FOV rings, shadow
+ranges, FOV results, visibility, light layers, render cells, and text strings
+retain their capacity and are cleared or overwritten in place. Player and
+enemy command/position state stays in stable ECS components, avoiding an
+archetype move for every command and movement phase. Moving actors also leave
+the static-blocker revision unchanged, so they do not trigger global FOV
+recomputation.
+
+Allocations are expected during startup, new entity/archetype creation, map
+resizing, and destruction. Bevy 0.16's schedule executor makes a small fixed
+number of allocations per `App::update()` even after warmup. The allocation
+regression test measures that warmed framework envelope and verifies that a
+forced player turn—movement, collision resolution, FOV, visibility, lighting,
+frame composition, and changed-cell output—adds no allocations above the
+corresponding steady frames. This is the practical Bevy equivalent of the C#
+implementation's near-zero per-turn heap policy.
 
 See [the comparison report](REFERENCE_COMPARISON.md) for what was verified
 against upstream and what intentionally differs. Regenerate the C# fixtures

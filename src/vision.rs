@@ -8,6 +8,8 @@
 //! - `LightSourceSystems`' player-sensor overwrite of the light radius is
 //!   kept (same values in practice).
 
+#![allow(clippy::type_complexity)]
+
 use bevy::prelude::*;
 
 use crate::components::*;
@@ -15,28 +17,51 @@ use crate::fov::{FovComputer, FovSample};
 
 /// Shared FOV computer (mirrors the single `FieldOfViewComputationInt2`
 /// instance owned by the system; its occlusion set is cleared per compute).
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Debug)]
 pub struct FovShared {
     computer: FovComputer,
     scratch: Vec<FovSample>,
 }
 
-/// Mirrors `LightSourceSystems`: lights request their radius (keeping the
-/// max), then player sensors overwrite with their own radius.
-pub fn ensure_fov_requests(
-    mut commands: Commands,
-    lights: Query<(Entity, &LightSource, Option<&FovRequest>)>,
-    players: Query<(Entity, &VisualSensor, Option<&FovRequest>)>,
-) {
-    for (e, light, existing) in lights.iter() {
-        let radius = existing
-            .map(|r| r.radius.max(light.radius))
-            .unwrap_or(light.radius);
-        commands.entity(e).insert(FovRequest { radius });
+impl Default for FovShared {
+    fn default() -> Self {
+        Self {
+            computer: FovComputer::default(),
+            // Radius 16 contains 33x33 square-ring samples. It is the largest
+            // bundled source and avoids growth during the normal game.
+            scratch: Vec::with_capacity(33 * 33),
+        }
     }
-    for (e, sensor, _) in players.iter() {
-        commands.entity(e).insert(FovRequest {
-            radius: sensor.radius,
+}
+
+/// Allocate per-source output storage when a light or sensor is created.
+/// This is a spawn/configuration cost; normal recomputes mutate it in place.
+pub fn ensure_fov_storage(
+    mut commands: Commands,
+    grid: Res<MapGrid>,
+    sources: Query<
+        Entity,
+        (
+            Or<(With<LightSource>, With<VisualSensor>)>,
+            Without<FovResult>,
+        ),
+    >,
+    players: Query<Entity, (With<Player>, Without<VisibilityMap>)>,
+) {
+    let n = (grid.width * grid.height) as usize;
+    for e in sources.iter() {
+        commands.entity(e).insert(FovResult {
+            revision: 0,
+            obstacle_revision: u64::MAX,
+            pos: IVec2::splat(i32::MIN),
+            radius: -1,
+            data: vec![0.0; n],
+        });
+    }
+    for e in players.iter() {
+        commands.entity(e).insert(VisibilityMap {
+            revision: u64::MAX,
+            data: vec![Vis::empty(); n],
         });
     }
 }
@@ -45,31 +70,32 @@ pub fn ensure_fov_requests(
 /// or changed obstacles; accumulate fractional visibility into the result
 /// field (toroidally wrapped, radius-filtered, like the original).
 pub fn compute_fov(
-    mut commands: Commands,
     grid: Res<MapGrid>,
     mut shared: ResMut<FovShared>,
-    mut sources: Query<(Entity, &Pos, &FovRequest, Option<&mut FovResult>)>,
-    blockers: Query<(), (With<Collider>, Without<Speed>)>,
+    mut sources: Query<(
+        &Pos,
+        Option<&LightSource>,
+        Option<&VisualSensor>,
+        &mut FovResult,
+    )>,
 ) {
-    for (e, pos, request, result) in sources.iter_mut() {
-        let cached = result.as_ref().map(|r| {
-            r.pos == pos.0 && r.radius == request.radius && r.obstacle_revision == grid.revision
-        });
-        if cached == Some(true) {
-            commands.entity(e).remove::<FovRequest>();
+    for (pos, light, sensor, mut result) in sources.iter_mut() {
+        let radius = sensor
+            .map(|sensor| sensor.radius)
+            .or_else(|| light.map(|light| light.radius))
+            .unwrap_or(0);
+        if result.pos == pos.0
+            && result.radius == radius
+            && result.obstacle_revision == grid.blocker_revision
+        {
             continue;
         }
         let w = grid.width;
         let h = grid.height;
-        let mut data = result
-            .as_ref()
-            .map(|r| r.data.clone())
-            .unwrap_or_else(|| vec![0.0; (w * h) as usize]);
-        if data.len() != (w * h) as usize {
-            data.resize((w * h) as usize, 0.0);
+        if result.data.len() != (w * h) as usize {
+            result.data.resize((w * h) as usize, 0.0);
         }
-        data.fill(0.0);
-        let revision = result.as_ref().map(|r| r.revision + 1).unwrap_or(0);
+        result.data.fill(0.0);
         // Obstacle = out of bounds, or an occupant that cannot move
         // (mirrors `HasObstacle`: no `Speed` pool entry on the occupant).
         let is_obstacle = |origin: IVec2, delta: IVec2| {
@@ -77,14 +103,11 @@ pub fn compute_fov(
             if !grid.is_valid(p) {
                 return true;
             }
-            match grid.get(grid.safe_pos(p)) {
-                None => false,
-                Some(o) => blockers.get(o).is_ok(),
-            }
+            grid.blocks_vision(grid.safe_pos(p))
         };
         let FovShared { computer, scratch } = &mut *shared;
-        computer.compute(pos.0, request.radius, is_obstacle, scratch);
-        let radius_sq = request.radius * request.radius;
+        computer.compute(pos.0, radius, is_obstacle, scratch);
+        let radius_sq = radius * radius;
         for sample in scratch.iter() {
             let p = pos.0 + sample.delta;
             if !grid.is_valid(p) {
@@ -96,18 +119,14 @@ pub fn compute_fov(
             }
             let wrapped = grid.safe_pos(p);
             let idx = (wrapped.y * w + wrapped.x) as usize;
-            if idx < data.len() {
-                data[idx] += sample.value;
+            if idx < result.data.len() {
+                result.data[idx] += sample.value;
             }
         }
-        commands.entity(e).insert(FovResult {
-            revision,
-            obstacle_revision: grid.revision,
-            pos: pos.0,
-            radius: request.radius,
-            data,
-        });
-        commands.entity(e).remove::<FovRequest>();
+        result.revision = result.revision.wrapping_add(1);
+        result.obstacle_revision = grid.blocker_revision;
+        result.pos = pos.0;
+        result.radius = radius;
     }
 }
 
@@ -115,35 +134,28 @@ pub fn compute_fov(
 /// recomputes. FOV above 0.1 marks Visible+Known, otherwise only Visible is
 /// cleared, so explored cells stay Known.
 pub fn player_visibility(
-    mut commands: Commands,
     grid: Res<MapGrid>,
-    players: Query<(Entity, &FovResult, Option<&VisibilityMap>), With<Player>>,
+    mut players: Query<(&FovResult, &mut VisibilityMap), With<Player>>,
 ) {
-    for (e, fov, existing) in players.iter() {
-        if existing.as_ref().map(|v| v.revision) == Some(fov.revision) {
+    for (fov, mut visibility) in players.iter_mut() {
+        if visibility.revision == fov.revision {
             continue;
         }
         let n = (grid.width * grid.height) as usize;
-        let mut data = existing
-            .map(|v| v.data.clone())
-            .unwrap_or_else(|| vec![Vis::empty(); n]);
-        if data.len() != n {
-            data.resize(n, Vis::empty());
+        if visibility.data.len() != n {
+            visibility.data.resize(n, Vis::empty());
         }
         for (i, v) in fov.data.iter().enumerate() {
-            if i >= data.len() {
+            if i >= visibility.data.len() {
                 break;
             }
             if *v > crate::components::VISIBILITY_THRESHOLD {
-                data[i] |= Vis::VISIBLE | Vis::KNOWN;
+                visibility.data[i] |= Vis::VISIBLE | Vis::KNOWN;
             } else {
-                data[i] &= !Vis::VISIBLE;
+                visibility.data[i] &= !Vis::VISIBLE;
             }
         }
-        commands.entity(e).insert(VisibilityMap {
-            revision: fov.revision,
-            data,
-        });
+        visibility.revision = fov.revision;
     }
 }
 
@@ -170,8 +182,7 @@ mod tests {
         app.init_resource::<FovShared>();
         let p = spawn_player(&mut app, IVec2::new(4, 4));
         app.update();
-        // Request consumed, result cached, visibility derived.
-        assert!(app.world().get::<FovRequest>(p).is_none());
+        // Result storage is created once, then visibility is derived.
         let result = app.world().get::<FovResult>(p).expect("fov result");
         assert_eq!(result.radius, 4);
         let vis = app.world().get::<VisibilityMap>(p).expect("visibility");
@@ -233,8 +244,7 @@ mod tests {
         app.world_mut()
             .resource_mut::<MapGrid>()
             .set(IVec2::new(2, 1), wall);
-        // ensure_fov_requests only fires for lights/players-with-sensor...
-        // the player has a sensor, so a fresh request appears.
+        // The player's sensor observes the changed blocker revision.
         app.update();
         let rev3 = app.world().get::<FovResult>(p).unwrap().revision;
         assert!(rev3 > rev2, "stale FOV must refresh on obstacle change");
