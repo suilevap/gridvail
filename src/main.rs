@@ -7,11 +7,14 @@
 use bevy::prelude::*;
 use bevy::{
     app::AppExit,
-    render::view::screenshot::{save_to_disk, Screenshot, ScreenshotCaptured},
+    render::{
+        pipelined_rendering::PipelinedRenderingPlugin,
+        view::screenshot::{Screenshot, ScreenshotCaptured},
+    },
 };
 use pav_ecs_game_bevy_port::game::GamePlugin;
 
-fn main() {
+fn main() -> AppExit {
     let mut args = std::env::args().skip(1);
     let capture = match args.next().as_deref() {
         Some("--screenshot") => Some(
@@ -31,20 +34,25 @@ fn main() {
         "walk steps must be U, D, L, or R"
     );
     assert!(args.next().is_none(), "unexpected argument");
+    let mut plugins = DefaultPlugins
+        .set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "PavEcsGame Lite Bevy Port".into(),
+                resolution: (1100.0_f32, 700.0_f32).into(),
+                ..default()
+            }),
+            ..default()
+        })
+        .set(ImagePlugin::default_nearest());
+    if capture.is_some() {
+        // Bevy 0.16's RenderAppChannels destructor can wait indefinitely on
+        // the render thread after screenshot readback on macOS. Capture mode
+        // needs deterministic completion, so run its renderer synchronously.
+        plugins = plugins.disable::<PipelinedRenderingPlugin>();
+    }
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::BLACK))
-        .add_plugins(
-            DefaultPlugins
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "PavEcsGame Lite Bevy Port".into(),
-                        resolution: (1100.0_f32, 700.0_f32).into(),
-                        ..default()
-                    }),
-                    ..default()
-                })
-                .set(ImagePlugin::default_nearest()),
-        )
+        .add_plugins(plugins)
         .add_plugins(GamePlugin);
     if let Some(path) = capture {
         app.insert_resource(Capture {
@@ -61,7 +69,7 @@ fn main() {
         )
         .add_systems(Update, capture_frame);
     }
-    app.run();
+    app.run()
 }
 
 #[derive(Resource)]
@@ -99,11 +107,35 @@ fn capture_frame(mut commands: Commands, mut capture: ResMut<Capture>) {
         }
         commands
             .spawn(Screenshot::primary_window())
-            .observe(save_to_disk(capture.path.clone()))
-            .observe(
-                |_: Trigger<ScreenshotCaptured>, mut exit: EventWriter<AppExit>| {
-                    exit.write(AppExit::Success);
-                },
-            );
+            .observe(save_capture);
+    }
+}
+
+fn save_capture(
+    trigger: Trigger<ScreenshotCaptured>,
+    capture: Res<Capture>,
+    mut exit: EventWriter<AppExit>,
+) {
+    let saved = trigger
+        .event()
+        .0
+        .clone()
+        .try_into_dynamic()
+        .map_err(|e| e.to_string())
+        .and_then(|image| {
+            image
+                .to_rgb8()
+                .save(&capture.path)
+                .map_err(|e| e.to_string())
+        });
+    match saved {
+        Ok(()) => {
+            println!("Screenshot saved to {}", capture.path);
+            exit.write(AppExit::Success);
+        }
+        Err(error) => {
+            eprintln!("Could not save screenshot: {error}");
+            exit.write(AppExit::error());
+        }
     }
 }

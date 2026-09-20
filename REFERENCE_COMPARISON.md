@@ -70,7 +70,9 @@ These did not prevent tests or GPU execution.
   matching the original policy.
 - The window uses an explicit font and RGB approximations of console colors.
   Screenshot mode fixes the timestep for reproducible captures; ordinary
-  play uses Bevy's clock.
+  play uses Bevy's clock. Screenshot mode disables pipelined rendering to
+  avoid a confirmed macOS shutdown deadlock in `RenderAppChannels::drop`;
+  normal rendering is unchanged by that workaround.
 - The original console application was not run end-to-end. These are source,
   algorithm, integration, and Bevy rendering checks, not proof of identical
   full-game replays or pixel-identical terminal output.

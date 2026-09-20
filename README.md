@@ -96,7 +96,9 @@ cargo run -- --screenshot screenshots/bevy-explored.png --walk LLLUUURRRRRRRDDDD
 
 Screenshot mode uses deterministic 16ms frames, optionally replays `UDLR`
 through the real keyboard system, saves a PNG, then exits. It requires GPU
-and window-server access. Normal play uses Bevy's real clock. Screenshots
+and window-server access. Capture mode uses synchronous rendering to avoid
+a Bevy 0.16 macOS shutdown deadlock, and returns failure if saving fails.
+Normal play uses Bevy's real clock and pipelined renderer. Screenshots
 are local artifacts and are excluded from Git.
 
 See [the comparison report](REFERENCE_COMPARISON.md) for what was verified
