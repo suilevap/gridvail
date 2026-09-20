@@ -3,8 +3,8 @@
 //!
 //! Differences from the original, all intentional and recorded:
 //! - FOV caches key off the grid's obstacle revision in addition to
-//!   position/radius: the original cache ignores obstacle changes, so a
-//!   moved actor would leave a stale shadow.
+//!   position/radius: the original cache ignores changed static obstacles.
+//!   Actors with Speed do not cast shadows in either implementation.
 //! - `LightSourceSystems`' player-sensor overwrite of the light radius is
 //!   kept (same values in practice).
 
@@ -29,7 +29,9 @@ pub fn ensure_fov_requests(
     players: Query<(Entity, &VisualSensor, Option<&FovRequest>)>,
 ) {
     for (e, light, existing) in lights.iter() {
-        let radius = existing.map(|r| r.radius.max(light.radius)).unwrap_or(light.radius);
+        let radius = existing
+            .map(|r| r.radius.max(light.radius))
+            .unwrap_or(light.radius);
         commands.entity(e).insert(FovRequest { radius });
     }
     for (e, sensor, _) in players.iter() {
@@ -152,7 +154,13 @@ mod tests {
 
     fn spawn_player(app: &mut bevy::prelude::App, pos: IVec2) -> Entity {
         app.world_mut()
-            .spawn((Active, Player(0), Pos(pos), Speed::default(), VisualSensor { radius: 4 }))
+            .spawn((
+                Active,
+                Player(0),
+                Pos(pos),
+                Speed::default(),
+                VisualSensor { radius: 4 },
+            ))
             .id()
     }
 
@@ -182,7 +190,9 @@ mod tests {
             .world_mut()
             .spawn((Active, Collider, Pos(IVec2::new(2, 1))))
             .id();
-        app.world_mut().resource_mut::<MapGrid>().set(IVec2::new(2, 1), wall);
+        app.world_mut()
+            .resource_mut::<MapGrid>()
+            .set(IVec2::new(2, 1), wall);
         app.update();
         let vis = app.world().get::<VisibilityMap>(p).expect("visibility");
         // Cell behind the wall is neither visible nor known...
@@ -220,7 +230,9 @@ mod tests {
             .world_mut()
             .spawn((Active, Collider, Pos(IVec2::new(2, 1))))
             .id();
-        app.world_mut().resource_mut::<MapGrid>().set(IVec2::new(2, 1), wall);
+        app.world_mut()
+            .resource_mut::<MapGrid>()
+            .set(IVec2::new(2, 1), wall);
         // ensure_fov_requests only fires for lights/players-with-sensor...
         // the player has a sensor, so a fresh request appears.
         app.update();

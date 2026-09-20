@@ -74,7 +74,11 @@ impl DirectionTileRule {
                 let idx = if dx == 0 && dy == 0 {
                     0
                 } else if dx.abs() > dy.abs() {
-                    if dx > 0 { 1 } else { 3 }
+                    if dx > 0 {
+                        1
+                    } else {
+                        3
+                    }
                 } else if dy > 0 {
                     2
                 } else {
@@ -106,10 +110,7 @@ mod tests {
         let rule = TileRule::parse(WALL_RULE);
         // Every mask resolves to a non-placeholder wall glyph.
         for (i, s) in rule.symbols.iter().enumerate() {
-            assert!(
-                *s != ' ' && *s != '.',
-                "mask {i} has no glyph"
-            );
+            assert!(*s != ' ' && *s != '.', "mask {i} has no glyph");
         }
         // Isolated wall (mask 0) is the lone glyph from the file.
         assert_eq!(rule.symbol(0), '≡');

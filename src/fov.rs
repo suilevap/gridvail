@@ -171,10 +171,16 @@ pub struct FovSample {
 }
 
 /// Stateful FOV computer (holds the occlusion set + ring cache).
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FovComputer {
     ranges: Ranges,
     rings: RingCache,
+}
+
+impl Default for FovComputer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FovComputer {
@@ -214,7 +220,9 @@ impl FovComputer {
                 let occluded = self.ranges.intersect_length(range) / cell;
                 out.push(FovSample {
                     delta: *delta,
-                    value: 1.0 - occluded,
+                    // Roundoff in interval division can exceed 1 by a few
+                    // ulps. Keep the public visibility field in [0, 1].
+                    value: (1.0 - occluded).clamp(0.0, 1.0),
                 });
                 if occluded < 1.0 && is_obstacle(origin, *delta) {
                     self.ranges.add(range);
@@ -227,6 +235,24 @@ impl FovComputer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_wraps_northwest_shadows_like_new() {
+        let mut default = FovComputer::default();
+        let mut explicit = FovComputer::new();
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+        default.compute(IVec2::ZERO, 4, |_, d| d == IVec2::new(-1, -1), &mut a);
+        explicit.compute(IVec2::ZERO, 4, |_, d| d == IVec2::new(-1, -1), &mut b);
+        assert_eq!(a, b);
+        assert_eq!(
+            a.iter()
+                .find(|s| s.delta == IVec2::new(-4, -3))
+                .unwrap()
+                .value,
+            0.0
+        );
+    }
 
     #[test]
     fn ring_order_and_count_match_original() {
@@ -265,12 +291,7 @@ mod tests {
         let mut fov = FovComputer::new();
         let mut out = Vec::new();
         // Single obstacle directly east of the observer.
-        fov.compute(
-            IVec2::ZERO,
-            3,
-            |_, d| d == IVec2::new(1, 0),
-            &mut out,
-        );
+        fov.compute(IVec2::ZERO, 3, |_, d| d == IVec2::new(1, 0), &mut out);
         // The cell straight behind is fully covered by the obstacle slice...
         let blocked = out
             .iter()
@@ -306,7 +327,10 @@ mod tests {
             |_, d| d.x.abs().max(d.y.abs()) == 1,
             &mut out,
         );
-        for s in out.iter().filter(|s| s.delta.x.abs().max(s.delta.y.abs()) == 2) {
+        for s in out
+            .iter()
+            .filter(|s| s.delta.x.abs().max(s.delta.y.abs()) == 2)
+        {
             assert!(
                 s.value.abs() < 1e-5,
                 "delta {:?} should be fully blocked, got {}",
@@ -319,11 +343,34 @@ mod tests {
     #[test]
     fn ranges_merge_and_wrap() {
         let mut r = Ranges::new_circular();
-        r.add(Range { start: 0.1, end: 0.3 });
-        r.add(Range { start: 0.2, end: 0.4 });
-        assert!((r.intersect_length(Range { start: 0.0, end: 0.5 }) - 0.3).abs() < 1e-6);
+        r.add(Range {
+            start: 0.1,
+            end: 0.3,
+        });
+        r.add(Range {
+            start: 0.2,
+            end: 0.4,
+        });
+        assert!(
+            (r.intersect_length(Range {
+                start: 0.0,
+                end: 0.5
+            }) - 0.3)
+                .abs()
+                < 1e-6
+        );
         // Wrap-around range crossing 1 -> 0.
-        r.add(Range { start: 0.9, end: 1.2 });
-        assert!((r.intersect_length(Range { start: -0.2, end: 0.1 }) - 0.2).abs() < 1e-6);
+        r.add(Range {
+            start: 0.9,
+            end: 1.2,
+        });
+        assert!(
+            (r.intersect_length(Range {
+                start: -0.2,
+                end: 0.1
+            }) - 0.2)
+                .abs()
+                < 1e-6
+        );
     }
 }

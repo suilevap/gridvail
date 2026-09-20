@@ -2,7 +2,7 @@
 //! end states) and the full Lite pipeline as one chained schedule.
 //!
 //! Container order mirrored: tiles → tokens → input/AI → commands →
-//! direction → movement → friction → bindings → resolve → verify → destroy →
+//! direction → movement → friction → resolve → bindings → verify → destroy →
 //! direction tiles → light requests → FOV → light layers → visibility →
 //! compose → flush → HUD → turn update.
 //!
@@ -54,10 +54,10 @@ impl Plugin for GamePlugin {
                         sim::update_direction,
                         sim::movement,
                         sim::friction,
-                        sim::relative_position,
                         sim::resolve_collect,
                         sim::resolve_unmap,
                         sim::resolve_commit,
+                        sim::relative_position,
                         sim::verify_map,
                         sim::destroy_unmap,
                         sim::destroy_despawn,
@@ -81,10 +81,28 @@ impl Plugin for GamePlugin {
     }
 }
 
-fn setup(mut commands: Commands) {
-    commands.spawn(Camera2d);
-
+fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
     let (width, height, cells) = parse_map(MAP_TEXT);
+    commands.spawn((
+        Camera2d,
+        Projection::Orthographic(OrthographicProjection {
+            scaling_mode: bevy::render::camera::ScalingMode::AutoMin {
+                min_width: (width + 2) as f32 * CELL_SIZE.x,
+                min_height: (height + 4) as f32 * CELL_SIZE.y,
+            },
+            ..OrthographicProjection::default_2d()
+        }),
+    ));
+    // The default Bevy font is a subset without the box-drawing and marker
+    // glyphs. Embed a licensed complete font; headless tests need no assets.
+    let font = fonts
+        .map(|mut fonts| {
+            fonts.add(
+                Font::try_from_bytes(include_bytes!("../assets/fonts/DejaVuSansMono.ttf").to_vec())
+                    .expect("bundled DejaVu font"),
+            )
+        })
+        .unwrap_or_default();
     let mut grid = MapGrid::new(width, height);
 
     for cell in cells {
@@ -124,7 +142,7 @@ fn setup(mut commands: Commands) {
                     ))
                     .id();
                 // Bound 'i' direction marker, one step ahead of the player
-                // (mirrors the linked triangle entity + its light source).
+                // (the original light source belongs to the player).
                 commands.spawn((
                     Active,
                     BoundTo {
@@ -199,7 +217,10 @@ fn setup(mut commands: Commands) {
         };
         if commands.get_entity(entity).is_ok() {
             // Colliders own their cells (mirrors the first UpdatePosition pass).
-            if matches!(cell.kind, SpawnKind::Wall | SpawnKind::Player | SpawnKind::Enemy) {
+            if matches!(
+                cell.kind,
+                SpawnKind::Wall | SpawnKind::Player | SpawnKind::Enemy
+            ) {
                 grid.set(cell.pos, entity);
             }
         }
@@ -225,7 +246,8 @@ fn setup(mut commands: Commands) {
                 MapCell(p),
                 Text2d::new(" "),
                 TextFont {
-                    font_size: 16.0,
+                    font: font.clone(),
+                    font_size: 20.0,
                     ..default()
                 },
                 TextColor(crate::lighting::palette_color(GRAY)),
@@ -238,6 +260,7 @@ fn setup(mut commands: Commands) {
         HudText,
         Text::new(""),
         TextFont {
+            font,
             font_size: 15.0,
             ..default()
         },
@@ -245,6 +268,7 @@ fn setup(mut commands: Commands) {
             position_type: PositionType::Absolute,
             top: Val::Px(8.0),
             left: Val::Px(8.0),
+            right: Val::Px(8.0),
             ..default()
         },
     ));

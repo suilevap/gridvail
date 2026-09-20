@@ -70,8 +70,22 @@ pub const YELLOW: u8 = 14;
 pub const WHITE: u8 = 15;
 
 const FIRE: &[u8] = &[
-    DARK_YELLOW, DARK_YELLOW, DARK_YELLOW, DARK_YELLOW, DARK_YELLOW, DARK_YELLOW, DARK_YELLOW,
-    YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, YELLOW, WHITE,
+    DARK_YELLOW,
+    DARK_YELLOW,
+    DARK_YELLOW,
+    DARK_YELLOW,
+    DARK_YELLOW,
+    DARK_YELLOW,
+    DARK_YELLOW,
+    YELLOW,
+    YELLOW,
+    YELLOW,
+    YELLOW,
+    YELLOW,
+    YELLOW,
+    YELLOW,
+    YELLOW,
+    WHITE,
 ];
 const ELECTRO: &[u8] = &[DARK_BLUE, DARK_CYAN, BLUE, CYAN];
 const ACID: &[u8] = &[DARK_GREEN, GREEN];
@@ -173,20 +187,32 @@ mod tests {
         assert_eq!(light_to_palette(&LightCell::default()), BLACK);
         // Fire at full brightness -> white; dim fire -> dark yellow.
         assert_eq!(
-            light_to_palette(&LightCell { value: 255, kind: LightKind::Fire }),
+            light_to_palette(&LightCell {
+                value: 255,
+                kind: LightKind::Fire
+            }),
             WHITE
         );
         assert_eq!(
-            light_to_palette(&LightCell { value: 1, kind: LightKind::Fire }),
+            light_to_palette(&LightCell {
+                value: 1,
+                kind: LightKind::Fire
+            }),
             DARK_YELLOW
         );
         // Neutral light maps through the gray ramp.
         assert_eq!(
-            light_to_palette(&LightCell { value: 1, kind: LightKind::None }),
+            light_to_palette(&LightCell {
+                value: 1,
+                kind: LightKind::None
+            }),
             DARK_GRAY
         );
         assert_eq!(
-            light_to_palette(&LightCell { value: 255, kind: LightKind::None }),
+            light_to_palette(&LightCell {
+                value: 255,
+                kind: LightKind::None
+            }),
             WHITE
         );
     }

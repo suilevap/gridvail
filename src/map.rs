@@ -37,12 +37,11 @@ pub fn parse_map(text: &str) -> (i32, i32, Vec<SpawnCell>) {
     // Strip a UTF-8 BOM like `File.ReadAllLines` effectively does.
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     // Accept CRLF or LF.
-    let lines: Vec<&str> = text.lines().map(|l| l.strip_suffix('\r').unwrap_or(l)).collect();
-    let width = lines
-        .iter()
-        .map(|l| l.chars().count())
-        .max()
-        .unwrap_or(0) as i32;
+    let lines: Vec<&str> = text
+        .lines()
+        .map(|l| l.strip_suffix('\r').unwrap_or(l))
+        .collect();
+    let width = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as i32;
     let height = lines.len() as i32;
     let mut cells = Vec::new();
     for (y, line) in lines.iter().enumerate() {

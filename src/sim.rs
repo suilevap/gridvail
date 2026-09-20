@@ -3,7 +3,7 @@
 //!
 //! control: tokens → player input → enemy AI → move commands
 //! tick: direction-from-speed → movement → friction
-//! sim: bindings → resolve (collect → unmap → commit) → destroy → tiles
+//! sim: resolve (collect → unmap → commit) → bindings → destroy → tiles
 //!
 //! Deliberate deviations (all documented where they occur):
 //! - systems touching `DestroyRequested` skip it: nothing in the Lite
@@ -130,7 +130,7 @@ pub fn enemy_ai(
 /// token. Requires a held token; tokenless commands wait.
 pub fn move_commands(
     mut commands: Commands,
-    mut movers: Query<(Entity, &MoveCommand, &mut Speed, &mut Tokens)>,
+    mut movers: Query<(Entity, &MoveCommand, &mut Speed, &mut Tokens), Without<DestroyRequested>>,
 ) {
     for (e, cmd, mut speed, mut tokens) in movers.iter_mut() {
         if tokens.count <= 0 {
@@ -175,12 +175,17 @@ pub fn movement(
     }
 }
 
-/// Mirrors `RelativePositionSystem`: bound decorations follow their parent.
+/// Bound decorations follow the parent's committed position. Unlike the
+/// reference's pre-resolve binding pass, this runs after collision resolution
+/// so the marker stays ahead of the player in the rendered frame.
 /// A missing parent (or one without position/facing) leaves the child
 /// untouched instead of crashing on a stale link.
 pub fn relative_position(
     mut commands: Commands,
-    children: Query<(Entity, &BoundTo, Option<&Pos>, Option<&Facing>)>,
+    children: Query<
+        (Entity, &BoundTo, Option<&Pos>, Option<&Facing>),
+        (Without<Collider>, Without<DestroyRequested>),
+    >,
     parents: Query<(&Pos, &Facing)>,
 ) {
     for (e, bound, pos, facing) in children.iter() {
@@ -189,7 +194,10 @@ pub fn relative_position(
         };
         let new_pos = parent_pos.0 + rotate(bound.offset, parent_facing.0);
         if pos.map(|p| p.0) != Some(new_pos) {
-            commands.entity(e).insert(PendingPos::MoveTo(new_pos));
+            if let Some(pos) = pos {
+                commands.entity(e).insert(PrevPos(pos.0));
+            }
+            commands.entity(e).insert(Pos(new_pos));
         }
         let new_dir = rotate(bound.offset_dir, parent_facing.0);
         if facing.map(|f| f.0) != Some(new_dir) {
@@ -254,6 +262,9 @@ pub fn resolve_collect(
             }
             _ => {
                 reserved.insert(to);
+                // Commit exactly the wrapped destination whose occupancy
+                // was checked, including first placements and direct intents.
+                commands.entity(e).insert(PendingPos::MoveTo(to));
                 commits.0.push(MoveCommit {
                     entity: e,
                     from,
@@ -414,7 +425,7 @@ pub fn direction_tiles(
 /// wait without holding the simulation open.
 pub fn turn_update(
     mut turn: ResMut<TurnState>,
-    commands_q: Query<&Tokens, With<MoveCommand>>,
+    commands_q: Query<&Tokens, (With<MoveCommand>, With<Speed>, Without<DestroyRequested>)>,
     speeds: Query<&Speed, (With<Active>, Without<DestroyRequested>)>,
     pendings: Query<(), With<PendingPos>>,
     doomed: Query<(), With<DestroyRequested>>,
@@ -449,8 +460,8 @@ pub fn verify_map(
 #[cfg(test)]
 pub mod test_app {
     use super::*;
-    use rand::SeedableRng;
     use crate::vision;
+    use rand::SeedableRng;
 
     pub fn headless() -> bevy::prelude::App {
         let mut app = bevy::prelude::App::new();
@@ -471,10 +482,10 @@ pub mod test_app {
                     move_commands,
                     update_direction,
                     movement,
-                    relative_position,
                     resolve_collect,
                     resolve_unmap,
                     resolve_commit,
+                    relative_position,
                     friction,
                     destroy_unmap,
                     destroy_despawn,
@@ -494,11 +505,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn direct_intents_wrap_before_commit_and_first_placement() {
+        let mut app = test_app::headless();
+        let mover = app
+            .world_mut()
+            .spawn((
+                Active,
+                Collider,
+                Pos(IVec2::new(1, 1)),
+                PendingPos::MoveTo(IVec2::new(-1, 9)),
+            ))
+            .id();
+        app.world_mut()
+            .resource_mut::<MapGrid>()
+            .set(IVec2::new(1, 1), mover);
+        let newcomer = app
+            .world_mut()
+            .spawn((Active, Collider, PendingPos::MoveTo(IVec2::new(8, 0))))
+            .id();
+        app.update();
+        let grid = app.world().resource::<MapGrid>();
+        assert_eq!(app.world().get::<Pos>(mover).unwrap().0, IVec2::new(7, 1));
+        assert_eq!(grid.get(IVec2::new(7, 1)), Some(mover));
+        assert_eq!(grid.get(IVec2::new(1, 1)), None);
+        assert_eq!(app.world().get::<Pos>(newcomer).unwrap().0, IVec2::ZERO);
+        assert_eq!(grid.get(IVec2::ZERO), Some(newcomer));
+    }
+
+    #[test]
     fn token_recharge_assigns_instead_of_adding() {
         let mut app = test_app::headless();
         let e = app
             .world_mut()
-            .spawn((Player(0), Tokens { count: 0, recharge: 1 }))
+            .spawn((
+                Player(0),
+                Tokens {
+                    count: 0,
+                    recharge: 1,
+                },
+            ))
             .id();
         // Force the timeout path off; all-spent path triggers recharge.
         app.update();
@@ -576,7 +621,9 @@ mod tests {
         }
         app.update();
         let grid = app.world().resource::<MapGrid>();
-        let winner = grid.get(IVec2::new(1, 0)).expect("a winner occupies the cell");
+        let winner = grid
+            .get(IVec2::new(1, 0))
+            .expect("a winner occupies the cell");
         assert!(
             winner == first || winner == second,
             "winner must be one claimant"
@@ -599,12 +646,16 @@ mod tests {
             .world_mut()
             .spawn((Active, Collider, Pos(IVec2::new(3, 3)), DestroyRequested))
             .id();
-        app.world_mut().resource_mut::<MapGrid>()
+        app.world_mut()
+            .resource_mut::<MapGrid>()
             .set(IVec2::new(3, 3), e);
         // Pass 1 schedules map removal; pass 2 unmaps and despawns.
         app.update();
         app.update();
-        assert_eq!(app.world().resource::<MapGrid>().get(IVec2::new(3, 3)), None);
+        assert_eq!(
+            app.world().resource::<MapGrid>().get(IVec2::new(3, 3)),
+            None
+        );
         assert!(app.world().get_entity(e).is_err());
     }
 }

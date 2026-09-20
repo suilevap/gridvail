@@ -7,8 +7,8 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-/// Tile size in world units.
-pub const TILE: f32 = 20.0;
+/// Console-shaped cells match the bundled monospace font's advance at 20px.
+pub const CELL_SIZE: Vec2 = Vec2::new(12.0, 20.0);
 /// Token recharge interval, mirrors `CommandTokenDistributionSystem(1s)`.
 pub const TOKEN_RECHARGE_SECS: f32 = 1.0;
 /// FOV visibility threshold, mirrors `PlayerFieldOfViewSystem` (`> 0.1`).
@@ -76,10 +76,7 @@ pub struct Tokens {
 
 impl Tokens {
     pub const fn new(recharge: i32) -> Self {
-        Self {
-            count: 0,
-            recharge,
-        }
+        Self { count: 0, recharge }
     }
 }
 
@@ -397,8 +394,8 @@ pub struct MapCell(pub IVec2);
 /// Y flipped: game Y grows downward).
 pub fn grid_to_world(p: IVec2, w: i32, h: i32) -> Vec3 {
     Vec3::new(
-        (p.x as f32 - w as f32 / 2.0 + 0.5) * TILE,
-        (h as f32 / 2.0 - p.y as f32 - 0.5) * TILE,
+        (p.x as f32 - w as f32 / 2.0 + 0.5) * CELL_SIZE.x,
+        (h as f32 / 2.0 - p.y as f32 - 0.5) * CELL_SIZE.y,
         0.0,
     )
 }

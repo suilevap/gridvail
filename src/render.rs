@@ -37,7 +37,7 @@ pub fn render_light_layers(
     grid: Res<MapGrid>,
     mut static_layer: ResMut<StaticLight>,
     mut dynamic: ResMut<DynamicLight>,
-    static_sources: Query<(Entity, &Pos, &LightSource, &FovResult), Without<Speed>>,
+    static_sources: Query<(Entity, &Pos, Ref<LightSource>, &FovResult), Without<Speed>>,
     dynamic_sources: Query<(&Pos, &LightSource, &FovResult), With<Speed>>,
 ) {
     let n = (grid.width * grid.height) as usize;
@@ -51,7 +51,12 @@ pub fn render_light_layers(
         .iter()
         .map(|(e, _, _, fov)| (e, fov.revision))
         .collect();
-    if static_layer.dirty || seen != static_layer.last_seen_revisions {
+    if static_layer.dirty
+        || seen != static_layer.last_seen_revisions
+        || static_sources
+            .iter()
+            .any(|(_, _, light, _)| light.is_changed())
+    {
         static_layer.dirty = false;
         static_layer.last_seen_revisions = seen;
         static_layer.data.fill(LightCell {
@@ -59,7 +64,7 @@ pub fn render_light_layers(
             kind: LightKind::None,
         });
         for (_, pos, light, fov) in static_sources.iter() {
-            blend_source(&mut static_layer.data, &grid, pos.0, light, fov);
+            blend_source(&mut static_layer.data, &grid, pos.0, &light, fov);
         }
     }
     dynamic.data.clone_from(&static_layer.data);
@@ -140,7 +145,11 @@ pub fn compose_frame(
                     let Some(ni) = buffers.idx(n) else {
                         return false;
                     };
-                    vis.data.get(ni).copied().unwrap_or_default().contains(Vis::KNOWN)
+                    vis.data
+                        .get(ni)
+                        .copied()
+                        .unwrap_or_default()
+                        .contains(Vis::KNOWN)
                         && buffers.current[ni].depth == 0
                 });
                 if borders_known {
@@ -167,7 +176,11 @@ pub fn flush_cells(
         };
         if buffers.current[idx] != buffers.previous[idx] {
             let c = buffers.current[idx];
-            text.0 = if c.ch == '\0' { " ".to_string() } else { c.ch.to_string() };
+            text.0 = if c.ch == '\0' {
+                " ".to_string()
+            } else {
+                c.ch.to_string()
+            };
             color.0 = crate::lighting::palette_color(c.color);
         }
     }
@@ -188,7 +201,7 @@ pub fn update_hud(
         .unwrap_or((IVec2::ZERO, 0));
     for mut text in hud.iter_mut() {
         text.0 = format!(
-            "PavEcsGame Lite Bevy port | tick {} | phase {} | map {}x{} | player ({},{}) tokens {} | enemies {} | bumps {} | arrows/WASD",
+            "PavEcsGame Lite Bevy port | arrows/WASD\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | enemies {} | bumps {}",
             turn.tick,
             turn.phase_name(),
             grid.width,
@@ -205,10 +218,10 @@ pub fn update_hud(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::ecs::system::RunSystemOnce;
     use crate::lighting::GRAY;
     use crate::sim::test_app;
     use crate::vision::FovShared;
+    use bevy::ecs::system::RunSystemOnce;
 
     fn vis_map_with(w: i32, h: i32, cells: &[(IVec2, Vis)]) -> VisibilityMap {
         let mut data = vec![Vis::empty(); (w * h) as usize];
@@ -245,11 +258,8 @@ mod tests {
             vismap,
         ));
         // Speedless decor on a known-but-unseen cell renders...
-        app.world_mut().spawn((
-            Active,
-            Pos(IVec2::new(1, 0)),
-            Glyph::new('#', 1, GRAY),
-        ));
+        app.world_mut()
+            .spawn((Active, Pos(IVec2::new(1, 0)), Glyph::new('#', 1, GRAY)));
         // ...a moving actor there does not...
         app.world_mut().spawn((
             Active,
@@ -258,11 +268,8 @@ mod tests {
             Glyph::new('e', 1, 12),
         ));
         // ...and nothing renders on unknown cells.
-        app.world_mut().spawn((
-            Active,
-            Pos(IVec2::new(3, 0)),
-            Glyph::new('#', 1, GRAY),
-        ));
+        app.world_mut()
+            .spawn((Active, Pos(IVec2::new(3, 0)), Glyph::new('#', 1, GRAY)));
         app.update();
         // compose_frame is not in the headless chain; run it directly.
         app.world_mut().run_system_once(compose_frame).unwrap();
@@ -301,18 +308,41 @@ mod tests {
             ))
             .id();
         app.update();
-        app.world_mut().run_system_once(render_light_layers).unwrap();
+        app.world_mut()
+            .run_system_once(render_light_layers)
+            .unwrap();
         let lit = app.world().resource::<DynamicLight>().data[(4 * 8 + 4) as usize];
         assert_eq!(lit.value, 100);
         assert_eq!(lit.kind, LightKind::Fire);
         // Second run: no rebuild (dirty flag cleared, revisions match).
-        app.world_mut().run_system_once(render_light_layers).unwrap();
+        app.world_mut()
+            .run_system_once(render_light_layers)
+            .unwrap();
         // Bumping the source revision forces a rebuild.
         app.world_mut().get_mut::<FovResult>(lamp).unwrap().revision = 7;
-        app.world_mut().run_system_once(render_light_layers).unwrap();
+        app.world_mut()
+            .run_system_once(render_light_layers)
+            .unwrap();
         assert_eq!(
             app.world().resource::<StaticLight>().last_seen_revisions,
             vec![(lamp, 7)]
+        );
+        // Brightness/type changes do not change FOV revisions, but must
+        // still refresh the cached static layer.
+        *app.world_mut().get_mut::<LightSource>(lamp).unwrap() = LightSource {
+            radius: 2,
+            kind: LightKind::Acid,
+            value: 200,
+        };
+        app.world_mut()
+            .run_system_once(render_light_layers)
+            .unwrap();
+        assert_eq!(
+            app.world().resource::<DynamicLight>().data[36],
+            LightCell {
+                value: 200,
+                kind: LightKind::Acid
+            }
         );
     }
 }
