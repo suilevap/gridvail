@@ -7,14 +7,16 @@
 use bevy::prelude::*;
 use bevy::{
     app::AppExit,
+    camera::RenderTarget,
     render::{
-        pipelined_rendering::PipelinedRenderingPlugin,
+        render_resource::TextureFormat,
         view::screenshot::{Screenshot, ScreenshotCaptured},
     },
 };
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::app::GamePlugin;
 use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
+use pav_ecs_game_bevy_port::schedule::StartupPhase;
 
 fn main() -> AppExit {
     let options = Options::parse();
@@ -24,22 +26,16 @@ fn main() -> AppExit {
         walk.chars().all(|c| "UDLR".contains(c)),
         "walk steps must be U, D, L, or R"
     );
-    let mut plugins = DefaultPlugins
+    let plugins = DefaultPlugins
         .set(WindowPlugin {
             primary_window: Some(Window {
                 title: "PavEcsGame Lite Bevy Port".into(),
-                resolution: (1100.0_f32, 700.0_f32).into(),
+                resolution: (1100_u32, 700_u32).into(),
                 ..default()
             }),
             ..default()
         })
         .set(ImagePlugin::default_nearest());
-    if capture.is_some() {
-        // Bevy 0.16's RenderAppChannels destructor can wait indefinitely on
-        // the render thread after screenshot readback on macOS. Capture mode
-        // needs deterministic completion, so run its renderer synchronously.
-        plugins = plugins.disable::<PipelinedRenderingPlugin>();
-    }
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::BLACK))
         .add_plugins(plugins)
@@ -57,9 +53,10 @@ fn main() -> AppExit {
         .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             std::time::Duration::from_millis(16),
         ))
+        .add_systems(Startup, setup_capture_target.after(StartupPhase::Renderer))
         .add_systems(
             PreUpdate,
-            replay_capture_input.after(bevy::input::InputSystem),
+            replay_capture_input.after(bevy::input::InputSystems),
         )
         .add_systems(Update, capture_frame);
     }
@@ -119,6 +116,24 @@ struct Capture {
     walk: Vec<char>,
 }
 
+#[derive(Resource)]
+struct CaptureTarget(Handle<Image>);
+
+fn setup_capture_target(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut target: Single<&mut RenderTarget, With<Camera2d>>,
+) {
+    let image = images.add(Image::new_target_texture(
+        1100,
+        700,
+        TextureFormat::Rgba8UnormSrgb,
+        None,
+    ));
+    **target = RenderTarget::Image(image.clone().into());
+    commands.insert_resource(CaptureTarget(image));
+}
+
 /// Optional reproducible walk uses the same keyboard system as live play.
 fn replay_capture_input(capture: Res<Capture>, mut keys: ResMut<ButtonInput<KeyCode>>) {
     keys.reset_all();
@@ -135,30 +150,29 @@ fn replay_capture_input(capture: Res<Capture>, mut keys: ResMut<ButtonInput<KeyC
     }
 }
 
-/// Capture the real GPU-rendered window after startup/font layout settles.
+/// Capture a GPU-rendered image after startup, font layout, and pipelines settle.
 /// Exit only when readback and saving have completed.
-fn capture_frame(mut commands: Commands, mut capture: ResMut<Capture>) {
+fn capture_frame(mut commands: Commands, mut capture: ResMut<Capture>, target: Res<CaptureTarget>) {
     capture.frames += 1;
-    if capture.frames == 32 + 2 * capture.walk.len() as u32 {
+    if capture.frames == 120 + 2 * capture.walk.len() as u32 {
         if let Some(parent) = std::path::Path::new(&capture.path).parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent).expect("create screenshot directory");
             }
         }
         commands
-            .spawn(Screenshot::primary_window())
+            .spawn(Screenshot::image(target.0.clone()))
             .observe(save_capture);
     }
 }
 
 fn save_capture(
-    trigger: Trigger<ScreenshotCaptured>,
+    trigger: On<ScreenshotCaptured>,
     capture: Res<Capture>,
-    mut exit: EventWriter<AppExit>,
+    mut exit: MessageWriter<AppExit>,
 ) {
     let saved = trigger
-        .event()
-        .0
+        .image
         .clone()
         .try_into_dynamic()
         .map_err(|e| e.to_string())

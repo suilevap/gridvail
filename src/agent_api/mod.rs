@@ -58,8 +58,8 @@ impl Plugin for AgentApiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(
             RemotePlugin::default()
-                .with_method(STATE_METHOD, get_state)
-                .with_method(MOVE_METHOD, move_player),
+                .with_method_main(STATE_METHOD, get_state)
+                .with_method_main(MOVE_METHOD, move_player),
         )
         .add_plugins(RemoteHttpPlugin::default().with_port(self.port));
     }

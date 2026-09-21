@@ -57,7 +57,7 @@ pub fn resolve_collect(
     }
     commits
         .order
-        .sort_by_key(|(entity, _, _)| (entity.index(), entity.generation()));
+        .sort_by_key(|(entity, _, _)| (entity.index(), entity.generation().to_bits()));
     for i in 0..commits.order.len() {
         let (entity, from, to) = commits.order[i];
         let index = grid.idx(to).expect("wrapped destination");

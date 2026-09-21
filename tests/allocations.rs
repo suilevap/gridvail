@@ -135,12 +135,16 @@ fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
     eprintln!(
         "allocations: Bevy schedule baseline={baseline_allocations}, game idle={idle_allocations}, turns={turn_allocations}"
     );
-    // Bevy 0.16's executor itself makes a small, stable number of allocations
-    // per update. The game stays within that fixed envelope, and a full turn
-    // adds none beyond the corresponding steady frames.
+    // Bevy 0.19's executor itself makes a small, stable number of allocations
+    // per update. Bound both its no-op baseline and the game's schedule delta;
+    // a full turn must still add nothing beyond corresponding steady frames.
     assert!(
-        idle_allocations <= 11 * 128,
-        "steady frame allocation envelope regressed: {idle_allocations}"
+        baseline_allocations <= 11 * 128,
+        "Bevy baseline allocation envelope regressed: {baseline_allocations}"
+    );
+    assert!(
+        idle_allocations <= baseline_allocations + 4 * 128,
+        "game schedule allocation envelope regressed: baseline={baseline_allocations}, idle={idle_allocations}"
     );
     assert!(
         turn_allocations <= idle_allocations.div_ceil(4) + 2,

@@ -1,6 +1,6 @@
 # PavEcsGame Lite Bevy Port
 
-Bevy Rust port of [PavEcsGame](https://github.com/suilevap/PavEcsGame),
+Bevy 0.19.1 Rust port of [PavEcsGame](https://github.com/suilevap/PavEcsGame),
 commit `bc0b449` — specifically **PavEcsLiteGame**, the latest and most
 complete variant (the legacy `PavEcsGame` demo is intentionally not the
 target). Designed against `PavEcsGame_Rust_Bevy_migration_plan.md`, kept
@@ -104,9 +104,9 @@ cargo run -- --screenshot screenshots/bevy-explored.png --walk LLLUUURRRRRRRDDDD
 
 Screenshot mode uses deterministic 16ms frames, optionally replays `UDLR`
 through the real keyboard system, saves a PNG, then exits. It requires GPU
-and window-server access. Capture mode uses synchronous rendering to avoid
-a Bevy 0.16 macOS shutdown deadlock, and returns failure if saving fails.
-Normal play uses Bevy's real clock and pipelined renderer. Screenshots
+and window-server access. Capture mode renders to a fixed 1100x700 offscreen
+target, allows Bevy's render pipelines to warm up, and returns failure if
+saving fails. Normal play uses Bevy's real clock and window target. Screenshots
 are local artifacts and are excluded from Git.
 
 ## Agent runtime API
@@ -157,7 +157,7 @@ the static-blocker revision unchanged, so they do not trigger global FOV
 recomputation.
 
 Allocations are expected during startup, new entity/archetype creation, map
-resizing, and destruction. Bevy 0.16's schedule executor makes a small fixed
+resizing, and destruction. Bevy 0.19's schedule executor makes a small fixed
 number of allocations per `App::update()` even after warmup. The allocation
 regression test measures that warmed framework envelope and verifies that a
 forced player turn—movement, collision resolution, FOV, visibility, lighting,

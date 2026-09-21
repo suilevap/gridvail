@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use rand::Rng;
+use rand::RngExt;
 
 use crate::model::*;
 
@@ -42,7 +42,7 @@ pub fn enemy_ai(
     }
     const MOVES: [IVec2; 5] = [IVec2::ZERO, IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y];
     for mut command in enemies.iter_mut() {
-        command.target = MOVES[rng.0.gen_range(0..MOVES.len())];
+        command.target = MOVES[rng.0.random_range(0..MOVES.len())];
         command.relative = true;
         command.active = true;
     }

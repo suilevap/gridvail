@@ -31,27 +31,25 @@ impl Plugin for TextRendererPlugin {
 
 fn setup(mut commands: Commands, grid: Res<MapGrid>, fonts: Option<ResMut<Assets<Font>>>) {
     let (width, height) = (grid.width, grid.height);
-    commands.spawn((
-        Camera2d,
-        Projection::Orthographic(OrthographicProjection {
-            scaling_mode: bevy::render::camera::ScalingMode::AutoMin {
-                min_width: (width + 2) as f32 * CELL_SIZE.x,
-                min_height: (height + 4) as f32 * CELL_SIZE.y,
-            },
-            ..OrthographicProjection::default_2d()
-        }),
-    ));
-
+    let camera = commands
+        .spawn((
+            Camera2d,
+            Projection::Orthographic(OrthographicProjection {
+                scaling_mode: bevy::camera::ScalingMode::AutoMin {
+                    min_width: (width + 2) as f32 * CELL_SIZE.x,
+                    min_height: (height + 4) as f32 * CELL_SIZE.y,
+                },
+                ..OrthographicProjection::default_2d()
+            }),
+        ))
+        .id();
     // The default Bevy font omits the box-drawing and marker glyphs. Headless
     // tests do not install font assets, so they use the default handle.
     let font = fonts
         .map(|mut fonts| {
-            fonts.add(
-                Font::try_from_bytes(
-                    include_bytes!("../../assets/fonts/DejaVuSansMono.ttf").to_vec(),
-                )
-                .expect("bundled DejaVu font"),
-            )
+            fonts.add(Font::from_bytes(
+                include_bytes!("../../assets/fonts/DejaVuSansMono.ttf").to_vec(),
+            ))
         })
         .unwrap_or_default();
 
@@ -64,8 +62,8 @@ fn setup(mut commands: Commands, grid: Res<MapGrid>, fonts: Option<ResMut<Assets
                 MapCell(position),
                 Text2d::new(cell_text),
                 TextFont {
-                    font: font.clone(),
-                    font_size: 20.0,
+                    font: font.clone().into(),
+                    font_size: FontSize::Px(20.0),
                     ..default()
                 },
                 TextColor(palette_color(GRAY)),
@@ -76,10 +74,11 @@ fn setup(mut commands: Commands, grid: Res<MapGrid>, fonts: Option<ResMut<Assets
 
     commands.spawn((
         HudText,
+        UiTargetCamera(camera),
         Text::new(String::with_capacity(192)),
         TextFont {
-            font,
-            font_size: 15.0,
+            font: font.into(),
+            font_size: FontSize::Px(15.0),
             ..default()
         },
         Node {
