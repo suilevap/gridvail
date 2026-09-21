@@ -5,6 +5,7 @@
 
 use bevy::{
     camera::ClearColorConfig, input::mouse::MouseWheel, mesh::VertexAttributeValues, prelude::*,
+    reflect::TypePath, render::render_resource::AsBindGroup, shader::ShaderRef,
 };
 
 use crate::lighting::{light_to_palette, palette_color};
@@ -25,24 +26,41 @@ const CAMERA_FOV: f32 = 50.0_f32.to_radians();
 const MIN_CAMERA_DISTANCE: f32 = 150.0;
 const MAX_CAMERA_DISTANCE: f32 = 650.0;
 const PALETTE_SIZE: usize = 16;
+const DUNGEON_SHADER: &str = "shaders/dungeon_material.wgsl";
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+struct DungeonMaterial {
+    #[uniform(0)]
+    color: LinearRgba,
+    /// x/y: broad/fine variation strength, z/w: broad/fine frequency.
+    #[uniform(1)]
+    variation: Vec4,
+}
+
+impl Material for DungeonMaterial {
+    fn fragment_shader() -> ShaderRef {
+        DUNGEON_SHADER.into()
+    }
+}
 
 /// Adds perspective wall meshes beneath the text renderer.
 pub struct ExtrudedWallRendererPlugin;
 
 impl Plugin for ExtrudedWallRendererPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Startup,
-            setup
-                .in_set(StartupPhase::Renderer)
-                .after(super::text::setup),
-        )
-        .add_systems(
-            Update,
-            (move_camera, sync_walls, sync_floors, project_text_cells)
-                .chain()
-                .in_set(GamePhase::Output),
-        );
+        app.add_plugins(MaterialPlugin::<DungeonMaterial>::default())
+            .add_systems(
+                Startup,
+                setup
+                    .in_set(StartupPhase::Renderer)
+                    .after(super::text::setup),
+            )
+            .add_systems(
+                Update,
+                (move_camera, sync_walls, sync_floors, project_text_cells)
+                    .chain()
+                    .in_set(GamePhase::Output),
+            );
     }
 }
 
@@ -61,10 +79,10 @@ impl ExtrudedWallCells {
 }
 
 #[derive(Resource)]
-struct WallMaterials(Vec<Handle<StandardMaterial>>);
+struct WallMaterials(Vec<Handle<DungeonMaterial>>);
 
 #[derive(Resource)]
-struct FloorMaterials(Vec<Handle<StandardMaterial>>);
+struct FloorMaterials(Vec<Handle<DungeonMaterial>>);
 
 #[derive(Resource)]
 struct CameraRig {
@@ -94,7 +112,7 @@ fn setup(
     player: Single<&Pos, With<Player>>,
     mut cameras_2d: Query<(&mut Camera, &mut Projection), With<Camera2d>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<DungeonMaterial>>,
 ) {
     for (mut camera, mut projection) in &mut cameras_2d {
         camera.order = 1;
@@ -130,27 +148,24 @@ fn setup(
     let wall_meshes: Vec<_> = (0..16).map(|mask| meshes.add(wall_mesh(mask))).collect();
     let wall_materials: Vec<_> = (0..PALETTE_SIZE)
         .map(|index| {
-            materials.add(StandardMaterial {
+            materials.add(DungeonMaterial {
                 // The composed frame already contains the CPU light result.
-                base_color: palette_color(index as u8),
-                unlit: true,
-                ..default()
+                color: palette_color(index as u8).to_linear(),
+                variation: Vec4::new(0.18, 0.08, 0.026, 0.16),
             })
         })
         .collect();
     let floor_materials: Vec<_> = (0..PALETTE_SIZE)
         .map(|index| {
-            materials.add(StandardMaterial {
-                base_color: floor_color(index as u8),
-                unlit: true,
-                perceptual_roughness: 1.0,
-                ..default()
+            materials.add(DungeonMaterial {
+                color: floor_color(index as u8).to_linear(),
+                variation: Vec4::new(0.24, 0.10, 0.020, 0.11),
             })
         })
         .collect();
     let floor_mesh = meshes.add(Cuboid::new(
-        CELL_SIZE.x * 0.96,
-        CELL_SIZE.y * 0.96,
+        CELL_SIZE.x * 1.005,
+        CELL_SIZE.y * 1.005,
         FLOOR_DEPTH,
     ));
 
@@ -247,7 +262,7 @@ fn sync_walls(
     materials: Res<WallMaterials>,
     mut walls: Query<(
         &ExtrudedWall,
-        &mut MeshMaterial3d<StandardMaterial>,
+        &mut MeshMaterial3d<DungeonMaterial>,
         &mut Visibility,
     )>,
 ) {
@@ -280,7 +295,7 @@ fn sync_floors(
     materials: Res<FloorMaterials>,
     mut floors: Query<(
         &FloorTile,
-        &mut MeshMaterial3d<StandardMaterial>,
+        &mut MeshMaterial3d<DungeonMaterial>,
         &mut Visibility,
     )>,
 ) {
@@ -434,12 +449,14 @@ fn floor_color(index: u8) -> Color {
 
 pub(super) fn billboard_pattern(symbol: char) -> Option<&'static str> {
     match symbol {
-        '@' => Some(" @ \n/|\\\n/ \\"),
-        'x' => Some(" x \n/|\\\n/ \\"),
-        '>' => Some(" > \n/|\\\n/ \\"),
-        '<' => Some(" < \n/|\\\n/ \\"),
-        '^' => Some(" ^ \n/|\\\n/ \\"),
-        'V' => Some(" V \n/|\\\n/ \\"),
+        // A trailing hair space optically centers these asymmetric glyphs
+        // without moving the body or changing the billboard anchor.
+        '@' => Some("@ \n/|\\\n/ \\"),
+        'x' => Some("x \n/|\\\n/ \\"),
+        '>' => Some("> \n/|\\\n/ \\"),
+        '<' => Some("< \n/|\\\n/ \\"),
+        '^' => Some("^ \n/|\\\n/ \\"),
+        'V' => Some("V \n/|\\\n/ \\"),
         _ => None,
     }
 }
@@ -474,7 +491,7 @@ mod tests {
 
     #[test]
     fn player_billboard_is_the_requested_human_shape() {
-        assert_eq!(billboard_pattern('@'), Some(" @ \n/|\\\n/ \\"));
+        assert_eq!(billboard_pattern('@'), Some("@ \n/|\\\n/ \\"));
         assert!(billboard_pattern('?').is_none());
     }
 }

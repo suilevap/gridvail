@@ -79,6 +79,7 @@ tools/generate_reference.py  regenerate fixtures from the pinned checkout
 assets/maps/       map1/2/3, map1_test, lightTest
 assets/rules/      wall + three direction rules
 assets/fonts/      DejaVu Sans Mono + redistribution license
+assets/shaders/    world-space procedural 3D surface material
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for layer boundaries, dependency
@@ -124,6 +125,8 @@ share those handles, allowing Bevy's renderer to batch and instance matching
 mesh/material pairs. Materials use the already-computed CPU light palette as
 unlit base colors, so walls and floors receive the same fire, electricity,
 acid, and visibility lighting without paying for a second lighting calculation.
+The material shader adds stable world-space broad and fine variation, which
+crosses cell boundaries and avoids a repeated texture or obvious tile seams.
 In this mode the perspective camera follows the player. Hold `Q` or `E` to
 orbit it and use the mouse wheel to zoom; projected text cells remain attached
 to their positions on the 3D ground plane. Humanoid actors expand into small
