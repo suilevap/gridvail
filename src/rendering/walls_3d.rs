@@ -4,7 +4,7 @@
 //! entry owns one material. Wall entities only reference those shared assets,
 //! which lets Bevy batch equal mesh/material pairs for GPU instancing.
 
-use bevy::{camera::ClearColorConfig, prelude::*};
+use bevy::{camera::ClearColorConfig, mesh::VertexAttributeValues, prelude::*};
 
 use crate::lighting::palette_color;
 use crate::model::{Glyph, MapGrid, Pos, RenderBuffers, Wall};
@@ -14,7 +14,9 @@ use crate::simulation::Rules;
 use super::text::{grid_to_world, CELL_SIZE};
 
 const WALL_STROKE: f32 = 3.5;
-const WALL_DEPTH: f32 = 12.0;
+const WALL_HEIGHT: f32 = 16.0;
+const VIEW_TILT_RADIANS: f32 = 25.0_f32.to_radians();
+const VIEW_YAW_RADIANS: f32 = 18.0_f32.to_radians();
 const PALETTE_SIZE: usize = 16;
 
 /// Installs extruded wall meshes beneath the normal text renderer.
@@ -71,6 +73,7 @@ fn setup(
         camera.clear_color = ClearColorConfig::None;
     }
 
+    let camera_distance = 500.0;
     commands.spawn((
         Camera3d::default(),
         Camera {
@@ -84,7 +87,12 @@ fn setup(
             },
             ..OrthographicProjection::default_3d()
         }),
-        Transform::from_xyz(0.0, 0.0, 100.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(
+            camera_distance * VIEW_YAW_RADIANS.sin() * VIEW_TILT_RADIANS.cos(),
+            -camera_distance * VIEW_TILT_RADIANS.sin(),
+            camera_distance * VIEW_YAW_RADIANS.cos() * VIEW_TILT_RADIANS.cos(),
+        )
+        .looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
     let wall_meshes: Vec<_> = (0..16).map(|mask| meshes.add(wall_mesh(mask))).collect();
@@ -115,6 +123,16 @@ fn setup(
             continue;
         };
         wall_cells[cell_index] = glyph.ch;
+        let screen_position = grid_to_world(position.0, grid.width, grid.height);
+        // Invert the camera's ground-plane projection and anchor the top
+        // surface at the original cell center. This keeps wall symbols aligned
+        // with Text2d while height projects diagonally down-left.
+        let height_offset = Vec2::new(
+            -VIEW_YAW_RADIANS.sin(),
+            VIEW_TILT_RADIANS.sin() * VIEW_YAW_RADIANS.cos(),
+        ) * WALL_HEIGHT;
+        let ground = screen_to_ground(screen_position.truncate() - height_offset);
+        let translation = Vec3::new(ground.x, ground.y, 0.0);
         commands.spawn((
             ExtrudedWall {
                 cell_index,
@@ -122,7 +140,7 @@ fn setup(
             },
             Mesh3d(wall_meshes[mask].clone()),
             MeshMaterial3d(wall_materials[0].clone()),
-            Transform::from_translation(grid_to_world(position.0, grid.width, grid.height)),
+            Transform::from_translation(translation),
             Visibility::Hidden,
         ));
     }
@@ -166,30 +184,32 @@ fn sync_walls(
 }
 
 fn wall_mesh(mask: usize) -> Mesh {
-    let mut mesh = Mesh::from(Cuboid::new(WALL_STROKE, WALL_STROKE, WALL_DEPTH));
+    let center = Vec3::new(0.0, 0.0, WALL_HEIGHT * 0.5);
+    let mut mesh =
+        Mesh::from(Cuboid::new(WALL_STROKE, WALL_STROKE, WALL_HEIGHT)).translated_by(center);
     let horizontal_length = CELL_SIZE.x * 0.5 + WALL_STROKE * 0.5;
     let vertical_length = CELL_SIZE.y * 0.5 + WALL_STROKE * 0.5;
 
     let arms = [
         (
             1 << 0,
-            Vec3::new(horizontal_length, WALL_STROKE, WALL_DEPTH),
-            Vec3::new(CELL_SIZE.x * 0.25, 0.0, 0.0),
+            Vec3::new(horizontal_length, WALL_STROKE, WALL_HEIGHT),
+            Vec3::new(CELL_SIZE.x * 0.25, 0.0, WALL_HEIGHT * 0.5),
         ),
         (
             1 << 1,
-            Vec3::new(WALL_STROKE, vertical_length, WALL_DEPTH),
-            Vec3::new(0.0, CELL_SIZE.y * 0.25, 0.0),
+            Vec3::new(WALL_STROKE, vertical_length, WALL_HEIGHT),
+            Vec3::new(0.0, CELL_SIZE.y * 0.25, WALL_HEIGHT * 0.5),
         ),
         (
             1 << 2,
-            Vec3::new(horizontal_length, WALL_STROKE, WALL_DEPTH),
-            Vec3::new(-CELL_SIZE.x * 0.25, 0.0, 0.0),
+            Vec3::new(horizontal_length, WALL_STROKE, WALL_HEIGHT),
+            Vec3::new(-CELL_SIZE.x * 0.25, 0.0, WALL_HEIGHT * 0.5),
         ),
         (
             1 << 3,
-            Vec3::new(WALL_STROKE, vertical_length, WALL_DEPTH),
-            Vec3::new(0.0, -CELL_SIZE.y * 0.25, 0.0),
+            Vec3::new(WALL_STROKE, vertical_length, WALL_HEIGHT),
+            Vec3::new(0.0, -CELL_SIZE.y * 0.25, WALL_HEIGHT * 0.5),
         ),
     ];
     for (bit, size, translation) in arms {
@@ -198,7 +218,53 @@ fn wall_mesh(mask: usize) -> Mesh {
                 .expect("cuboid wall meshes have compatible attributes");
         }
     }
+    add_face_shading(&mut mesh);
+    map_screen_shape_to_ground(&mut mesh);
     mesh
+}
+
+fn screen_to_ground(screen: Vec2) -> Vec2 {
+    let x = screen.x / VIEW_YAW_RADIANS.cos();
+    let y =
+        (screen.y - VIEW_TILT_RADIANS.sin() * VIEW_YAW_RADIANS.sin() * x) / VIEW_TILT_RADIANS.cos();
+    Vec2::new(x, y)
+}
+
+fn map_screen_shape_to_ground(mesh: &mut Mesh) {
+    let Some(VertexAttributeValues::Float32x3(positions)) =
+        mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION)
+    else {
+        return;
+    };
+    for position in positions {
+        let ground = screen_to_ground(Vec2::new(position[0], position[1]));
+        position[0] = ground.x;
+        position[1] = ground.y;
+    }
+}
+
+/// Bake face shading into vertex colors. The material still supplies the
+/// renderer-neutral CPU-light palette; this only reveals the mesh depth.
+fn add_face_shading(mesh: &mut Mesh) {
+    let colors = match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
+        Some(VertexAttributeValues::Float32x3(normals)) => normals
+            .iter()
+            .map(|normal| {
+                let brightness = if normal[2] > 0.5 {
+                    1.0
+                } else if normal[1] < -0.5 {
+                    0.42
+                } else if normal[0] > 0.5 {
+                    0.58
+                } else {
+                    0.65
+                };
+                [brightness, brightness, brightness, 1.0]
+            })
+            .collect::<Vec<_>>(),
+        _ => return,
+    };
+    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
 }
 
 #[cfg(test)]
