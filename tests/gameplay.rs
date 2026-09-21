@@ -1,4 +1,4 @@
-//! Real GamePlugin regressions with deterministic frame time and input edges.
+//! Real GamePlugin regressions with deterministic frame time and keyboard input.
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::app::GamePlugin;
@@ -64,11 +64,11 @@ fn tokenless_enemies_do_not_block_player_input() {
 }
 
 #[test]
-fn one_key_press_does_not_repeat_after_recharge() {
+fn held_key_repeats_after_recharge_and_release_stops_it() {
     let mut app = boot();
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
-        .press(KeyCode::ArrowRight);
+        .press(KeyCode::ArrowLeft);
     app.update();
     // Like InputPlugin: clear frame edges, but keep the key held.
     app.world_mut()
@@ -78,7 +78,22 @@ fn one_key_press_does_not_repeat_after_recharge() {
     for _ in 0..90 {
         app.update();
     }
-    assert_eq!(player_of(app.world_mut()).0, after_press);
+    let after_hold = player_of(app.world_mut()).0;
+    assert!(
+        after_hold.x < after_press.x,
+        "held key did not produce another order after recharge"
+    );
+
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(KeyCode::ArrowLeft);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .clear();
+    for _ in 0..90 {
+        app.update();
+    }
+    assert_eq!(player_of(app.world_mut()).0, after_hold);
 }
 
 #[test]

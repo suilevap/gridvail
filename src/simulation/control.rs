@@ -3,7 +3,7 @@ use rand::RngExt;
 
 use crate::model::*;
 
-/// Convert one keyboard edge into a stable player command component.
+/// Keep producing player commands while a movement key is held.
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
     turn: Res<TurnState>,
@@ -12,13 +12,13 @@ pub fn player_input(
     if turn.simulation {
         return;
     }
-    let dir = if keys.any_just_pressed([KeyCode::ArrowUp, KeyCode::KeyW]) {
+    let dir = if keys.any_pressed([KeyCode::ArrowUp, KeyCode::KeyW]) {
         Some(IVec2::NEG_Y)
-    } else if keys.any_just_pressed([KeyCode::ArrowDown, KeyCode::KeyS]) {
+    } else if keys.any_pressed([KeyCode::ArrowDown, KeyCode::KeyS]) {
         Some(IVec2::Y)
-    } else if keys.any_just_pressed([KeyCode::ArrowLeft, KeyCode::KeyA]) {
+    } else if keys.any_pressed([KeyCode::ArrowLeft, KeyCode::KeyA]) {
         Some(IVec2::NEG_X)
-    } else if keys.any_just_pressed([KeyCode::ArrowRight, KeyCode::KeyD]) {
+    } else if keys.any_pressed([KeyCode::ArrowRight, KeyCode::KeyD]) {
         Some(IVec2::X)
     } else {
         None

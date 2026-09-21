@@ -65,9 +65,9 @@ These did not prevent tests or GPU execution.
 - Rust and C# use different seeded random streams; enemy trajectories are
   not expected to match. Entity arbitration is deterministic by Bevy entity
   index/generation, not a claim of identical cross-engine filter order.
-- WASD is added; native Bevy input uses press edges rather than terminal
-  key-repeat events. Input during actual simulation work is still dropped,
-  matching the original policy.
+- WASD is added; native Bevy input remains active while a key is held, matching
+  the C# terminal key-repeat behavior. A press and release completed entirely
+  during simulation work is still dropped, matching the original policy.
 - The window uses an explicit font and RGB approximations of console colors.
   Screenshot mode fixes the timestep for reproducible captures; ordinary
   play uses Bevy's clock. Screenshot mode disables pipelined rendering to
