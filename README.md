@@ -26,8 +26,9 @@ next to this file.
 - CPU lightmaps: static layer with dirty-flag rebuild + dynamic layer,
   `(1 - sqD/radiusSq)` falloff, 255 saturation, same-kind sum,
   brighter-kind-wins, and the original fire/electricity/acid/gray palettes.
-- Frame composition with depth merge, hex fill, `?` unknown borders, and
-  previous-frame diffing onto one `Text2d` cell entity each.
+- Renderer-neutral frame composition with depth merge, hex fill, `?` unknown
+  borders, and previous-frame diffing. The selected `TextRendererPlugin`
+  writes changed cells onto one `Text2d` entity each.
 
 ## Deliberate deviations (all commented at the site)
 
@@ -54,8 +55,9 @@ next to this file.
 
 ```text
 src/lib.rs                 library root and public layers
-src/main.rs                window and screenshot harness
-src/app/                   game-specific setup, bundles, and plugin composition
+src/main.rs                renderer selection, window, and screenshot harness
+src/app/mod.rs             game plugin composition and phase ordering
+src/app/map.rs             selected map, rules, and initial entity bundles
 src/schedule.rs            shared startup and update phase contract
 src/foundation/fov.rs      engine-independent interval FOV algorithm
 src/content/               map and symbol-rule parsers
@@ -63,7 +65,8 @@ src/model/                 ECS data split by gameplay domain
 src/simulation/            simulation plugin; control, motion, resolution, tiles
 src/vision/                vision plugin; FOV cache and player visibility
 src/lighting/              light math and palettes
-src/presentation/          presentation plugin; lighting, frame, text/HUD output
+src/presentation/          renderer-neutral lighting and frame composition
+src/rendering/             swappable output plugins; current Text2d/HUD backend
 tests/full_map.rs  headless map1 boot + settle integration test
 tests/gameplay.rs  timed input, movement, collision, and vision regressions
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression

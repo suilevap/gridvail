@@ -3,24 +3,21 @@
 The code is arranged from reusable foundations toward the concrete game:
 
 ```text
-foundation  content
-     \        /
-      model  schedule
-      /   |    \  |
-simulation vision lighting
-      \   |    /
-      presentation
-           |
-          app
-           |
-         main
+foundation  content  model  schedule
+     ↑        ↑       ↑       ↑
+     simulation  vision  lighting  presentation
+             ↑       ↑       ↑
+                    app       rendering
+                      \       /
+                         main
 ```
 
-Dependencies should point downward in this diagram. `schedule` is the small,
-neutral contract shared by the domain plugins. `app` is the composition root:
-it chooses the bundled map, defines entity bundles, configures phase order,
-and installs the plugins. Code that exists only to reproduce PavEcsLiteGame
-belongs there. Reusable algorithms and systems must not import `app`.
+Arrows point toward dependencies. `schedule` is the small, neutral contract
+shared by the domain plugins and output backends. `app` is the game composition
+root: it chooses the bundled map, configures phase order, and installs game
+logic. The executable selects a renderer independently. Code that exists only
+to reproduce PavEcsLiteGame belongs in `app`; reusable algorithms, systems,
+and renderers must not import it.
 
 ## Layers
 
@@ -40,13 +37,14 @@ belongs there. Reusable algorithms and systems must not import `app`.
   underlying algorithm remains in `foundation/`.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
-- `presentation/` builds light maps and composed frames, then writes frame
-  changes to Bevy text and HUD entities. `PresentationPlugin` owns those
-  systems and the static-light resource.
+- `presentation/` builds light maps and renderer-neutral composed cell frames.
+  `PresentationPlugin` owns those systems and all map-sized frame resources.
+- `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
+  the camera, font, `Text2d` cells, HUD, and writes changed composed cells.
 - `app/` wires the concrete Gridvail/PavEcsLiteGame port together. The bundled
-  map choice, exact spawn bundles, domain plugin composition, phase ordering,
-  font, and compatibility decisions belong here.
-- `main.rs` is only the executable/window and screenshot harness.
+  map choice and exact spawn bundles live in `app/map.rs`; domain composition,
+  phase ordering, and compatibility decisions live in `app/mod.rs`.
+- `main.rs` selects `TextRendererPlugin` and owns the window/screenshot harness.
 
 ## Performance boundary
 
@@ -63,8 +61,9 @@ When adding code, place it in the lowest layer that can own it:
 2. File-format parser: `content`.
 3. Data with no behavior: `model`.
 4. Reusable world mutation and its registration: the matching domain plugin.
-5. Visual composition or Bevy output: `presentation`.
-6. A rule specific to this port's map, entity bundle, or schedule: `app`.
+5. Renderer-neutral visual composition: `presentation`.
+6. Concrete screen, terminal, or tile output: a plugin in `rendering`.
+7. A rule specific to this port's map, entity bundle, or schedule: `app`.
 
 This keeps the C# project's useful separation between common algorithms,
 components, and game systems without reproducing its custom ECS infrastructure.

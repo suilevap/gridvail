@@ -2,8 +2,6 @@ use bevy::prelude::*;
 
 use super::LightCell;
 
-pub const CELL_SIZE: Vec2 = Vec2::new(12.0, 20.0);
-
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Glyph {
     pub ch: char,
@@ -91,20 +89,6 @@ impl Default for StaticLight {
     fn default() -> Self {
         Self::new()
     }
-}
-
-#[derive(Component)]
-pub struct HudText;
-
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MapCell(pub IVec2);
-
-pub fn grid_to_world(p: IVec2, width: i32, height: i32) -> Vec3 {
-    Vec3::new(
-        (p.x as f32 - width as f32 / 2.0 + 0.5) * CELL_SIZE.x,
-        (height as f32 / 2.0 - p.y as f32 - 0.5) * CELL_SIZE.y,
-        0.0,
-    )
 }
 
 pub fn is_hex_pos(p: IVec2) -> bool {

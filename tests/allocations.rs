@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::app::GamePlugin;
 use pav_ecs_game_bevy_port::model::{Player, Speed};
+use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -63,7 +64,7 @@ fn boot() -> App {
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
             16,
         )))
-        .add_plugins(GamePlugin);
+        .add_plugins((GamePlugin, TextRendererPlugin));
     for _ in 0..256 {
         app.update();
     }
@@ -74,8 +75,8 @@ fn boot() -> App {
 fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
     let mut baseline = App::new();
     // Bevy's single-threaded executor performs bookkeeping allocations based
-    // on schedule shape. Mirror GamePlugin's two chained groups so the
-    // comparison isolates allocations made inside our systems.
+    // on schedule shape. Use a comparable number of chained no-op systems so
+    // the comparison isolates allocations made inside our systems.
     baseline.add_plugins(MinimalPlugins).add_systems(
         Update,
         (

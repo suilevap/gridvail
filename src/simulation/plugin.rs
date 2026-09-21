@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use rand::SeedableRng;
 
-use crate::model::{CollisionBuffer, SharedRng, TokenTimer, TurnState};
+use crate::model::{CollisionBuffer, MapGrid, SharedRng, TokenTimer, TurnState};
 use crate::schedule::{GamePhase, StartupPhase};
 
 use super::*;
@@ -24,7 +24,12 @@ impl Plugin for SimulationPlugin {
             .init_resource::<CollisionBuffer>()
             .init_resource::<CommitBuffer>()
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(self.rng_seed)))
-            .add_systems(Startup, tile_system.in_set(StartupPhase::Derive))
+            .add_systems(
+                Startup,
+                (size_commit_buffer, tile_system)
+                    .chain()
+                    .in_set(StartupPhase::Derive),
+            )
             .add_systems(
                 Update,
                 (
@@ -49,4 +54,8 @@ impl Plugin for SimulationPlugin {
             )
             .add_systems(Update, turn_update.in_set(GamePhase::Finalize));
     }
+}
+
+fn size_commit_buffer(mut commands: Commands, grid: Res<MapGrid>) {
+    commands.insert_resource(CommitBuffer::sized(grid.width, grid.height));
 }

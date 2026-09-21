@@ -13,6 +13,7 @@ use bevy::{
     },
 };
 use pav_ecs_game_bevy_port::app::GamePlugin;
+use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
 
 fn main() -> AppExit {
     let mut args = std::env::args().skip(1);
@@ -53,7 +54,7 @@ fn main() -> AppExit {
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::BLACK))
         .add_plugins(plugins)
-        .add_plugins(GamePlugin);
+        .add_plugins((GamePlugin, TextRendererPlugin));
     if let Some(path) = capture {
         app.insert_resource(Capture {
             path,
