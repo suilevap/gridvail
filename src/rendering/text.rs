@@ -16,7 +16,7 @@ pub(super) const CELL_SIZE: Vec2 = Vec2::new(12.0, 20.0);
 struct HudText;
 
 #[derive(Component, Clone, Copy)]
-struct MapCell(IVec2);
+pub(super) struct MapCell(pub(super) IVec2);
 
 /// Per-frame work performed by the text renderer.
 #[derive(Resource, Debug, Default)]
@@ -135,6 +135,7 @@ fn flush_cells(
 fn update_hud(
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
+    extruded_walls: Option<Res<ExtrudedWallCells>>,
     players: Query<(&Pos, &Tokens), With<Player>>,
     enemies: Query<Entity, (With<Enemy>, Without<DestroyRequested>)>,
     collisions: Res<CollisionBuffer>,
@@ -149,7 +150,12 @@ fn update_hud(
         text.0.clear();
         write!(
             text.0,
-            "PavEcsGame Lite Bevy port | arrows/WASD\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | enemies {} | bumps {}",
+            "PavEcsGame Lite Bevy port | arrows/WASD{}\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | enemies {} | bumps {}",
+            if extruded_walls.is_some() {
+                " | Q/E orbit | wheel zoom"
+            } else {
+                ""
+            },
             turn.tick,
             turn.phase_name(),
             grid.width,

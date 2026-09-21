@@ -1,27 +1,28 @@
-//! Optional 3D wall backend layered under the text renderer.
+//! Optional perspective 3D wall backend layered under the text renderer.
 //!
-//! Each of the 16 autotile masks owns one combined mesh and every palette
-//! entry owns one material. Wall entities only reference those shared assets,
-//! which lets Bevy batch equal mesh/material pairs for GPU instancing.
+//! The 16 autotile masks own one combined mesh each and palette entries own
+//! one material each. Wall entities share those assets for GPU instancing.
 
-use bevy::{camera::ClearColorConfig, mesh::VertexAttributeValues, prelude::*};
+use bevy::{
+    camera::ClearColorConfig, input::mouse::MouseWheel, mesh::VertexAttributeValues, prelude::*,
+};
 
 use crate::lighting::palette_color;
-use crate::model::{Glyph, MapGrid, Pos, RenderBuffers, Wall};
+use crate::model::{Glyph, MapGrid, Player, Pos, RenderBuffers, Wall};
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::Rules;
 
-use super::text::{grid_to_world, CELL_SIZE};
+use super::text::{grid_to_world, MapCell, CELL_SIZE};
 
 const WALL_STROKE: f32 = 3.5;
 const WALL_HEIGHT: f32 = 16.0;
-const VIEW_TILT_RADIANS: f32 = 25.0_f32.to_radians();
-const VIEW_YAW_RADIANS: f32 = 18.0_f32.to_radians();
+const CAMERA_PITCH: f32 = 55.0_f32.to_radians();
+const CAMERA_FOV: f32 = 50.0_f32.to_radians();
+const MIN_CAMERA_DISTANCE: f32 = 150.0;
+const MAX_CAMERA_DISTANCE: f32 = 650.0;
 const PALETTE_SIZE: usize = 16;
 
-/// Installs extruded wall meshes beneath the normal text renderer.
-///
-/// The text renderer remains responsible for the HUD and every non-wall cell.
+/// Adds perspective wall meshes beneath the text renderer.
 pub struct ExtrudedWallRendererPlugin;
 
 impl Plugin for ExtrudedWallRendererPlugin {
@@ -32,7 +33,12 @@ impl Plugin for ExtrudedWallRendererPlugin {
                 .in_set(StartupPhase::Renderer)
                 .after(super::text::setup),
         )
-        .add_systems(Update, sync_walls.in_set(GamePhase::Output));
+        .add_systems(
+            Update,
+            (move_camera, sync_walls, project_text_cells)
+                .chain()
+                .in_set(GamePhase::Output),
+        );
     }
 }
 
@@ -53,55 +59,69 @@ impl ExtrudedWallCells {
 #[derive(Resource)]
 struct WallMaterials(Vec<Handle<StandardMaterial>>);
 
+#[derive(Resource)]
+struct CameraRig {
+    focus: Vec3,
+    yaw: f32,
+    distance: f32,
+}
+
 #[derive(Component)]
 struct ExtrudedWall {
     cell_index: usize,
     symbol: char,
 }
 
+#[derive(Component)]
+struct WallCamera;
+
+#[allow(clippy::too_many_arguments)]
 fn setup(
     mut commands: Commands,
     grid: Res<MapGrid>,
     rules: Res<Rules>,
     walls: Query<(&Pos, &Glyph), With<Wall>>,
-    mut cameras_2d: Query<&mut Camera, With<Camera2d>>,
+    player: Single<&Pos, With<Player>>,
+    mut cameras_2d: Query<(&mut Camera, &mut Projection), With<Camera2d>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    for mut camera in &mut cameras_2d {
+    for (mut camera, mut projection) in &mut cameras_2d {
         camera.order = 1;
         camera.clear_color = ClearColorConfig::None;
+        *projection = Projection::Orthographic(OrthographicProjection {
+            scaling_mode: bevy::camera::ScalingMode::WindowSize,
+            ..OrthographicProjection::default_2d()
+        });
     }
 
-    let camera_distance = 500.0;
+    let rig = CameraRig {
+        focus: grid_to_world(player.0, grid.width, grid.height),
+        yaw: -45.0_f32.to_radians(),
+        distance: 280.0,
+    };
     commands.spawn((
+        WallCamera,
         Camera3d::default(),
         Camera {
             order: 0,
             ..default()
         },
-        Projection::Orthographic(OrthographicProjection {
-            scaling_mode: bevy::camera::ScalingMode::AutoMin {
-                min_width: (grid.width + 2) as f32 * CELL_SIZE.x,
-                min_height: (grid.height + 4) as f32 * CELL_SIZE.y,
-            },
-            ..OrthographicProjection::default_3d()
+        Projection::Perspective(PerspectiveProjection {
+            fov: CAMERA_FOV,
+            near: 1.0,
+            far: 2_000.0,
+            ..default()
         }),
-        Transform::from_xyz(
-            camera_distance * VIEW_YAW_RADIANS.sin() * VIEW_TILT_RADIANS.cos(),
-            -camera_distance * VIEW_TILT_RADIANS.sin(),
-            camera_distance * VIEW_YAW_RADIANS.cos() * VIEW_TILT_RADIANS.cos(),
-        )
-        .looking_at(Vec3::ZERO, Vec3::Y),
+        camera_transform(&rig),
     ));
+    commands.insert_resource(rig);
 
     let wall_meshes: Vec<_> = (0..16).map(|mask| meshes.add(wall_mesh(mask))).collect();
     let wall_materials: Vec<_> = (0..PALETTE_SIZE)
         .map(|index| {
             materials.add(StandardMaterial {
-                // The renderer-neutral frame already contains the original
-                // CPU light result. Unlit PBR materials preserve that palette
-                // exactly and avoid evaluating a second lighting model.
+                // The composed frame already contains the CPU light result.
                 base_color: palette_color(index as u8),
                 unlit: true,
                 ..default()
@@ -123,16 +143,6 @@ fn setup(
             continue;
         };
         wall_cells[cell_index] = glyph.ch;
-        let screen_position = grid_to_world(position.0, grid.width, grid.height);
-        // Invert the camera's ground-plane projection and anchor the top
-        // surface at the original cell center. This keeps wall symbols aligned
-        // with Text2d while height projects diagonally down-left.
-        let height_offset = Vec2::new(
-            -VIEW_YAW_RADIANS.sin(),
-            VIEW_TILT_RADIANS.sin() * VIEW_YAW_RADIANS.cos(),
-        ) * WALL_HEIGHT;
-        let ground = screen_to_ground(screen_position.truncate() - height_offset);
-        let translation = Vec3::new(ground.x, ground.y, 0.0);
         commands.spawn((
             ExtrudedWall {
                 cell_index,
@@ -140,7 +150,7 @@ fn setup(
             },
             Mesh3d(wall_meshes[mask].clone()),
             MeshMaterial3d(wall_materials[0].clone()),
-            Transform::from_translation(translation),
+            Transform::from_translation(grid_to_world(position.0, grid.width, grid.height)),
             Visibility::Hidden,
         ));
     }
@@ -149,6 +159,44 @@ fn setup(
         symbols: wall_cells,
     });
     commands.insert_resource(WallMaterials(wall_materials));
+}
+
+fn move_camera(
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut wheel: MessageReader<MouseWheel>,
+    grid: Res<MapGrid>,
+    player: Single<&Pos, With<Player>>,
+    mut rig: ResMut<CameraRig>,
+    mut camera: Single<&mut Transform, With<WallCamera>>,
+) {
+    let dt = time.delta_secs();
+    let orbit = (keys.pressed(KeyCode::KeyE) as i8 - keys.pressed(KeyCode::KeyQ) as i8) as f32;
+    rig.yaw += orbit * dt * 1.5;
+    let wheel_delta: f32 = wheel.read().map(|event| event.y).sum();
+    rig.distance =
+        (rig.distance - wheel_delta * 18.0).clamp(MIN_CAMERA_DISTANCE, MAX_CAMERA_DISTANCE);
+
+    let target = grid_to_world(player.0, grid.width, grid.height);
+    let follow = 1.0 - (-8.0 * dt).exp();
+    rig.focus = rig.focus.lerp(target, follow);
+    if rig.focus.distance_squared(target) < 0.0001 {
+        rig.focus = target;
+    }
+    let desired = camera_transform(&rig);
+    if **camera != desired {
+        **camera = desired;
+    }
+}
+
+fn camera_transform(rig: &CameraRig) -> Transform {
+    let horizontal = rig.distance * CAMERA_PITCH.cos();
+    let offset = Vec3::new(
+        rig.yaw.cos() * horizontal,
+        rig.yaw.sin() * horizontal,
+        rig.distance * CAMERA_PITCH.sin(),
+    );
+    Transform::from_translation(rig.focus + offset).looking_at(rig.focus, Vec3::Z)
 }
 
 fn sync_walls(
@@ -183,23 +231,75 @@ fn sync_walls(
     }
 }
 
+#[allow(clippy::type_complexity)]
+fn project_text_cells(
+    grid: Res<MapGrid>,
+    camera_3d: Single<(&Camera, &Transform), With<WallCamera>>,
+    camera_2d: Single<(&Camera, &Transform), (With<Camera2d>, Without<WallCamera>)>,
+    mut cells: Query<
+        (&MapCell, &mut Transform, &mut Visibility),
+        (Without<WallCamera>, Without<Camera2d>),
+    >,
+) {
+    let (perspective, perspective_transform) = *camera_3d;
+    let (overlay, overlay_transform) = *camera_2d;
+    let perspective_global = GlobalTransform::from(*perspective_transform);
+    let overlay_global = GlobalTransform::from(*overlay_transform);
+
+    for (cell, mut transform, mut visibility) in &mut cells {
+        let ground = grid_to_world(cell.0, grid.width, grid.height) + Vec3::Z;
+        let Ok(viewport) = perspective.world_to_viewport(&perspective_global, ground) else {
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
+            continue;
+        };
+        let Ok(projected) = overlay.viewport_to_world_2d(&overlay_global, viewport) else {
+            continue;
+        };
+
+        let scale = perspective
+            .world_to_viewport(&perspective_global, ground + Vec3::Y * CELL_SIZE.y)
+            .map(|next| (next.distance(viewport) / CELL_SIZE.y).clamp(0.45, 2.0))
+            .unwrap_or(1.0);
+        transform.translation.x = projected.x;
+        transform.translation.y = projected.y;
+        transform.scale = Vec3::splat(scale);
+        if *visibility != Visibility::Visible {
+            *visibility = Visibility::Visible;
+        }
+    }
+}
+
 fn wall_mesh(mask: usize) -> Mesh {
     let center = Vec3::new(0.0, 0.0, WALL_HEIGHT * 0.5);
     let mut mesh =
         Mesh::from(Cuboid::new(WALL_STROKE, WALL_STROKE, WALL_HEIGHT)).translated_by(center);
+
+    for (bit, size, translation) in wall_arms() {
+        if mask & bit != 0 {
+            mesh.merge(&Mesh::from(Cuboid::from_size(size)).translated_by(translation))
+                .expect("cuboid wall meshes have compatible attributes");
+        }
+    }
+    add_face_shading(&mut mesh);
+    mesh
+}
+
+fn wall_arms() -> [(usize, Vec3, Vec3); 4] {
     let horizontal_length = CELL_SIZE.x * 0.5 + WALL_STROKE * 0.5;
     let vertical_length = CELL_SIZE.y * 0.5 + WALL_STROKE * 0.5;
-
-    let arms = [
+    [
         (
             1 << 0,
             Vec3::new(horizontal_length, WALL_STROKE, WALL_HEIGHT),
             Vec3::new(CELL_SIZE.x * 0.25, 0.0, WALL_HEIGHT * 0.5),
         ),
+        // Map Y grows downward while world Y grows upward.
         (
             1 << 1,
             Vec3::new(WALL_STROKE, vertical_length, WALL_HEIGHT),
-            Vec3::new(0.0, CELL_SIZE.y * 0.25, WALL_HEIGHT * 0.5),
+            Vec3::new(0.0, -CELL_SIZE.y * 0.25, WALL_HEIGHT * 0.5),
         ),
         (
             1 << 2,
@@ -209,56 +309,19 @@ fn wall_mesh(mask: usize) -> Mesh {
         (
             1 << 3,
             Vec3::new(WALL_STROKE, vertical_length, WALL_HEIGHT),
-            Vec3::new(0.0, -CELL_SIZE.y * 0.25, WALL_HEIGHT * 0.5),
+            Vec3::new(0.0, CELL_SIZE.y * 0.25, WALL_HEIGHT * 0.5),
         ),
-    ];
-    for (bit, size, translation) in arms {
-        if mask & bit != 0 {
-            mesh.merge(&Mesh::from(Cuboid::from_size(size)).translated_by(translation))
-                .expect("cuboid wall meshes have compatible attributes");
-        }
-    }
-    add_face_shading(&mut mesh);
-    map_screen_shape_to_ground(&mut mesh);
-    mesh
+    ]
 }
 
-fn screen_to_ground(screen: Vec2) -> Vec2 {
-    let x = screen.x / VIEW_YAW_RADIANS.cos();
-    let y =
-        (screen.y - VIEW_TILT_RADIANS.sin() * VIEW_YAW_RADIANS.sin() * x) / VIEW_TILT_RADIANS.cos();
-    Vec2::new(x, y)
-}
-
-fn map_screen_shape_to_ground(mesh: &mut Mesh) {
-    let Some(VertexAttributeValues::Float32x3(positions)) =
-        mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION)
-    else {
-        return;
-    };
-    for position in positions {
-        let ground = screen_to_ground(Vec2::new(position[0], position[1]));
-        position[0] = ground.x;
-        position[1] = ground.y;
-    }
-}
-
-/// Bake face shading into vertex colors. The material still supplies the
-/// renderer-neutral CPU-light palette; this only reveals the mesh depth.
+/// Bake face shading into vertex colors. The palette material remains the
+/// authoritative CPU-light color; this only reveals the mesh height.
 fn add_face_shading(mesh: &mut Mesh) {
     let colors = match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
         Some(VertexAttributeValues::Float32x3(normals)) => normals
             .iter()
             .map(|normal| {
-                let brightness = if normal[2] > 0.5 {
-                    1.0
-                } else if normal[1] < -0.5 {
-                    0.42
-                } else if normal[0] > 0.5 {
-                    0.58
-                } else {
-                    0.65
-                };
+                let brightness = if normal[2] > 0.5 { 1.0 } else { 0.55 };
                 [brightness, brightness, brightness, 1.0]
             })
             .collect::<Vec<_>>(),
@@ -269,6 +332,7 @@ fn add_face_shading(mesh: &mut Mesh) {
 
 #[cfg(test)]
 mod tests {
+    use super::wall_arms;
     use crate::content::tile_rules::TileRule;
 
     #[test]
@@ -283,5 +347,14 @@ mod tests {
                 "wall glyphs must uniquely identify their connectivity"
             );
         }
+    }
+
+    #[test]
+    fn map_y_arms_are_flipped_into_world_y() {
+        let arms = wall_arms();
+        assert_eq!(arms[1].0, 1 << 1);
+        assert!(arms[1].2.y < 0.0, "+map Y must extend toward -world Y");
+        assert_eq!(arms[3].0, 1 << 3);
+        assert!(arms[3].2.y > 0.0, "-map Y must extend toward +world Y");
     }
 }
