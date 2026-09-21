@@ -120,13 +120,13 @@ saving fails. Normal play uses Bevy's real clock and window target. Screenshots
 are local artifacts and are excluded from Git.
 
 The 3D backend creates 16 combined wall meshes (one per neighbour mask), one
-shared floor mesh, and fixed 16-entry wall and floor material palettes. Entities
-share those handles, allowing Bevy's renderer to batch and instance matching
-mesh/material pairs. Materials use the already-computed CPU light palette as
-unlit base colors, so walls and floors receive the same fire, electricity,
-acid, and visibility lighting without paying for a second lighting calculation.
-The material shader adds stable world-space broad and fine variation, which
-crosses cell boundaries and avoids a repeated texture or obvious tile seams.
+floor mesh, and fixed shared materials. Wall entities share those handles,
+allowing Bevy's renderer to batch and instance matching mesh/material pairs.
+The floor shader samples a map-sized GPU texture generated from the existing
+CPU light and visibility results. Linear sampling blends light between cells;
+stable world-space noise and a Voronoi field soften the explored boundary and
+avoid rectangular tile seams. The texture buffer is reused and uploaded only
+when its bytes change.
 In this mode the perspective camera follows the player. Hold `Q` or `E` to
 orbit it and use the mouse wheel to zoom; projected text cells remain attached
 to their positions on the 3D ground plane. Humanoid actors expand into small

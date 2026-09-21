@@ -42,8 +42,8 @@ and renderers must not import it.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` cells, HUD, and writes changed composed cells. The optional
   `ExtrudedWallRendererPlugin` adds a perspective camera plus shared wall and
-  floor meshes beneath that text layer, while consuming the same visibility
-  and CPU-light results.
+  floor meshes beneath that text layer. A small GPU texture carries the same
+  visibility and CPU-light results to the procedural floor shader.
 - `agent_api/` contains the optional loopback Bevy Remote transport and custom
   control/state methods. It reads the composed frame and writes normal player
   command components, keeping agent actions inside the gameplay pipeline.

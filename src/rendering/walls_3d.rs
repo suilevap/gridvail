@@ -4,8 +4,15 @@
 //! one material each. Wall entities share those assets for GPU instancing.
 
 use bevy::{
-    camera::ClearColorConfig, input::mouse::MouseWheel, mesh::VertexAttributeValues, prelude::*,
-    reflect::TypePath, render::render_resource::AsBindGroup, shader::ShaderRef,
+    asset::RenderAssetUsages,
+    camera::ClearColorConfig,
+    image::ImageSampler,
+    input::mouse::MouseWheel,
+    mesh::VertexAttributeValues,
+    prelude::*,
+    reflect::TypePath,
+    render::render_resource::{AsBindGroup, Extent3d, TextureDimension, TextureFormat},
+    shader::ShaderRef,
 };
 
 use crate::lighting::{light_to_palette, palette_color};
@@ -35,11 +42,22 @@ struct DungeonMaterial {
     /// x/y: broad/fine variation strength, z/w: broad/fine frequency.
     #[uniform(1)]
     variation: Vec4,
+    #[texture(2)]
+    #[sampler(3)]
+    light_map: Option<Handle<Image>>,
+    /// xy: map dimensions, zw: cell dimensions; zero selects a solid surface.
+    #[uniform(4)]
+    map: Vec4,
+    alpha_mode: AlphaMode,
 }
 
 impl Material for DungeonMaterial {
     fn fragment_shader() -> ShaderRef {
         DUNGEON_SHADER.into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode {
+        self.alpha_mode
     }
 }
 
@@ -82,7 +100,10 @@ impl ExtrudedWallCells {
 struct WallMaterials(Vec<Handle<DungeonMaterial>>);
 
 #[derive(Resource)]
-struct FloorMaterials(Vec<Handle<DungeonMaterial>>);
+struct FloorTexture {
+    handle: Handle<Image>,
+    pixels: Vec<u8>,
+}
 
 #[derive(Resource)]
 struct CameraRig {
@@ -98,9 +119,6 @@ struct ExtrudedWall {
 }
 
 #[derive(Component)]
-struct FloorTile(usize);
-
-#[derive(Component)]
 struct WallCamera;
 
 #[allow(clippy::too_many_arguments)]
@@ -113,6 +131,7 @@ fn setup(
     mut cameras_2d: Query<(&mut Camera, &mut Projection), With<Camera2d>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<DungeonMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     for (mut camera, mut projection) in &mut cameras_2d {
         camera.order = 1;
@@ -152,39 +171,47 @@ fn setup(
                 // The composed frame already contains the CPU light result.
                 color: palette_color(index as u8).to_linear(),
                 variation: Vec4::new(0.18, 0.08, 0.026, 0.16),
+                light_map: None,
+                map: Vec4::ZERO,
+                alpha_mode: AlphaMode::Opaque,
             })
         })
         .collect();
-    let floor_materials: Vec<_> = (0..PALETTE_SIZE)
-        .map(|index| {
-            materials.add(DungeonMaterial {
-                color: floor_color(index as u8).to_linear(),
-                variation: Vec4::new(0.24, 0.10, 0.020, 0.11),
-            })
-        })
-        .collect();
-    let floor_mesh = meshes.add(Cuboid::new(
-        CELL_SIZE.x * 1.005,
-        CELL_SIZE.y * 1.005,
-        FLOOR_DEPTH,
+    let pixels = vec![0; (grid.width * grid.height) as usize * 4];
+    let mut light_image = Image::new_fill(
+        Extent3d {
+            width: grid.width as u32,
+            height: grid.height as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        &[0, 0, 0, 0],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    light_image.sampler = ImageSampler::linear();
+    let light_map = images.add(light_image);
+    let floor_material = materials.add(DungeonMaterial {
+        color: LinearRgba::WHITE,
+        variation: Vec4::new(0.18, 0.07, 0.020, 0.11),
+        light_map: Some(light_map.clone()),
+        map: Vec4::new(
+            grid.width as f32,
+            grid.height as f32,
+            CELL_SIZE.x,
+            CELL_SIZE.y,
+        ),
+        alpha_mode: AlphaMode::Blend,
+    });
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(
+            grid.width as f32 * CELL_SIZE.x,
+            grid.height as f32 * CELL_SIZE.y,
+            FLOOR_DEPTH,
+        ))),
+        MeshMaterial3d(floor_material),
+        Transform::from_xyz(0.0, 0.0, -(FLOOR_DEPTH * 0.5 + 0.05)),
     ));
-
-    for y in 0..grid.height {
-        for x in 0..grid.width {
-            let position = IVec2::new(x, y);
-            let cell_index = grid.idx(position).expect("in-bounds floor cell");
-            commands.spawn((
-                FloorTile(cell_index),
-                Mesh3d(floor_mesh.clone()),
-                MeshMaterial3d(floor_materials[0].clone()),
-                Transform::from_translation(
-                    grid_to_world(position, grid.width, grid.height)
-                        - Vec3::Z * (FLOOR_DEPTH * 0.5 + 0.05),
-                ),
-                Visibility::Hidden,
-            ));
-        }
-    }
 
     let mut wall_cells = vec!['\0'; (grid.width * grid.height) as usize];
     for (position, glyph) in &walls {
@@ -216,7 +243,10 @@ fn setup(
         symbols: wall_cells,
     });
     commands.insert_resource(WallMaterials(wall_materials));
-    commands.insert_resource(FloorMaterials(floor_materials));
+    commands.insert_resource(FloorTexture {
+        handle: light_map,
+        pixels,
+    });
 }
 
 fn move_camera(
@@ -292,36 +322,38 @@ fn sync_walls(
 fn sync_floors(
     visibility_map: Single<&VisibilityMap, With<Player>>,
     light: Res<DynamicLight>,
-    materials: Res<FloorMaterials>,
-    mut floors: Query<(
-        &FloorTile,
-        &mut MeshMaterial3d<DungeonMaterial>,
-        &mut Visibility,
-    )>,
+    mut floor: ResMut<FloorTexture>,
+    mut images: ResMut<Assets<Image>>,
 ) {
-    for (floor, mut material, mut visibility) in &mut floors {
+    let (pixels, remainder) = floor.pixels.as_chunks_mut::<4>();
+    debug_assert!(remainder.is_empty());
+    for (index, pixel) in pixels.iter_mut().enumerate() {
         let known = visibility_map
             .data
-            .get(floor.0)
+            .get(index)
             .is_some_and(|cell| cell.contains(Vis::KNOWN));
-        let desired_visibility = if known {
-            Visibility::Visible
-        } else {
-            Visibility::Hidden
-        };
-        if *visibility != desired_visibility {
-            *visibility = desired_visibility;
-        }
-        if known {
-            let color = light
-                .data
-                .get(floor.0)
-                .map(light_to_palette)
-                .unwrap_or_default()
-                .min((PALETTE_SIZE - 1) as u8);
-            let desired = &materials.0[color as usize];
-            if material.0 != *desired {
-                material.0 = desired.clone();
+        let palette = light
+            .data
+            .get(index)
+            .map(light_to_palette)
+            .unwrap_or_default()
+            .min((PALETTE_SIZE - 1) as u8);
+        let color = floor_color(palette).to_srgba();
+        pixel[0] = (color.red * 255.0).round() as u8;
+        pixel[1] = (color.green * 255.0).round() as u8;
+        pixel[2] = (color.blue * 255.0).round() as u8;
+        pixel[3] = if known { 255 } else { 0 };
+    }
+
+    let needs_upload = images
+        .get(&floor.handle)
+        .and_then(|image| image.data.as_deref())
+        != Some(floor.pixels.as_slice());
+    if needs_upload {
+        let FloorTexture { handle, pixels } = &*floor;
+        if let Some(mut image) = images.get_mut(handle) {
+            if let Some(data) = image.data.as_mut() {
+                data.copy_from_slice(pixels);
             }
         }
     }
