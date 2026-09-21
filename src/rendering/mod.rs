@@ -2,4 +2,4 @@
 
 mod text;
 
-pub use text::TextRendererPlugin;
+pub use text::{TextRenderStats, TextRendererPlugin};

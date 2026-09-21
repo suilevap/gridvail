@@ -62,6 +62,7 @@ src/app/map.rs             selected map, rules, and initial entity bundles
 src/schedule.rs            shared startup and update phase contract
 src/foundation/fov.rs      engine-independent interval FOV algorithm
 src/content/               map and symbol-rule parsers
+src/debug_ui.rs             optional FPS and runtime performance panel
 src/model/                 ECS data split by gameplay domain
 src/simulation/            simulation plugin; control, motion, resolution, tiles
 src/vision/                vision plugin; FOV cache and player visibility
@@ -89,6 +90,10 @@ cargo test   # 40 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
+
+The debug performance panel is visible by default and toggles with `F3`. It
+shows smoothed FPS/frame time, process and system CPU/RAM, entity count, text
+cells updated by the renderer, and current turn pacing.
 
 Note: if your cargo home is not writable, point it somewhere writable,
 e.g. `CARGO_HOME=/tmp/cargo-home cargo run`.

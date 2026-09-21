@@ -16,12 +16,19 @@ struct HudText;
 #[derive(Component, Clone, Copy)]
 struct MapCell(IVec2);
 
+/// Per-frame work performed by the text renderer.
+#[derive(Resource, Debug, Default)]
+pub struct TextRenderStats {
+    pub changed_cells: usize,
+}
+
 /// Renders `RenderBuffers` through one Bevy text entity per map cell.
 pub struct TextRendererPlugin;
 
 impl Plugin for TextRendererPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup.in_set(StartupPhase::Renderer))
+        app.init_resource::<TextRenderStats>()
+            .add_systems(Startup, setup.in_set(StartupPhase::Renderer))
             .add_systems(
                 Update,
                 (flush_cells, update_hud).chain().in_set(GamePhase::Output),
@@ -93,13 +100,16 @@ fn setup(mut commands: Commands, grid: Res<MapGrid>, fonts: Option<ResMut<Assets
 
 fn flush_cells(
     buffers: Res<RenderBuffers>,
+    mut stats: ResMut<TextRenderStats>,
     mut cells: Query<(&MapCell, &mut Text2d, &mut TextColor)>,
 ) {
+    stats.changed_cells = 0;
     for (cell, mut text, mut color) in cells.iter_mut() {
         let Some(index) = buffers.idx(cell.0) else {
             continue;
         };
         if buffers.current[index] != buffers.previous[index] {
+            stats.changed_cells += 1;
             let cell = buffers.current[index];
             text.0.clear();
             text.0.push(if cell.ch == '\0' { ' ' } else { cell.ch });

@@ -3,6 +3,7 @@
 pub mod agent_api;
 pub mod app;
 pub mod content;
+pub mod debug_ui;
 pub mod foundation;
 pub mod lighting;
 pub mod model;

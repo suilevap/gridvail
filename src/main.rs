@@ -15,6 +15,7 @@ use bevy::{
 };
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::app::GamePlugin;
+use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
 use pav_ecs_game_bevy_port::schedule::StartupPhase;
 
@@ -41,7 +42,7 @@ fn main() -> AppExit {
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::BLACK))
         .add_plugins(plugins)
-        .add_plugins((GamePlugin, TextRendererPlugin));
+        .add_plugins((GamePlugin, TextRendererPlugin, DebugPerformancePlugin));
     if let Some(port) = options.remote_port {
         println!("Bevy Remote agent API: http://127.0.0.1:{port}");
         app.add_plugins(AgentApiPlugin::new(port));
