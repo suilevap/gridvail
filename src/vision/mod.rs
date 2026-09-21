@@ -12,8 +12,8 @@
 
 use bevy::prelude::*;
 
-use crate::components::*;
-use crate::fov::{FovComputer, FovSample};
+use crate::foundation::fov::{FovComputer, FovSample};
+use crate::model::*;
 
 /// Shared FOV computer (mirrors the single `FieldOfViewComputationInt2`
 /// instance owned by the system; its occlusion set is cleared per compute).
@@ -149,7 +149,7 @@ pub fn player_visibility(
             if i >= visibility.data.len() {
                 break;
             }
-            if *v > crate::components::VISIBILITY_THRESHOLD {
+            if *v > crate::model::VISIBILITY_THRESHOLD {
                 visibility.data[i] |= Vis::VISIBLE | Vis::KNOWN;
             } else {
                 visibility.data[i] &= !Vis::VISIBLE;
@@ -162,7 +162,7 @@ pub fn player_visibility(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sim::test_app;
+    use crate::simulation::test_app;
 
     fn spawn_player(app: &mut bevy::prelude::App, pos: IVec2) -> Entity {
         app.world_mut()

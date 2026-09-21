@@ -1,8 +1,8 @@
 //! Real GamePlugin regressions with deterministic frame time and input edges.
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use pav_ecs_game_bevy_port::components::*;
-use pav_ecs_game_bevy_port::game::GamePlugin;
+use pav_ecs_game_bevy_port::app::GamePlugin;
+use pav_ecs_game_bevy_port::model::*;
 use std::{collections::HashMap, time::Duration};
 
 fn boot() -> App {
@@ -152,6 +152,6 @@ fn vision_and_light_fields_stay_sane() {
     let seen = vis.data.iter().filter(|v| v.contains(Vis::VISIBLE)).count();
     assert!(seen > 50, "only {seen} cells visible");
     let idx = (5 * world.resource::<MapGrid>().width + 8) as usize;
-    let light = world.resource::<pav_ecs_game_bevy_port::render::DynamicLight>();
+    let light = world.resource::<pav_ecs_game_bevy_port::presentation::DynamicLight>();
     assert!(light.data[idx].value > 1);
 }

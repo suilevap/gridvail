@@ -3,9 +3,9 @@
 //! layers, and render composition without opening a window.
 
 use bevy::prelude::*;
-use pav_ecs_game_bevy_port::components::*;
-use pav_ecs_game_bevy_port::game::GamePlugin;
-use pav_ecs_game_bevy_port::render::DynamicLight;
+use pav_ecs_game_bevy_port::app::GamePlugin;
+use pav_ecs_game_bevy_port::model::*;
+use pav_ecs_game_bevy_port::presentation::DynamicLight;
 
 fn boot() -> App {
     let mut app = App::new();

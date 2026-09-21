@@ -6,8 +6,8 @@
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use pav_ecs_game_bevy_port::components::{Player, Speed};
-use pav_ecs_game_bevy_port::game::GamePlugin;
+use pav_ecs_game_bevy_port::app::GamePlugin;
+use pav_ecs_game_bevy_port::model::{Player, Speed};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};

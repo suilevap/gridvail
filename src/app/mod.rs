@@ -16,18 +16,18 @@
 use bevy::prelude::*;
 use rand::SeedableRng;
 
-use crate::components::*;
+use crate::content::map::{parse_map, SpawnKind};
+use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::lighting::{GRAY, RED, WHITE};
-use crate::map::{parse_map, SpawnKind};
-use crate::render::DynamicLight;
-use crate::sim::{self, Rules};
-use crate::tiles::{DirectionTileRule, TileRule};
+use crate::model::*;
+use crate::presentation::DynamicLight;
+use crate::simulation::{self as sim, Rules};
 use crate::vision;
 
-const MAP_TEXT: &str = include_str!("../assets/maps/map1.txt");
-const WALL_RULE_TEXT: &str = include_str!("../assets/rules/wall_rule.txt");
-const TRIANGLE_RULE_TEXT: &str = include_str!("../assets/rules/direction_triangle_rule.txt");
-const V_RULE_TEXT: &str = include_str!("../assets/rules/direction_v_rule.txt");
+const MAP_TEXT: &str = include_str!("../../assets/maps/map1.txt");
+const WALL_RULE_TEXT: &str = include_str!("../../assets/rules/wall_rule.txt");
+const TRIANGLE_RULE_TEXT: &str = include_str!("../../assets/rules/direction_triangle_rule.txt");
+const V_RULE_TEXT: &str = include_str!("../../assets/rules/direction_v_rule.txt");
 
 pub struct GamePlugin;
 
@@ -64,11 +64,11 @@ impl Plugin for GamePlugin {
                         .chain(),
                     (
                         vision::compute_fov,
-                        crate::render::render_light_layers,
+                        crate::presentation::render_light_layers,
                         vision::player_visibility,
-                        crate::render::compose_frame,
-                        crate::render::flush_cells,
-                        crate::render::update_hud,
+                        crate::presentation::compose_frame,
+                        crate::presentation::flush_cells,
+                        crate::presentation::update_hud,
                         sim::turn_update,
                     )
                         .chain(),
@@ -96,8 +96,10 @@ fn setup(mut commands: Commands, fonts: Option<ResMut<Assets<Font>>>) {
     let font = fonts
         .map(|mut fonts| {
             fonts.add(
-                Font::try_from_bytes(include_bytes!("../assets/fonts/DejaVuSansMono.ttf").to_vec())
-                    .expect("bundled DejaVu font"),
+                Font::try_from_bytes(
+                    include_bytes!("../../assets/fonts/DejaVuSansMono.ttf").to_vec(),
+                )
+                .expect("bundled DejaVu font"),
             )
         })
         .unwrap_or_default();

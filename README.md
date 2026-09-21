@@ -53,17 +53,16 @@ next to this file.
 ## Layout
 
 ```text
-src/lib.rs         library root
-src/main.rs        window bootstrap
-src/game.rs        GamePlugin: setup + chained Lite pipeline
-src/components.rs  ECS types and resources
-src/map.rs         ASCII map parsing (BOM/CRLF-safe)
-src/tiles.rs       wall + direction rule loaders
-src/fov.rs         interval FOV algorithm
-src/sim.rs         tokens, commands, movement, resolve, destroy, tiles
-src/vision.rs      FOV requests, FOV fields, visibility layers
-src/lighting.rs    light math + palettes
-src/render.rs      light layers, frame composition, cells, HUD
+src/lib.rs                 library root and public layers
+src/main.rs                window and screenshot harness
+src/app/                   game-specific setup, bundles, and schedule
+src/foundation/fov.rs      engine-independent interval FOV algorithm
+src/content/               map and symbol-rule parsers
+src/model/                 ECS data split by gameplay domain
+src/simulation/            control, turns, motion, resolution, lifecycle, tiles
+src/vision/                FOV cache and player visibility systems
+src/lighting/              light math and palettes
+src/presentation/          light maps, frame composition, Bevy text/HUD output
 tests/full_map.rs  headless map1 boot + settle integration test
 tests/gameplay.rs  timed input, movement, collision, and vision regressions
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
@@ -73,6 +72,9 @@ assets/maps/       map1/2/3, map1_test, lightTest
 assets/rules/      wall + three direction rules
 assets/fonts/      DejaVu Sans Mono + redistribution license
 ```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for layer boundaries, dependency
+direction, and where new foundational versus game-specific code belongs.
 
 ## Run and verify
 

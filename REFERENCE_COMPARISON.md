@@ -24,7 +24,7 @@ wrappers. It omits unrelated `Float3` code with invalid upstream overload
 calls. Fixtures preserve raw C# floating-point output, including tiny negative
 roundoff; the Rust result clamps to `[0, 1]`.
 
-Run `cargo test` for all 36 tests. Run
+Run `cargo test` for all 37 tests. Run
 `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check` for code checks.
 The existing Bevy dependency graph emits a future-compatibility warning for
 `block 0.1.6`; macOS debug linking also warns about large unwind information.
@@ -59,7 +59,7 @@ These did not prevent tests or GPU execution.
   the original per-system flags' extra settling passes or identical tick counts.
 - The marker updates after movement rather than one pass later.
 - Wall masks are computed in two phases rather than reproducing the original
-  neighbour-mutation bug. FOV invalidates on occupancy changes, and static
+  neighbour-mutation bug. FOV invalidates on blocker-layout changes, and static
   lighting replaces the original unreliable XOR version counter.
 - The player's invalid/null direction-rule lookup is omitted, retaining `@`.
 - Rust and C# use different seeded random streams; enemy trajectories are

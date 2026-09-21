@@ -12,7 +12,7 @@ use bevy::{
         view::screenshot::{Screenshot, ScreenshotCaptured},
     },
 };
-use pav_ecs_game_bevy_port::game::GamePlugin;
+use pav_ecs_game_bevy_port::app::GamePlugin;
 
 fn main() -> AppExit {
     let mut args = std::env::args().skip(1);

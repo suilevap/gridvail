@@ -11,7 +11,7 @@ pub struct TileRule {
     pub symbols: [char; 16],
 }
 
-/// 5-entry direction table indexed by [`crate::components::Direction`].
+/// 5-entry direction table indexed by [`crate::model::Direction`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DirectionTileRule {
     /// [None, Right, Up, Left, Down]
@@ -90,7 +90,7 @@ impl DirectionTileRule {
         Some(Self { symbols: result })
     }
 
-    pub fn symbol(&self, dir: crate::components::Direction) -> char {
+    pub fn symbol(&self, dir: crate::model::Direction) -> char {
         self.symbols[dir.index()]
     }
 }
@@ -98,12 +98,12 @@ impl DirectionTileRule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::Direction;
+    use crate::model::Direction;
 
-    const WALL_RULE: &str = include_str!("../assets/rules/wall_rule.txt");
-    const ARROW_RULE: &str = include_str!("../assets/rules/direction_arrow_rule.txt");
-    const TRIANGLE_RULE: &str = include_str!("../assets/rules/direction_triangle_rule.txt");
-    const V_RULE: &str = include_str!("../assets/rules/direction_v_rule.txt");
+    const WALL_RULE: &str = include_str!("../../assets/rules/wall_rule.txt");
+    const ARROW_RULE: &str = include_str!("../../assets/rules/direction_arrow_rule.txt");
+    const TRIANGLE_RULE: &str = include_str!("../../assets/rules/direction_triangle_rule.txt");
+    const V_RULE: &str = include_str!("../../assets/rules/direction_v_rule.txt");
 
     #[test]
     fn wall_rule_covers_all_16_masks() {
