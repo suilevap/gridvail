@@ -7,8 +7,9 @@ use bevy::{
     camera::ClearColorConfig, input::mouse::MouseWheel, mesh::VertexAttributeValues, prelude::*,
 };
 
-use crate::lighting::palette_color;
-use crate::model::{Glyph, MapGrid, Player, Pos, RenderBuffers, Wall};
+use crate::lighting::{light_to_palette, palette_color};
+use crate::model::{Glyph, MapGrid, Player, Pos, RenderBuffers, Vis, VisibilityMap, Wall};
+use crate::presentation::DynamicLight;
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::Rules;
 
@@ -16,6 +17,8 @@ use super::text::{grid_to_world, MapCell, CELL_SIZE};
 
 const WALL_STROKE: f32 = 3.5;
 const WALL_HEIGHT: f32 = 16.0;
+const FLOOR_DEPTH: f32 = 1.0;
+const FLOOR_BRIGHTNESS: f32 = 0.35;
 const CAMERA_PITCH: f32 = 55.0_f32.to_radians();
 const CAMERA_FOV: f32 = 50.0_f32.to_radians();
 const MIN_CAMERA_DISTANCE: f32 = 150.0;
@@ -35,7 +38,7 @@ impl Plugin for ExtrudedWallRendererPlugin {
         )
         .add_systems(
             Update,
-            (move_camera, sync_walls, project_text_cells)
+            (move_camera, sync_walls, sync_floors, project_text_cells)
                 .chain()
                 .in_set(GamePhase::Output),
         );
@@ -60,6 +63,9 @@ impl ExtrudedWallCells {
 struct WallMaterials(Vec<Handle<StandardMaterial>>);
 
 #[derive(Resource)]
+struct FloorMaterials(Vec<Handle<StandardMaterial>>);
+
+#[derive(Resource)]
 struct CameraRig {
     focus: Vec3,
     yaw: f32,
@@ -71,6 +77,9 @@ struct ExtrudedWall {
     cell_index: usize,
     symbol: char,
 }
+
+#[derive(Component)]
+struct FloorTile(usize);
 
 #[derive(Component)]
 struct WallCamera;
@@ -128,6 +137,38 @@ fn setup(
             })
         })
         .collect();
+    let floor_materials: Vec<_> = (0..PALETTE_SIZE)
+        .map(|index| {
+            materials.add(StandardMaterial {
+                base_color: floor_color(index as u8),
+                unlit: true,
+                perceptual_roughness: 1.0,
+                ..default()
+            })
+        })
+        .collect();
+    let floor_mesh = meshes.add(Cuboid::new(
+        CELL_SIZE.x * 0.96,
+        CELL_SIZE.y * 0.96,
+        FLOOR_DEPTH,
+    ));
+
+    for y in 0..grid.height {
+        for x in 0..grid.width {
+            let position = IVec2::new(x, y);
+            let cell_index = grid.idx(position).expect("in-bounds floor cell");
+            commands.spawn((
+                FloorTile(cell_index),
+                Mesh3d(floor_mesh.clone()),
+                MeshMaterial3d(floor_materials[0].clone()),
+                Transform::from_translation(
+                    grid_to_world(position, grid.width, grid.height)
+                        - Vec3::Z * (FLOOR_DEPTH * 0.5 + 0.05),
+                ),
+                Visibility::Hidden,
+            ));
+        }
+    }
 
     let mut wall_cells = vec!['\0'; (grid.width * grid.height) as usize];
     for (position, glyph) in &walls {
@@ -159,6 +200,7 @@ fn setup(
         symbols: wall_cells,
     });
     commands.insert_resource(WallMaterials(wall_materials));
+    commands.insert_resource(FloorMaterials(floor_materials));
 }
 
 fn move_camera(
@@ -224,6 +266,44 @@ fn sync_walls(
         }
         if visible {
             let desired = &materials.0[cell.color.min((PALETTE_SIZE - 1) as u8) as usize];
+            if material.0 != *desired {
+                material.0 = desired.clone();
+            }
+        }
+    }
+}
+
+fn sync_floors(
+    visibility_map: Single<&VisibilityMap, With<Player>>,
+    light: Res<DynamicLight>,
+    materials: Res<FloorMaterials>,
+    mut floors: Query<(
+        &FloorTile,
+        &mut MeshMaterial3d<StandardMaterial>,
+        &mut Visibility,
+    )>,
+) {
+    for (floor, mut material, mut visibility) in &mut floors {
+        let known = visibility_map
+            .data
+            .get(floor.0)
+            .is_some_and(|cell| cell.contains(Vis::KNOWN));
+        let desired_visibility = if known {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+        if *visibility != desired_visibility {
+            *visibility = desired_visibility;
+        }
+        if known {
+            let color = light
+                .data
+                .get(floor.0)
+                .map(light_to_palette)
+                .unwrap_or_default()
+                .min((PALETTE_SIZE - 1) as u8);
+            let desired = &materials.0[color as usize];
             if material.0 != *desired {
                 material.0 = desired.clone();
             }
@@ -328,6 +408,16 @@ fn add_face_shading(mesh: &mut Mesh) {
         _ => return,
     };
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+}
+
+fn floor_color(index: u8) -> Color {
+    let color = palette_color(index).to_linear();
+    Color::linear_rgba(
+        color.red * FLOOR_BRIGHTNESS,
+        color.green * FLOOR_BRIGHTNESS,
+        color.blue * FLOOR_BRIGHTNESS,
+        color.alpha,
+    )
 }
 
 #[cfg(test)]

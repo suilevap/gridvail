@@ -121,7 +121,7 @@ fn flush_cells(
             text.0.clear();
             let replaced_by_mesh = extruded_walls
                 .as_ref()
-                .is_some_and(|walls| walls.symbol_at(index) == Some(cell.ch));
+                .is_some_and(|walls| walls.symbol_at(index) == Some(cell.ch) || cell.ch == '.');
             text.0.push(if cell.ch == '\0' || replaced_by_mesh {
                 ' '
             } else {

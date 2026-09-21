@@ -41,8 +41,9 @@ and renderers must not import it.
   `PresentationPlugin` owns those systems and all map-sized frame resources.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` cells, HUD, and writes changed composed cells. The optional
-  `ExtrudedWallRendererPlugin` adds a 3D camera and shared wall meshes beneath
-  that text layer, while consuming the same composed cell colors.
+  `ExtrudedWallRendererPlugin` adds a perspective camera plus shared wall and
+  floor meshes beneath that text layer, while consuming the same visibility
+  and CPU-light results.
 - `agent_api/` contains the optional loopback Bevy Remote transport and custom
   control/state methods. It reads the composed frame and writes normal player
   command components, keeping agent actions inside the gameplay pipeline.

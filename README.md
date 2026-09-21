@@ -29,8 +29,8 @@ next to this file.
 - Renderer-neutral frame composition with depth merge, hex fill, `?` unknown
   borders, and previous-frame diffing. The default `TextRendererPlugin`
   writes changed cells onto one `Text2d` entity each. The optional hybrid
-  renderer replaces walls with shared, extruded 3D autotile meshes while
-  leaving actors and UI as text.
+  renderer replaces walls with shared, extruded 3D autotile meshes and dots
+  with light-mapped floor tiles while leaving actors and UI as text.
 
 ## Deliberate deviations (all commented at the site)
 
@@ -118,12 +118,12 @@ target, allows Bevy's render pipelines to warm up, and returns failure if
 saving fails. Normal play uses Bevy's real clock and window target. Screenshots
 are local artifacts and are excluded from Git.
 
-The 3D wall backend creates only 16 combined meshes (one per wall-neighbour
-mask) and 16 palette materials. Wall entities share those handles, allowing
-Bevy's renderer to batch and instance matching mesh/material pairs. Its PBR
-materials use the already-computed CPU light palette as unlit base colors, so
-walls receive the same fire, electricity, acid, and visibility lighting as the
-symbol renderer without paying for a second lighting calculation.
+The 3D backend creates 16 combined wall meshes (one per neighbour mask), one
+shared floor mesh, and fixed 16-entry wall and floor material palettes. Entities
+share those handles, allowing Bevy's renderer to batch and instance matching
+mesh/material pairs. Materials use the already-computed CPU light palette as
+unlit base colors, so walls and floors receive the same fire, electricity,
+acid, and visibility lighting without paying for a second lighting calculation.
 In this mode the perspective camera follows the player. Hold `Q` or `E` to
 orbit it and use the mouse wheel to zoom; projected text cells remain attached
 to their positions on the 3D ground plane.
