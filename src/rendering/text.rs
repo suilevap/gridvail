@@ -8,7 +8,7 @@ use crate::lighting::{palette_color, GRAY};
 use crate::model::*;
 use crate::schedule::{GamePhase, StartupPhase};
 
-use super::walls_3d::ExtrudedWallCells;
+use super::walls_3d::{billboard_pattern, ExtrudedWallCells};
 
 pub(super) const CELL_SIZE: Vec2 = Vec2::new(12.0, 20.0);
 
@@ -69,11 +69,14 @@ pub(super) fn setup(
     for y in 0..height {
         for x in 0..width {
             let position = IVec2::new(x, y);
-            let mut cell_text = String::with_capacity(4);
+            // The perspective backend reuses this allocation for small
+            // multiline ASCII billboards.
+            let mut cell_text = String::with_capacity(32);
             cell_text.push(' ');
             commands.spawn((
                 MapCell(position),
                 Text2d::new(cell_text),
+                TextLayout::justify(Justify::Center),
                 TextFont {
                     font: font.clone().into(),
                     font_size: FontSize::Px(20.0),
@@ -122,11 +125,16 @@ fn flush_cells(
             let replaced_by_mesh = extruded_walls
                 .as_ref()
                 .is_some_and(|walls| walls.symbol_at(index) == Some(cell.ch) || cell.ch == '.');
-            text.0.push(if cell.ch == '\0' || replaced_by_mesh {
-                ' '
+            if cell.ch == '\0' || replaced_by_mesh {
+                text.0.push(' ');
+            } else if let Some(pattern) = extruded_walls
+                .as_ref()
+                .and_then(|_| billboard_pattern(cell.ch))
+            {
+                text.0.push_str(pattern);
             } else {
-                cell.ch
-            });
+                text.0.push(cell.ch);
+            }
             color.0 = palette_color(cell.color);
         }
     }

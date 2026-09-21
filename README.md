@@ -89,7 +89,7 @@ direction, and where new foundational versus game-specific code belongs.
 ```sh
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
-cargo test   # 42 tests, including allocation and independent C# comparisons
+cargo test   # 43 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
@@ -126,7 +126,9 @@ unlit base colors, so walls and floors receive the same fire, electricity,
 acid, and visibility lighting without paying for a second lighting calculation.
 In this mode the perspective camera follows the player. Hold `Q` or `E` to
 orbit it and use the mouse wheel to zoom; projected text cells remain attached
-to their positions on the 3D ground plane.
+to their positions on the 3D ground plane. Humanoid actors expand into small
+multiline symbol billboards without spawning extra runtime entities; compact
+environmental symbols remain single-line billboards to avoid crowding.
 
 ## Agent runtime API
 

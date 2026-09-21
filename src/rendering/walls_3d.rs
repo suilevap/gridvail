@@ -19,6 +19,7 @@ const WALL_STROKE: f32 = 3.5;
 const WALL_HEIGHT: f32 = 16.0;
 const FLOOR_DEPTH: f32 = 1.0;
 const FLOOR_BRIGHTNESS: f32 = 0.35;
+const BILLBOARD_CENTER_HEIGHT: f32 = 12.0;
 const CAMERA_PITCH: f32 = 55.0_f32.to_radians();
 const CAMERA_FOV: f32 = 50.0_f32.to_radians();
 const MIN_CAMERA_DISTANCE: f32 = 150.0;
@@ -317,7 +318,7 @@ fn project_text_cells(
     camera_3d: Single<(&Camera, &Transform), With<WallCamera>>,
     camera_2d: Single<(&Camera, &Transform), (With<Camera2d>, Without<WallCamera>)>,
     mut cells: Query<
-        (&MapCell, &mut Transform, &mut Visibility),
+        (&MapCell, &Text2d, &mut Transform, &mut Visibility),
         (Without<WallCamera>, Without<Camera2d>),
     >,
 ) {
@@ -326,8 +327,14 @@ fn project_text_cells(
     let perspective_global = GlobalTransform::from(*perspective_transform);
     let overlay_global = GlobalTransform::from(*overlay_transform);
 
-    for (cell, mut transform, mut visibility) in &mut cells {
-        let ground = grid_to_world(cell.0, grid.width, grid.height) + Vec3::Z;
+    for (cell, text, mut transform, mut visibility) in &mut cells {
+        let is_billboard = text.0.contains('\n');
+        let height = if is_billboard {
+            BILLBOARD_CENTER_HEIGHT
+        } else {
+            1.0
+        };
+        let ground = grid_to_world(cell.0, grid.width, grid.height) + Vec3::Z * height;
         let Ok(viewport) = perspective.world_to_viewport(&perspective_global, ground) else {
             if *visibility != Visibility::Hidden {
                 *visibility = Visibility::Hidden;
@@ -338,10 +345,15 @@ fn project_text_cells(
             continue;
         };
 
-        let scale = perspective
+        let mut scale = perspective
             .world_to_viewport(&perspective_global, ground + Vec3::Y * CELL_SIZE.y)
             .map(|next| (next.distance(viewport) / CELL_SIZE.y).clamp(0.45, 2.0))
             .unwrap_or(1.0);
+        if is_billboard {
+            scale *= 0.65;
+        } else if text.0.chars().count() > 1 {
+            scale *= 0.75;
+        }
         transform.translation.x = projected.x;
         transform.translation.y = projected.y;
         transform.scale = Vec3::splat(scale);
@@ -420,9 +432,21 @@ fn floor_color(index: u8) -> Color {
     )
 }
 
+pub(super) fn billboard_pattern(symbol: char) -> Option<&'static str> {
+    match symbol {
+        '@' => Some(" @ \n/|\\\n/ \\"),
+        'x' => Some(" x \n/|\\\n/ \\"),
+        '>' => Some(" > \n/|\\\n/ \\"),
+        '<' => Some(" < \n/|\\\n/ \\"),
+        '^' => Some(" ^ \n/|\\\n/ \\"),
+        'V' => Some(" V \n/|\\\n/ \\"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::wall_arms;
+    use super::{billboard_pattern, wall_arms};
     use crate::content::tile_rules::TileRule;
 
     #[test]
@@ -446,5 +470,11 @@ mod tests {
         assert!(arms[1].2.y < 0.0, "+map Y must extend toward -world Y");
         assert_eq!(arms[3].0, 1 << 3);
         assert!(arms[3].2.y > 0.0, "-map Y must extend toward +world Y");
+    }
+
+    #[test]
+    fn player_billboard_is_the_requested_human_shape() {
+        assert_eq!(billboard_pattern('@'), Some(" @ \n/|\\\n/ \\"));
+        assert!(billboard_pattern('?').is_none());
     }
 }
