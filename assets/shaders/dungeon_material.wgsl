@@ -47,6 +47,45 @@ fn voronoi(point: vec2<f32>) -> f32 {
     return nearest;
 }
 
+// Reconstruct the square CPU grid as a smooth field around jittered Voronoi
+// sites. The simulation remains cell-based, but its visual influence no longer
+// forms axis-aligned rectangles.
+fn sample_jittered_light(world: vec2<f32>) -> vec4<f32> {
+    var grid = vec2<f32>(
+        world.x / map.z + map.x * 0.5,
+        map.y * 0.5 - world.y / map.w,
+    );
+    let warp_point = grid * 0.17;
+    let warp = vec2<f32>(
+        value_noise(warp_point + vec2<f32>(13.7, 2.1)),
+        value_noise(warp_point + vec2<f32>(4.3, 29.8)),
+    ) - 0.5;
+    grid += warp * 1.35;
+    let center = vec2<i32>(floor(grid));
+    let dimensions = vec2<i32>(i32(map.x), i32(map.y));
+    var weighted_color = vec4<f32>(0.0);
+    var total_weight = 0.0;
+
+    for (var y = -1; y <= 1; y = y + 1) {
+        for (var x = -1; x <= 1; x = x + 1) {
+            let cell = center + vec2<i32>(x, y);
+            let seed = vec2<f32>(f32(cell.x), f32(cell.y));
+            let jitter = (vec2<f32>(hash(seed), hash(seed + 53.19)) - 0.5) * 0.72;
+            let site = seed + vec2<f32>(0.5) + jitter;
+            let offset = grid - site;
+            let weight = exp2(-dot(offset, offset) * 1.85);
+            let texel = textureLoad(
+                light_map,
+                clamp(cell, vec2<i32>(0), dimensions - vec2<i32>(1)),
+                0,
+            );
+            weighted_color += texel * weight;
+            total_weight += weight;
+        }
+    }
+    return weighted_color / max(total_weight, 0.0001);
+}
+
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let world = in.world_position.xy;
@@ -62,11 +101,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     var surface_color = vec4<f32>(1.0);
     var coverage = 1.0;
     if map.x > 0.5 {
-        let uv = vec2<f32>(
-            world.x / (map.x * map.z) + 0.5,
-            0.5 - world.y / (map.y * map.w),
-        );
-        surface_color = textureSample(light_map, light_map_sampler, clamp(uv, vec2(0.0), vec2(1.0)));
+        surface_color = sample_jittered_light(world);
         let organic = (value_noise(world * 0.075) - 0.5) * 0.42
             + (voronoi(world * 0.045) - 0.5) * 0.28;
         coverage = smoothstep(0.16, 0.84, surface_color.a + organic);
