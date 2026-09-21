@@ -27,8 +27,10 @@ next to this file.
   `(1 - sqD/radiusSq)` falloff, 255 saturation, same-kind sum,
   brighter-kind-wins, and the original fire/electricity/acid/gray palettes.
 - Renderer-neutral frame composition with depth merge, hex fill, `?` unknown
-  borders, and previous-frame diffing. The selected `TextRendererPlugin`
-  writes changed cells onto one `Text2d` entity each.
+  borders, and previous-frame diffing. The default `TextRendererPlugin`
+  writes changed cells onto one `Text2d` entity each. The optional hybrid
+  renderer replaces walls with shared, extruded 3D autotile meshes while
+  leaving actors and UI as text.
 
 ## Deliberate deviations (all commented at the site)
 
@@ -68,7 +70,7 @@ src/simulation/            simulation plugin; control, motion, resolution, tiles
 src/vision/                vision plugin; FOV cache and player visibility
 src/lighting/              light math and palettes
 src/presentation/          renderer-neutral lighting and frame composition
-src/rendering/             swappable output plugins; current Text2d/HUD backend
+src/rendering/             swappable Text2d and extruded-wall output plugins
 tests/full_map.rs  headless map1 boot + settle integration test
 tests/gameplay.rs  timed input, movement, collision, and vision regressions
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
@@ -86,7 +88,8 @@ direction, and where new foundational versus game-specific code belongs.
 
 ```sh
 cargo run    # arrows or WASD to step the @ player
-cargo test   # 40 tests, including allocation and independent C# comparisons
+cargo run -- --renderer 3d-walls  # extruded 3D walls, text actors and HUD
+cargo test   # 41 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
@@ -104,6 +107,7 @@ that fits the full map when resized. Capture the actual rendered window:
 
 ```sh
 cargo run -- --screenshot screenshots/bevy-map1.png
+cargo run -- --renderer 3d-walls --screenshot screenshots/bevy-map1-3d.png
 cargo run -- --screenshot screenshots/bevy-explored.png --walk LLLUUURRRRRRRDDDDDDDDDDDDDDD
 ```
 
@@ -113,6 +117,13 @@ and window-server access. Capture mode renders to a fixed 1100x700 offscreen
 target, allows Bevy's render pipelines to warm up, and returns failure if
 saving fails. Normal play uses Bevy's real clock and window target. Screenshots
 are local artifacts and are excluded from Git.
+
+The 3D wall backend creates only 16 combined meshes (one per wall-neighbour
+mask) and 16 palette materials. Wall entities share those handles, allowing
+Bevy's renderer to batch and instance matching mesh/material pairs. Its PBR
+materials use the already-computed CPU light palette as unlit base colors, so
+walls receive the same fire, electricity, acid, and visibility lighting as the
+symbol renderer without paying for a second lighting calculation.
 
 ## Agent runtime API
 

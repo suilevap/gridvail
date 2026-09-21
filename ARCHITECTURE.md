@@ -40,7 +40,9 @@ and renderers must not import it.
 - `presentation/` builds light maps and renderer-neutral composed cell frames.
   `PresentationPlugin` owns those systems and all map-sized frame resources.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
-  the camera, font, `Text2d` cells, HUD, and writes changed composed cells.
+  the font, `Text2d` cells, HUD, and writes changed composed cells. The optional
+  `ExtrudedWallRendererPlugin` adds a 3D camera and shared wall meshes beneath
+  that text layer, while consuming the same composed cell colors.
 - `agent_api/` contains the optional loopback Bevy Remote transport and custom
   control/state methods. It reads the composed frame and writes normal player
   command components, keeping agent actions inside the gameplay pipeline.
@@ -49,8 +51,9 @@ and renderers must not import it.
 - `app/` wires the concrete Gridvail/PavEcsLiteGame port together. The bundled
   map choice and exact spawn bundles live in `app/map.rs`; domain composition,
   phase ordering, and compatibility decisions live in `app/mod.rs`.
-- `main.rs` selects `TextRendererPlugin` and `DebugPerformancePlugin`, optionally
-  installs `AgentApiPlugin`, and owns the window/screenshot harness.
+- `main.rs` selects the text or hybrid 3D-wall renderer, installs
+  `DebugPerformancePlugin`, optionally installs `AgentApiPlugin`, and owns the
+  window/screenshot harness.
 
 ## Performance boundary
 

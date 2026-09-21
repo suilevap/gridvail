@@ -8,7 +8,9 @@ use crate::lighting::{palette_color, GRAY};
 use crate::model::*;
 use crate::schedule::{GamePhase, StartupPhase};
 
-const CELL_SIZE: Vec2 = Vec2::new(12.0, 20.0);
+use super::walls_3d::ExtrudedWallCells;
+
+pub(super) const CELL_SIZE: Vec2 = Vec2::new(12.0, 20.0);
 
 #[derive(Component)]
 struct HudText;
@@ -36,7 +38,11 @@ impl Plugin for TextRendererPlugin {
     }
 }
 
-fn setup(mut commands: Commands, grid: Res<MapGrid>, fonts: Option<ResMut<Assets<Font>>>) {
+pub(super) fn setup(
+    mut commands: Commands,
+    grid: Res<MapGrid>,
+    fonts: Option<ResMut<Assets<Font>>>,
+) {
     let (width, height) = (grid.width, grid.height);
     let camera = commands
         .spawn((
@@ -100,6 +106,7 @@ fn setup(mut commands: Commands, grid: Res<MapGrid>, fonts: Option<ResMut<Assets
 
 fn flush_cells(
     buffers: Res<RenderBuffers>,
+    extruded_walls: Option<Res<ExtrudedWallCells>>,
     mut stats: ResMut<TextRenderStats>,
     mut cells: Query<(&MapCell, &mut Text2d, &mut TextColor)>,
 ) {
@@ -112,7 +119,14 @@ fn flush_cells(
             stats.changed_cells += 1;
             let cell = buffers.current[index];
             text.0.clear();
-            text.0.push(if cell.ch == '\0' { ' ' } else { cell.ch });
+            let replaced_by_mesh = extruded_walls
+                .as_ref()
+                .is_some_and(|walls| walls.symbol_at(index) == Some(cell.ch));
+            text.0.push(if cell.ch == '\0' || replaced_by_mesh {
+                ' '
+            } else {
+                cell.ch
+            });
             color.0 = palette_color(cell.color);
         }
     }
@@ -150,7 +164,7 @@ fn update_hud(
     }
 }
 
-fn grid_to_world(position: IVec2, width: i32, height: i32) -> Vec3 {
+pub(super) fn grid_to_world(position: IVec2, width: i32, height: i32) -> Vec3 {
     Vec3::new(
         (position.x as f32 - width as f32 / 2.0 + 0.5) * CELL_SIZE.x,
         (height as f32 / 2.0 - position.y as f32 - 0.5) * CELL_SIZE.y,

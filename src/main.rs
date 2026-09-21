@@ -16,7 +16,7 @@ use bevy::{
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::app::GamePlugin;
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
-use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
+use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, TextRendererPlugin};
 use pav_ecs_game_bevy_port::schedule::StartupPhase;
 
 const CAPTURE_STEP_FRAMES: u32 = 8;
@@ -25,6 +25,7 @@ fn main() -> AppExit {
     let options = Options::parse();
     let capture = options.capture;
     let walk = options.walk;
+    let renderer = options.renderer;
     assert!(
         walk.chars().all(|c| "UDLR".contains(c)),
         "walk steps must be U, D, L, or R"
@@ -42,7 +43,12 @@ fn main() -> AppExit {
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::BLACK))
         .add_plugins(plugins)
-        .add_plugins((GamePlugin, TextRendererPlugin, DebugPerformancePlugin));
+        .add_plugins(GamePlugin)
+        .add_plugins(TextRendererPlugin);
+    if renderer == Renderer::Walls3d {
+        app.add_plugins(ExtrudedWallRendererPlugin);
+    }
+    app.add_plugins(DebugPerformancePlugin);
     if let Some(port) = options.remote_port {
         println!("Bevy Remote agent API: http://127.0.0.1:{port}");
         app.add_plugins(AgentApiPlugin::new(port));
@@ -70,6 +76,14 @@ struct Options {
     capture: Option<String>,
     walk: String,
     remote_port: Option<u16>,
+    renderer: Renderer,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Renderer {
+    #[default]
+    Text,
+    Walls3d,
 }
 
 impl Options {
@@ -77,6 +91,7 @@ impl Options {
         let mut capture = None;
         let mut walk = None;
         let mut remote_port = None;
+        let mut renderer = None;
         let mut args = std::env::args().skip(1);
         while let Some(argument) = args.next() {
             match argument.as_str() {
@@ -94,8 +109,15 @@ impl Options {
                     let port = args.next().expect("--remote-port requires a port number");
                     remote_port = Some(port.parse().expect("--remote-port must be a valid u16"));
                 }
+                "--renderer" if renderer.is_none() => {
+                    renderer = Some(match args.next().as_deref() {
+                        Some("text") => Renderer::Text,
+                        Some("3d-walls") => Renderer::Walls3d,
+                        _ => panic!("--renderer must be text or 3d-walls"),
+                    });
+                }
                 _ => panic!(
-                    "usage: pav_ecs_game_bevy_port [--remote | --remote-port PORT] [--screenshot OUTPUT.png [--walk UDLR...]]"
+                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--remote | --remote-port PORT] [--screenshot OUTPUT.png [--walk UDLR...]]"
                 ),
             }
         }
@@ -108,6 +130,7 @@ impl Options {
             capture,
             walk,
             remote_port,
+            renderer: renderer.unwrap_or_default(),
         }
     }
 }
@@ -122,10 +145,12 @@ struct Capture {
 #[derive(Resource)]
 struct CaptureTarget(Handle<Image>);
 
+type RenderCameraFilter = Or<(With<Camera2d>, With<Camera3d>)>;
+
 fn setup_capture_target(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
-    mut target: Single<&mut RenderTarget, With<Camera2d>>,
+    mut targets: Query<&mut RenderTarget, RenderCameraFilter>,
 ) {
     let image = images.add(Image::new_target_texture(
         1100,
@@ -133,7 +158,9 @@ fn setup_capture_target(
         TextureFormat::Rgba8UnormSrgb,
         None,
     ));
-    **target = RenderTarget::Image(image.clone().into());
+    for mut target in &mut targets {
+        *target = RenderTarget::Image(image.clone().into());
+    }
     commands.insert_resource(CaptureTarget(image));
 }
 
