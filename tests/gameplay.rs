@@ -46,7 +46,9 @@ fn arrow_key_steps_player_and_spends_token() {
         .single(world)
         .unwrap();
     assert_eq!(marker.0, IVec2::new(10, 5));
-    app.update();
+    for _ in 0..7 {
+        app.update();
+    }
     assert_eq!(player_of(app.world_mut()).2, 1);
 }
 
@@ -75,7 +77,15 @@ fn held_key_repeats_after_recharge_and_release_stops_it() {
         .resource_mut::<ButtonInput<KeyCode>>()
         .clear();
     let after_press = player_of(app.world_mut()).0;
-    for _ in 0..90 {
+    for _ in 0..4 {
+        app.update();
+    }
+    assert_eq!(
+        player_of(app.world_mut()).0,
+        after_press,
+        "held input repeated before the 100ms minimum turn interval"
+    );
+    for _ in 0..4 {
         app.update();
     }
     let after_hold = player_of(app.world_mut()).0;

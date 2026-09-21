@@ -11,9 +11,9 @@ next to this file.
 - Six entity types from map glyphs: wall `X`, player `p`, enemy `e`,
   electricity `~`, light `i`, acid `%` (all five maps + four rule files
   ship under `assets/`; `map1.txt` loads at startup).
-- Turn/token pipeline: 1s token recharge (assign, never add), keyboard and
-  random-walk move commands gated by tokens, integer speed + friction,
-  direction-from-speed.
+- Turn/token pipeline: actions fast-forward token recharge after a configurable
+  100ms minimum turn interval; idle turns advance after 1s. Recharges assign,
+  never add. Keyboard and random-walk commands remain token-gated.
 - Two-phase movement resolution with the original conservative contract:
   swaps blocked, entering a vacated cell blocked in the same pass, one
   winner per cell in stable creation order, collisions recorded (the Lite

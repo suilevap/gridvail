@@ -12,6 +12,7 @@ pub fn headless() -> App {
         .init_resource::<vision::FovShared>()
         .init_resource::<TurnState>()
         .init_resource::<TokenTimer>()
+        .init_resource::<TurnPacing>()
         .init_resource::<CollisionBuffer>()
         .init_resource::<CommitBuffer>()
         .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(42)))

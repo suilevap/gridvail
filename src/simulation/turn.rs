@@ -11,15 +11,18 @@ pub fn turn_tick(mut turn: ResMut<TurnState>) {
 pub fn recharge_tokens(
     time: Res<Time>,
     mut timer: ResMut<TokenTimer>,
+    mut pacing: ResMut<TurnPacing>,
     mut holders: Query<&mut Tokens, Or<(With<Player>, With<Enemy>)>>,
 ) {
     timer.0.tick(time.delta());
+    pacing.tick(time.delta());
     let any_left = holders.iter().any(|tokens| tokens.count > 0);
-    if timer.0.just_finished() || !any_left {
+    if pacing.can_advance() && (timer.0.is_finished() || !any_left) {
         for mut tokens in holders.iter_mut() {
             tokens.count = tokens.recharge;
         }
         timer.0.reset();
+        pacing.started();
     }
 }
 

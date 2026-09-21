@@ -115,10 +115,52 @@ pub struct TokenTimer(pub Timer);
 
 impl Default for TokenTimer {
     fn default() -> Self {
-        Self(Timer::from_seconds(
-            TOKEN_RECHARGE_SECS,
-            TimerMode::Repeating,
-        ))
+        Self(Timer::from_seconds(TOKEN_RECHARGE_SECS, TimerMode::Once))
+    }
+}
+
+/// Limits how quickly completed turns can refill action tokens.
+///
+/// Insert a custom value before adding `GamePlugin` to tune the pace without
+/// changing the simulation systems.
+#[derive(Resource, Debug)]
+pub struct TurnPacing {
+    pub minimum_interval: std::time::Duration,
+    elapsed: std::time::Duration,
+    started: bool,
+}
+
+impl TurnPacing {
+    pub const DEFAULT_MINIMUM_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
+    pub const fn new(minimum_interval: std::time::Duration) -> Self {
+        Self {
+            minimum_interval,
+            elapsed: std::time::Duration::ZERO,
+            started: false,
+        }
+    }
+
+    pub(crate) fn tick(&mut self, delta: std::time::Duration) {
+        self.elapsed = self.elapsed.saturating_add(delta);
+    }
+
+    pub(crate) fn can_advance(&self) -> bool {
+        !self.started || self.elapsed >= self.minimum_interval
+    }
+
+    pub(crate) fn started(&mut self) {
+        self.started = true;
+    }
+
+    pub(crate) fn action_committed(&mut self) {
+        self.elapsed = std::time::Duration::ZERO;
+    }
+}
+
+impl Default for TurnPacing {
+    fn default() -> Self {
+        Self::new(Self::DEFAULT_MINIMUM_INTERVAL)
     }
 }
 

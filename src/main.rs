@@ -18,6 +18,8 @@ use pav_ecs_game_bevy_port::app::GamePlugin;
 use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
 use pav_ecs_game_bevy_port::schedule::StartupPhase;
 
+const CAPTURE_STEP_FRAMES: u32 = 8;
+
 fn main() -> AppExit {
     let options = Options::parse();
     let capture = options.capture;
@@ -137,8 +139,11 @@ fn setup_capture_target(
 /// Optional reproducible walk uses the same keyboard system as live play.
 fn replay_capture_input(capture: Res<Capture>, mut keys: ResMut<ButtonInput<KeyCode>>) {
     keys.reset_all();
-    if capture.frames >= 30 && (capture.frames - 30).is_multiple_of(2) {
-        if let Some(step) = capture.walk.get(((capture.frames - 30) / 2) as usize) {
+    if capture.frames >= 30 && (capture.frames - 30).is_multiple_of(CAPTURE_STEP_FRAMES) {
+        if let Some(step) = capture
+            .walk
+            .get(((capture.frames - 30) / CAPTURE_STEP_FRAMES) as usize)
+        {
             keys.press(match step {
                 'U' => KeyCode::ArrowUp,
                 'D' => KeyCode::ArrowDown,
@@ -154,7 +159,7 @@ fn replay_capture_input(capture: Res<Capture>, mut keys: ResMut<ButtonInput<KeyC
 /// Exit only when readback and saving have completed.
 fn capture_frame(mut commands: Commands, mut capture: ResMut<Capture>, target: Res<CaptureTarget>) {
     capture.frames += 1;
-    if capture.frames == 120 + 2 * capture.walk.len() as u32 {
+    if capture.frames == 120 + CAPTURE_STEP_FRAMES * capture.walk.len() as u32 {
         if let Some(parent) = std::path::Path::new(&capture.path).parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent).expect("create screenshot directory");

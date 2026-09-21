@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use rand::SeedableRng;
 
-use crate::model::{CollisionBuffer, MapGrid, SharedRng, TokenTimer, TurnState};
+use crate::model::{CollisionBuffer, MapGrid, SharedRng, TokenTimer, TurnPacing, TurnState};
 use crate::schedule::{GamePhase, StartupPhase};
 
 use super::*;
@@ -21,6 +21,7 @@ impl Plugin for SimulationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TurnState>()
             .init_resource::<TokenTimer>()
+            .init_resource::<TurnPacing>()
             .init_resource::<CollisionBuffer>()
             .init_resource::<CommitBuffer>()
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(self.rng_seed)))

@@ -7,7 +7,10 @@ use crate::model::*;
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
     turn: Res<TurnState>,
-    mut players: Query<&mut MoveCommand, (With<Player>, With<Active>, Without<DestroyRequested>)>,
+    mut players: Query<
+        (&mut MoveCommand, &Tokens),
+        (With<Player>, With<Active>, Without<DestroyRequested>),
+    >,
 ) {
     if turn.simulation {
         return;
@@ -24,7 +27,10 @@ pub fn player_input(
         None
     };
     if let Some(target) = dir {
-        for mut command in players.iter_mut() {
+        for (mut command, tokens) in players.iter_mut() {
+            if tokens.count <= 0 {
+                continue;
+            }
             command.target = target;
             command.relative = true;
             command.active = true;
@@ -49,8 +55,10 @@ pub fn enemy_ai(
 }
 
 pub fn move_commands(
+    mut pacing: ResMut<TurnPacing>,
     mut movers: Query<(&mut MoveCommand, &mut Speed, &mut Tokens), Without<DestroyRequested>>,
 ) {
+    let mut action_committed = false;
     for (mut command, mut speed, mut tokens) in movers.iter_mut() {
         if !command.active || tokens.count <= 0 {
             continue;
@@ -60,5 +68,9 @@ pub fn move_commands(
         }
         command.active = false;
         tokens.count -= 1;
+        action_committed = true;
+    }
+    if action_committed {
+        pacing.action_committed();
     }
 }
