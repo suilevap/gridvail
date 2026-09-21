@@ -1,11 +1,11 @@
-//! Reusable gameplay systems. The application schedule is assembled in
-//! `app`; this module groups systems by responsibility.
+//! Reusable gameplay systems and the plugin that installs their schedule.
 
 #![allow(clippy::type_complexity)]
 
 mod control;
 mod lifecycle;
 mod motion;
+mod plugin;
 mod resolution;
 mod tiles;
 mod turn;
@@ -13,6 +13,7 @@ mod turn;
 pub use control::*;
 pub use lifecycle::*;
 pub use motion::*;
+pub use plugin::*;
 pub use resolution::*;
 pub use tiles::*;
 pub use turn::*;

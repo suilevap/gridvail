@@ -10,6 +10,10 @@
 
 #![allow(clippy::type_complexity)]
 
+mod plugin;
+
+pub use plugin::*;
+
 use bevy::prelude::*;
 
 use crate::foundation::fov::{FovComputer, FovSample};

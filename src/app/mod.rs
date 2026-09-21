@@ -1,7 +1,7 @@
 //! Game assembly: startup spawn (mirrors `LoadMapSystem` + `SpawnEntitySystem`
-//! end states) and the full Lite pipeline as one chained schedule.
+//! end states) and composition of the domain plugins.
 //!
-//! Container order mirrored: tiles → tokens → input/AI → commands →
+//! Shared schedule phases preserve the container order: tiles → tokens → input/AI → commands →
 //! direction → movement → friction → resolve → bindings → verify → destroy →
 //! direction tiles → light requests → FOV → light layers → visibility →
 //! compose → flush → HUD → turn update.
@@ -13,16 +13,15 @@
 //!   name, which would throw in its rule dictionary; the classic `@` stays);
 //! - one Bevy `World` + resources replaces `EcsUniverse` worlds-per-type.
 
-use bevy::prelude::*;
-use rand::SeedableRng;
-
 use crate::content::map::{parse_map, SpawnKind};
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::lighting::{GRAY, RED, WHITE};
 use crate::model::*;
-use crate::presentation::DynamicLight;
-use crate::simulation::{self as sim, Rules};
-use crate::vision;
+use crate::presentation::{DynamicLight, PresentationPlugin};
+use crate::schedule::{GamePhase, StartupPhase};
+use crate::simulation::{self as sim, Rules, SimulationPlugin};
+use crate::vision::VisionPlugin;
+use bevy::prelude::*;
 
 const MAP_TEXT: &str = include_str!("../../assets/maps/map1.txt");
 const WALL_RULE_TEXT: &str = include_str!("../../assets/rules/wall_rule.txt");
@@ -33,48 +32,24 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<TurnState>()
-            .init_resource::<TokenTimer>()
-            .init_resource::<CollisionBuffer>()
-            .init_resource::<sim::CommitBuffer>()
-            .init_resource::<vision::FovShared>()
-            .init_resource::<StaticLight>()
-            .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(42)))
-            .add_systems(Startup, (setup, sim::tile_system).chain())
-            .add_systems(
-                Update,
-                (
-                    (
-                        sim::turn_tick,
-                        sim::recharge_tokens,
-                        sim::player_input,
-                        sim::enemy_ai,
-                        sim::move_commands,
-                        sim::update_direction,
-                        sim::movement,
-                        sim::friction,
-                        sim::resolve_collect,
-                        sim::resolve_unmap,
-                        sim::resolve_commit,
-                        sim::relative_position,
-                        sim::verify_map,
-                        sim::destroy_entities.run_if(sim::has_destroy_requests),
-                        sim::direction_tiles,
-                    )
-                        .chain(),
-                    (
-                        vision::compute_fov,
-                        crate::presentation::render_light_layers,
-                        vision::player_visibility,
-                        crate::presentation::compose_frame,
-                        crate::presentation::flush_cells,
-                        crate::presentation::update_hud,
-                        sim::turn_update,
-                    )
-                        .chain(),
-                )
-                    .chain(),
-            );
+        app.configure_sets(
+            Startup,
+            (StartupPhase::Content, StartupPhase::Derive).chain(),
+        )
+        .configure_sets(
+            Update,
+            (
+                GamePhase::Simulation,
+                GamePhase::FieldOfView,
+                GamePhase::Lighting,
+                GamePhase::Visibility,
+                GamePhase::Presentation,
+                GamePhase::Finalize,
+            )
+                .chain(),
+        )
+        .add_plugins((SimulationPlugin::new(42), VisionPlugin, PresentationPlugin))
+        .add_systems(Startup, setup.in_set(StartupPhase::Content));
     }
 }
 

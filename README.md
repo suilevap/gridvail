@@ -55,14 +55,15 @@ next to this file.
 ```text
 src/lib.rs                 library root and public layers
 src/main.rs                window and screenshot harness
-src/app/                   game-specific setup, bundles, and schedule
+src/app/                   game-specific setup, bundles, and plugin composition
+src/schedule.rs            shared startup and update phase contract
 src/foundation/fov.rs      engine-independent interval FOV algorithm
 src/content/               map and symbol-rule parsers
 src/model/                 ECS data split by gameplay domain
-src/simulation/            control, turns, motion, resolution, lifecycle, tiles
-src/vision/                FOV cache and player visibility systems
+src/simulation/            simulation plugin; control, motion, resolution, tiles
+src/vision/                vision plugin; FOV cache and player visibility
 src/lighting/              light math and palettes
-src/presentation/          light maps, frame composition, Bevy text/HUD output
+src/presentation/          presentation plugin; lighting, frame, text/HUD output
 tests/full_map.rs  headless map1 boot + settle integration test
 tests/gameplay.rs  timed input, movement, collision, and vision regressions
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression

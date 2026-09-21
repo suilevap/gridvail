@@ -6,5 +6,6 @@ pub mod foundation;
 pub mod lighting;
 pub mod model;
 pub mod presentation;
+pub mod schedule;
 pub mod simulation;
 pub mod vision;
