@@ -56,6 +56,7 @@ next to this file.
 ```text
 src/lib.rs                 library root and public layers
 src/main.rs                renderer selection, window, and screenshot harness
+src/agent_api/             optional Bevy Remote control and state API
 src/app/mod.rs             game plugin composition and phase ordering
 src/app/map.rs             selected map, rules, and initial entity bundles
 src/schedule.rs            shared startup and update phase contract
@@ -84,7 +85,7 @@ direction, and where new foundational versus game-specific code belongs.
 
 ```sh
 cargo run    # arrows or WASD to step the @ player
-cargo test   # 37 tests, including allocation and independent C# comparisons
+cargo test   # 40 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
@@ -107,6 +108,42 @@ and window-server access. Capture mode uses synchronous rendering to avoid
 a Bevy 0.16 macOS shutdown deadlock, and returns failure if saving fails.
 Normal play uses Bevy's real clock and pipelined renderer. Screenshots
 are local artifacts and are excluded from Git.
+
+## Agent runtime API
+
+Start the game with Bevy Remote enabled on its loopback-only default address:
+
+```sh
+cargo run -- --remote                  # http://127.0.0.1:15702
+cargo run -- --remote-port 15703       # choose another port
+```
+
+The server accepts JSON-RPC 2.0 POST requests. `gridvail/state` returns the
+turn phase, whether input is currently accepted, player position and tokens,
+enemy/collision counts, and the exact composed visual grid. `visual.rows`
+contains Unicode glyph rows; `visual.colors` contains matching palette indices
+and `visual.palette` names those indices.
+
+```sh
+curl http://127.0.0.1:15702 \
+  -H 'content-type: application/json' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"gridvail/state"}'
+```
+
+`gridvail/move` accepts `up`, `down`, `left`, `right`, or `wait`. It returns
+`{"accepted":true}` when queued, or `accepted:false` with a reason when the
+simulation is busy, another command is pending, or the player has no token.
+Accepted commands use the normal turn pipeline.
+
+```sh
+curl http://127.0.0.1:15702 \
+  -H 'content-type: application/json' \
+  --data '{"jsonrpc":"2.0","id":2,"method":"gridvail/move","params":{"direction":"right"}}'
+```
+
+The standard Bevy Remote methods remain available. Call `rpc.discover` to list
+them alongside the Gridvail methods. The API plugin is not installed without a
+remote flag, preserving the normal runtime allocation profile.
 
 ## Memory and steady-state allocation policy
 

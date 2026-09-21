@@ -12,29 +12,18 @@ use bevy::{
         view::screenshot::{Screenshot, ScreenshotCaptured},
     },
 };
+use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::app::GamePlugin;
 use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
 
 fn main() -> AppExit {
-    let mut args = std::env::args().skip(1);
-    let capture = match args.next().as_deref() {
-        Some("--screenshot") => Some(
-            args.next()
-                .expect("--screenshot requires an output PNG path"),
-        ),
-        None => None,
-        _ => panic!("usage: pav_ecs_game_bevy_port [--screenshot output.png [--walk UDLR...]]"),
-    };
-    let walk = match args.next().as_deref() {
-        Some("--walk") if capture.is_some() => args.next().expect("--walk requires UDLR steps"),
-        None => String::new(),
-        _ => panic!("--walk is only supported after --screenshot output.png"),
-    };
+    let options = Options::parse();
+    let capture = options.capture;
+    let walk = options.walk;
     assert!(
         walk.chars().all(|c| "UDLR".contains(c)),
         "walk steps must be U, D, L, or R"
     );
-    assert!(args.next().is_none(), "unexpected argument");
     let mut plugins = DefaultPlugins
         .set(WindowPlugin {
             primary_window: Some(Window {
@@ -55,6 +44,10 @@ fn main() -> AppExit {
     app.insert_resource(ClearColor(Color::BLACK))
         .add_plugins(plugins)
         .add_plugins((GamePlugin, TextRendererPlugin));
+    if let Some(port) = options.remote_port {
+        println!("Bevy Remote agent API: http://127.0.0.1:{port}");
+        app.add_plugins(AgentApiPlugin::new(port));
+    }
     if let Some(path) = capture {
         app.insert_resource(Capture {
             path,
@@ -71,6 +64,52 @@ fn main() -> AppExit {
         .add_systems(Update, capture_frame);
     }
     app.run()
+}
+
+struct Options {
+    capture: Option<String>,
+    walk: String,
+    remote_port: Option<u16>,
+}
+
+impl Options {
+    fn parse() -> Self {
+        let mut capture = None;
+        let mut walk = None;
+        let mut remote_port = None;
+        let mut args = std::env::args().skip(1);
+        while let Some(argument) = args.next() {
+            match argument.as_str() {
+                "--screenshot" if capture.is_none() => {
+                    capture = Some(
+                        args.next()
+                            .expect("--screenshot requires an output PNG path"),
+                    );
+                }
+                "--walk" if walk.is_none() => {
+                    walk = Some(args.next().expect("--walk requires UDLR steps"));
+                }
+                "--remote" if remote_port.is_none() => remote_port = Some(DEFAULT_AGENT_PORT),
+                "--remote-port" if remote_port.is_none() => {
+                    let port = args.next().expect("--remote-port requires a port number");
+                    remote_port = Some(port.parse().expect("--remote-port must be a valid u16"));
+                }
+                _ => panic!(
+                    "usage: pav_ecs_game_bevy_port [--remote | --remote-port PORT] [--screenshot OUTPUT.png [--walk UDLR...]]"
+                ),
+            }
+        }
+        let walk = walk.unwrap_or_default();
+        assert!(
+            capture.is_some() || walk.is_empty(),
+            "--walk requires --screenshot"
+        );
+        Self {
+            capture,
+            walk,
+            remote_port,
+        }
+    }
 }
 
 #[derive(Resource)]

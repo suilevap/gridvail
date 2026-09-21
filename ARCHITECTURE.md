@@ -7,8 +7,8 @@ foundation  content  model  schedule
      ↑        ↑       ↑       ↑
      simulation  vision  lighting  presentation
              ↑       ↑       ↑
-                    app       rendering
-                      \       /
+                    app       rendering  agent_api
+                      \         |         /
                          main
 ```
 
@@ -41,10 +41,14 @@ and renderers must not import it.
   `PresentationPlugin` owns those systems and all map-sized frame resources.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the camera, font, `Text2d` cells, HUD, and writes changed composed cells.
+- `agent_api/` contains the optional loopback Bevy Remote transport and custom
+  control/state methods. It reads the composed frame and writes normal player
+  command components, keeping agent actions inside the gameplay pipeline.
 - `app/` wires the concrete Gridvail/PavEcsLiteGame port together. The bundled
   map choice and exact spawn bundles live in `app/map.rs`; domain composition,
   phase ordering, and compatibility decisions live in `app/mod.rs`.
-- `main.rs` selects `TextRendererPlugin` and owns the window/screenshot harness.
+- `main.rs` selects `TextRendererPlugin`, optionally installs `AgentApiPlugin`,
+  and owns the window/screenshot harness.
 
 ## Performance boundary
 
@@ -63,7 +67,8 @@ When adding code, place it in the lowest layer that can own it:
 4. Reusable world mutation and its registration: the matching domain plugin.
 5. Renderer-neutral visual composition: `presentation`.
 6. Concrete screen, terminal, or tile output: a plugin in `rendering`.
-7. A rule specific to this port's map, entity bundle, or schedule: `app`.
+7. Runtime automation transport: `agent_api`.
+8. A rule specific to this port's map, entity bundle, or schedule: `app`.
 
 This keeps the C# project's useful separation between common algorithms,
 components, and game systems without reproducing its custom ECS infrastructure.
