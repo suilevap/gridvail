@@ -13,7 +13,7 @@ next to this file.
   ship under `assets/`; `map1.txt` loads at startup).
 - Turn/token pipeline: actions fast-forward token recharge after a configurable
   100ms minimum turn interval; idle turns advance after 1s. Recharges assign,
-  never add. Keyboard and random-walk commands remain token-gated.
+  never add. Keyboard and enemy commands remain token-gated.
 - Two-phase movement resolution with the original conservative contract:
   swaps blocked, entering a vacated cell blocked in the same pass, one
   winner per cell in stable creation order, collisions recorded (the Lite
@@ -33,6 +33,12 @@ next to this file.
   with light-mapped floor tiles while leaving actors and UI as text.
 
 ## Deliberate deviations (all commented at the site)
+
+- Enemies run a [FlatBT](https://github.com/suilevap/flatbt) behavior tree
+  instead of the original pure random walk: hunt the player within 8 cells
+  and a clear line, else search where it was last seen, else wander. The
+  tree only reports an `EnemyAct`; `ai::carry_out` turns it into the same
+  token-gated `MoveCommand` the player uses.
 
 - One Bevy `World` + resources instead of `EcsUniverse` type-worlds.
 - `TileSystem` computes masks two-phased; the original mutates neighbour
@@ -67,6 +73,7 @@ src/content/               map and symbol-rule parsers
 src/debug_ui.rs             optional FPS and runtime performance panel
 src/model/                 ECS data split by gameplay domain
 src/simulation/            simulation plugin; control, motion, resolution, tiles
+src/ai/                    enemy behavior trees (FlatBT): perceive, tick, carry out
 src/vision/                vision plugin; FOV cache and player visibility
 src/lighting/              light math and palettes
 src/presentation/          renderer-neutral lighting and frame composition
@@ -90,7 +97,7 @@ direction, and where new foundational versus game-specific code belongs.
 ```sh
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
-cargo test   # 43 tests, including allocation and independent C# comparisons
+cargo test   # 49 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
@@ -98,6 +105,9 @@ cargo fmt --check
 The debug performance panel is visible by default and toggles with `F3`. It
 shows smoothed FPS/frame time, process and system CPU/RAM, entity count, text
 cells updated by the renderer, and current turn pacing.
+
+`rust-toolchain.toml` pins Rust 1.95, the minimum for `flatbt-bevy`, which
+is fetched from its Git repository.
 
 Note: if your cargo home is not writable, point it somewhere writable,
 e.g. `CARGO_HOME=/tmp/cargo-home cargo run`.

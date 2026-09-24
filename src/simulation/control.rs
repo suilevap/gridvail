@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use rand::RngExt;
 
 use crate::model::*;
 
@@ -35,22 +34,6 @@ pub fn player_input(
             command.relative = true;
             command.active = true;
         }
-    }
-}
-
-pub fn enemy_ai(
-    turn: Res<TurnState>,
-    mut rng: ResMut<SharedRng>,
-    mut enemies: Query<&mut MoveCommand, (With<Enemy>, With<Active>, Without<DestroyRequested>)>,
-) {
-    if turn.simulation {
-        return;
-    }
-    const MOVES: [IVec2; 5] = [IVec2::ZERO, IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y];
-    for mut command in enemies.iter_mut() {
-        command.target = MOVES[rng.0.random_range(0..MOVES.len())];
-        command.relative = true;
-        command.active = true;
     }
 }
 

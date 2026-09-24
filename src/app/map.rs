@@ -9,6 +9,9 @@
 
 use bevy::prelude::*;
 
+use flatbt_bevy::prelude::Behavior;
+
+use crate::ai::enemy_tree;
 use crate::content::map::{parse_map, SpawnKind};
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::lighting::{GRAY, RED, WHITE};
@@ -120,6 +123,7 @@ fn construct_map(mut commands: Commands) {
                     DirectionTile {
                         rule: "direction_v_rule".to_string(),
                     },
+                    (EnemyMind::default(), Behavior::for_tree(enemy_tree)),
                 ))
                 .id(),
             SpawnKind::Electricity => commands
