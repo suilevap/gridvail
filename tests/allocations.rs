@@ -101,9 +101,6 @@ fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
             )
                 .chain(),
             (|| {}, || {}, || {}, || {}, || {}, || {}, || {}, || {}).chain(),
-            // The behavior tick queues commands and is ordered before
-            // `carry_out`, so Bevy inserts a sync point after it.
-            (|_: Commands| {}, || {}).chain(),
         )
             .chain(),
     );
@@ -142,7 +139,7 @@ fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
     // per update. Bound both its no-op baseline and the game's schedule delta;
     // a full turn must still add nothing beyond corresponding steady frames.
     assert!(
-        baseline_allocations <= 12 * 128,
+        baseline_allocations <= 11 * 128,
         "Bevy baseline allocation envelope regressed: {baseline_allocations}"
     );
     assert!(
