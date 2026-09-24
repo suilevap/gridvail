@@ -19,7 +19,7 @@ pub struct EnemyMind {
     pub player: Option<IVec2>,
     /// Where the player was last seen; cleared on arrival.
     pub last_seen: Option<IVec2>,
-    /// Neighbours not blocked by a wall, indexed like `STEPS`.
+    /// Neighbours free to step into (empty or the player), indexed like `STEPS`.
     pub open: [bool; 4],
     /// A random-walk step rolled for this turn, `ZERO` to wait.
     pub roll: IVec2,

@@ -24,17 +24,29 @@ const WALL_RULE_TEXT: &str = include_str!("../../assets/rules/wall_rule.txt");
 const TRIANGLE_RULE_TEXT: &str = include_str!("../../assets/rules/direction_triangle_rule.txt");
 const V_RULE_TEXT: &str = include_str!("../../assets/rules/direction_v_rule.txt");
 
+/// The map layout to construct. Defaults to the bundled `map1`; insert another
+/// before startup to play a different one.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct MapText(pub &'static str);
+
+impl Default for MapText {
+    fn default() -> Self {
+        Self(MAP_TEXT)
+    }
+}
+
 /// Constructs the selected map, its rules, and its initial entities.
 pub struct MapPlugin;
 
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, construct_map.in_set(StartupPhase::Content));
+        app.init_resource::<MapText>()
+            .add_systems(Startup, construct_map.in_set(StartupPhase::Content));
     }
 }
 
-fn construct_map(mut commands: Commands) {
-    let (width, height, cells) = parse_map(MAP_TEXT);
+fn construct_map(mut commands: Commands, map: Res<MapText>) {
+    let (width, height, cells) = parse_map(map.0);
     let cell_count = (width * height) as usize;
     let mut grid = MapGrid::new(width, height);
 

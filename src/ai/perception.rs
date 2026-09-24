@@ -15,13 +15,16 @@ pub fn perceive(
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
     mut rng: ResMut<SharedRng>,
-    players: Query<&Pos, (With<Player>, With<Active>, Without<DestroyRequested>)>,
+    players: Query<(Entity, &Pos), (With<Player>, With<Active>, Without<DestroyRequested>)>,
     mut enemies: Query<
         (&Pos, &Tokens, Has<DestroyRequested>, &mut EnemyMind),
         (With<Enemy>, With<Active>),
     >,
 ) {
-    let player = players.iter().next().map(|pos| pos.0);
+    let (player_entity, player) = players
+        .iter()
+        .next()
+        .map_or((None, None), |(entity, pos)| (Some(entity), Some(pos.0)));
     for (pos, tokens, doomed, mut mind) in enemies.iter_mut() {
         let mind = mind.bypass_change_detection();
         mind.pos = pos.0;
@@ -38,9 +41,15 @@ pub fn perceive(
         } else if mind.last_seen == Some(pos.0) {
             mind.last_seen = None;
         }
+        // Walls and other actors block a step; the player does not, since
+        // stepping into it is the attack bump. Without this, an enemy queues
+        // behind an ally forever instead of stepping around it.
         for (open, step) in mind.open.iter_mut().zip(STEPS) {
             let at = pos.0 + step;
-            *open = grid.is_valid(at) && !grid.blocks_vision(at);
+            *open = grid.is_valid(at)
+                && grid
+                    .get(at)
+                    .is_none_or(|occupant| Some(occupant) == player_entity);
         }
         mind.roll = WANDER[rng.0.random_range(0..WANDER.len())];
     }
