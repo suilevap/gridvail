@@ -21,7 +21,6 @@ pub fn headless() -> App {
             (
                 turn_tick,
                 recharge_tokens,
-                enemy_ai,
                 move_commands,
                 update_direction,
                 movement,

@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use rand::SeedableRng;
 
 use crate::model::{CollisionBuffer, MapGrid, SharedRng, TokenTimer, TurnPacing, TurnState};
-use crate::schedule::{GamePhase, StartupPhase};
+use crate::schedule::{GamePhase, SimulationStep, StartupPhase};
 
 use super::*;
 
@@ -31,13 +31,25 @@ impl Plugin for SimulationPlugin {
                     .chain()
                     .in_set(StartupPhase::Derive),
             )
+            .configure_sets(
+                Update,
+                (
+                    SimulationStep::Control,
+                    SimulationStep::Decide,
+                    SimulationStep::Resolve,
+                )
+                    .chain()
+                    .in_set(GamePhase::Simulation),
+            )
+            .add_systems(
+                Update,
+                (turn_tick, recharge_tokens, player_input)
+                    .chain()
+                    .in_set(SimulationStep::Control),
+            )
             .add_systems(
                 Update,
                 (
-                    turn_tick,
-                    recharge_tokens,
-                    player_input,
-                    enemy_ai,
                     move_commands,
                     update_direction,
                     movement,
@@ -51,7 +63,7 @@ impl Plugin for SimulationPlugin {
                     direction_tiles,
                 )
                     .chain()
-                    .in_set(GamePhase::Simulation),
+                    .in_set(SimulationStep::Resolve),
             )
             .add_systems(Update, turn_update.in_set(GamePhase::Finalize));
     }

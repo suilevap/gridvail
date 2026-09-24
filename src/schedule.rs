@@ -26,3 +26,15 @@ pub enum GamePhase {
     Output,
     Finalize,
 }
+
+/// Steps inside `GamePhase::Simulation`, so deciders plug in between input and
+/// the movement pipeline without editing it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SimulationStep {
+    /// Advance the turn, recharge tokens, and read player input.
+    Control,
+    /// Non-player actors decide their commands.
+    Decide,
+    /// Spend commands, move, resolve collisions, and derive tiles.
+    Resolve,
+}

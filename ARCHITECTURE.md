@@ -5,7 +5,7 @@ The code is arranged from reusable foundations toward the concrete game:
 ```text
 foundation  content  model  schedule
      ↑        ↑       ↑       ↑
-     simulation  vision  lighting  presentation
+     simulation  ai  vision  lighting  presentation
              ↑       ↑       ↑
                     app       rendering  agent_api  debug_ui
                       \         |         /         /
@@ -32,6 +32,12 @@ and renderers must not import it.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
+- `ai/` decides enemy commands with FlatBT behavior trees inside
+  `SimulationStep::Decide`, between player input and movement. `perceive`
+  fills the `EnemyMind` blackboard, the tree reports an `EnemyAct`, and
+  `carry_out` writes the ordinary `MoveCommand`. Trees never mutate the world,
+  so enemies share the player's token and collision rules. Out-of-turn enemies
+  are skipped with `Tick::Skip`, not guarded inside the tree.
 - `vision/` converts sensors and blocker state into cached FOV and visibility
   components. `VisionPlugin` owns their resources and phase registration; the
   underlying algorithm remains in `foundation/`.
