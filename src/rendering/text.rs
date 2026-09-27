@@ -10,6 +10,7 @@ use crate::model::*;
 use crate::schedule::{GamePhase, StartupPhase};
 
 use super::walls_3d::{billboard_pattern, ExtrudedWalls};
+use crate::animation::MotionStyle;
 
 pub(super) const CELL_SIZE: Vec2 = Vec2::new(12.0, 20.0);
 
@@ -19,7 +20,7 @@ struct HudText;
 #[derive(Component, Clone, Copy)]
 pub(super) struct MapCell(pub(super) IVec2);
 
-/// Text entity drawing one object above the ground cells.
+/// Text entity drawing one object at its animated position.
 #[derive(Component, Clone, Copy)]
 pub(super) struct ObjectSprite {
     position: Vec2,
@@ -58,6 +59,7 @@ impl Plugin for TextRendererPlugin {
             .add_systems(
                 Update,
                 (
+                    cycle_motion,
                     flush_cells,
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
@@ -201,7 +203,7 @@ fn spawn_object_sprites(world: &mut World) {
             .spawn((
                 // Hidden until the placement pass fills in the glyph this frame.
                 ObjectSprite {
-                    position: object.pos.as_vec2(),
+                    position: object.position,
                     depth: object.cell.depth,
                     shown: false,
                 },
@@ -214,7 +216,7 @@ fn spawn_object_sprites(world: &mut World) {
                 },
                 TextColor(palette_color(object.cell.color)),
                 Transform::from_translation(
-                    grid_to_world_f(object.pos.as_vec2(), width, height) + Vec3::Z,
+                    grid_to_world_f(object.position, width, height) + Vec3::Z,
                 ),
                 Visibility::Hidden,
             ))
@@ -226,7 +228,7 @@ fn spawn_object_sprites(world: &mut World) {
     }
 }
 
-/// Draws one text sprite per visible object on its cell.
+/// Draws one text sprite per visible object at its animated position.
 pub(super) fn place_object_sprites(
     grid: Res<MapGrid>,
     buffers: Res<RenderBuffers>,
@@ -262,7 +264,7 @@ pub(super) fn place_object_sprites(
         };
         drawn.clear();
         push_glyph(&mut drawn, object.cell.ch, billboards);
-        sprite.position = object.pos.as_vec2();
+        sprite.position = object.position;
         sprite.depth = object.cell.depth;
         sprite.shown = true;
         if text.0 != *drawn {
@@ -295,12 +297,22 @@ pub(super) fn place_object_sprites(
     }
 }
 
+/// M cycles through the motion presets.
+fn cycle_motion(keys: Option<Res<ButtonInput<KeyCode>>>, motion: Option<ResMut<MotionStyle>>) {
+    if let Some(mut motion) = motion {
+        if keys.is_some_and(|keys| keys.just_pressed(KeyCode::KeyM)) {
+            *motion = motion.next();
+        }
+    }
+}
+
 /// Objects draw above the ground cells, deeper glyphs on top.
 fn object_translation(sprite: &ObjectSprite, grid: &MapGrid) -> Vec3 {
     grid_to_world_f(sprite.position, grid.width, grid.height)
         + Vec3::Z * (1.0 + sprite.depth as f32 * 0.1)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_hud(
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
@@ -308,6 +320,7 @@ fn update_hud(
     players: Query<(&Pos, &Tokens), With<Player>>,
     enemies: Query<Entity, (With<Enemy>, Without<DestroyRequested>)>,
     collisions: Res<CollisionBuffer>,
+    motion: Option<Res<MotionStyle>>,
     mut hud: Query<&mut Text, With<HudText>>,
 ) {
     let (position, tokens) = players
@@ -319,12 +332,13 @@ fn update_hud(
         text.0.clear();
         write!(
             text.0,
-            "PavEcsGame Lite Bevy port | arrows/WASD{}\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | enemies {} | bumps {}",
+            "PavEcsGame Lite Bevy port | arrows/WASD{} | M motion: {}\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | enemies {} | bumps {}",
             if extruded_walls.is_some() {
                 " | Q/E orbit | wheel zoom"
             } else {
                 ""
             },
+            motion.as_ref().map_or("off", |motion| motion.name()),
             turn.tick,
             turn.phase_name(),
             grid.width,
@@ -358,6 +372,7 @@ mod tests {
     use bevy::time::TimeUpdateStrategy;
 
     use super::*;
+    use crate::animation::ObjectAnimationPlugin;
     use crate::app::GamePlugin;
 
     fn player_sprite(app: &mut App) -> (IVec2, Vec2) {
@@ -372,7 +387,7 @@ mod tests {
         (pos, sprite.position())
     }
 
-    fn boot() -> App {
+    fn boot(animated: bool) -> App {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .init_resource::<ButtonInput<KeyCode>>()
@@ -380,6 +395,9 @@ mod tests {
                 16,
             )))
             .add_plugins((GamePlugin, TextRendererPlugin));
+        if animated {
+            app.add_plugins(ObjectAnimationPlugin);
+        }
         for _ in 0..64 {
             app.update();
         }
@@ -397,10 +415,29 @@ mod tests {
     }
 
     #[test]
-    fn object_sprites_sit_on_their_cells() {
-        let mut app = boot();
-        let (start, shown) = player_sprite(&mut app);
-        assert_eq!(shown, start.as_vec2());
+    fn player_sprite_follows_the_animation() {
+        let mut app = boot(true);
+        let (start, at_rest) = player_sprite(&mut app);
+        assert_eq!(at_rest, start.as_vec2());
+
+        step_right(&mut app);
+        let (moved, gliding) = player_sprite(&mut app);
+        assert_eq!(moved, start + IVec2::X);
+        assert!(
+            gliding.x > start.x as f32 && gliding.x < moved.x as f32,
+            "sprite should be between cells, was {gliding}"
+        );
+
+        // Enemies keep taking turns, but the player's sprite comes to rest.
+        for _ in 0..60 {
+            app.update();
+        }
+        assert_eq!(player_sprite(&mut app).1, moved.as_vec2());
+    }
+
+    #[test]
+    fn sprites_sit_on_their_cells_without_animation() {
+        let mut app = boot(false);
         step_right(&mut app);
         let (moved, shown) = player_sprite(&mut app);
         assert_eq!(shown, moved.as_vec2());

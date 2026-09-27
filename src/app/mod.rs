@@ -36,6 +36,7 @@ impl Plugin for GamePlugin {
                 GamePhase::FieldOfView,
                 GamePhase::Lighting,
                 GamePhase::Visibility,
+                GamePhase::Animation,
                 GamePhase::Presentation,
                 GamePhase::Output,
                 GamePhase::Finalize,
