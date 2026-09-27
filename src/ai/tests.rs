@@ -46,10 +46,21 @@ fn act_of(app: &App, enemy: Entity) -> Option<EnemyAct> {
     app.world().get::<EnemyAct>(enemy).copied()
 }
 
+fn is_idle(act: Option<EnemyAct>) -> bool {
+    matches!(act, Some(EnemyAct::Patrol(_) | EnemyAct::Rest))
+}
+
+// Nothing spends tokens in this app, so every update is another turn.
+
 #[test]
-fn a_visible_player_is_hunted() {
+fn a_sighting_freezes_for_a_beat_then_hunts() {
     let mut app = headless();
     let enemy = spawn_enemy(&mut app, 1);
+    app.update();
+    assert_eq!(act_of(&app, enemy), Some(EnemyAct::Alert));
+    let command = app.world().get::<MoveCommand>(enemy).unwrap();
+    assert!(command.active && command.target == IVec2::ZERO);
+
     app.update();
     assert_eq!(act_of(&app, enemy), Some(EnemyAct::Hunt(IVec2::X)));
     let command = app.world().get::<MoveCommand>(enemy).unwrap();
@@ -62,14 +73,17 @@ fn a_wall_between_hides_the_player() {
     let mut app = headless();
     wall_at(&mut app, IVec2::new(3, 1));
     let enemy = spawn_enemy(&mut app, 1);
-    app.update();
-    assert!(matches!(act_of(&app, enemy), Some(EnemyAct::Wander(_))));
+    for _ in 0..10 {
+        app.update();
+        assert!(is_idle(act_of(&app, enemy)), "{:?}", act_of(&app, enemy));
+    }
 }
 
 #[test]
-fn a_lost_player_is_searched_for_where_last_seen() {
+fn a_lost_player_is_searched_for_without_a_second_alert() {
     let mut app = headless();
     let enemy = spawn_enemy(&mut app, 1);
+    app.update();
     app.update();
     wall_at(&mut app, IVec2::new(3, 1));
     app.update();
@@ -78,6 +92,18 @@ fn a_lost_player_is_searched_for_where_last_seen() {
         app.world().get::<EnemyMind>(enemy).unwrap().last_seen,
         Some(PLAYER)
     );
+}
+
+#[test]
+fn a_walled_off_search_is_given_up() {
+    let mut app = headless();
+    let enemy = spawn_enemy(&mut app, 1);
+    app.update();
+    // The only step toward the last sighting is now a wall.
+    wall_at(&mut app, ENEMY + IVec2::X);
+    app.update();
+    assert!(is_idle(act_of(&app, enemy)), "{:?}", act_of(&app, enemy));
+    assert_eq!(app.world().get::<EnemyMind>(enemy).unwrap().last_seen, None);
 }
 
 #[test]

@@ -2,10 +2,8 @@ use bevy::prelude::*;
 use rand::RngExt;
 
 use crate::foundation::line::line_clear;
+use crate::lighting::{DARK_RED, DARK_YELLOW, RED, YELLOW};
 use crate::model::*;
-
-/// Random-walk choices, `ZERO` waiting a turn.
-const WANDER: [IVec2; 5] = [IVec2::ZERO, IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y];
 
 /// Fill each enemy's blackboard for this frame's tick.
 ///
@@ -51,7 +49,7 @@ pub fn perceive(
                     .get(at)
                     .is_none_or(|occupant| Some(occupant) == player_entity);
         }
-        mind.roll = WANDER[rng.0.random_range(0..WANDER.len())];
+        mind.seed = rng.0.random();
     }
 }
 
@@ -64,5 +62,25 @@ pub fn carry_out(mut enemies: Query<(&EnemyAct, &EnemyMind, &mut MoveCommand)>) 
         command.target = act.step();
         command.relative = true;
         command.active = true;
+    }
+}
+
+/// Show what each enemy is up to: color by mood, `!` on the alert beat.
+///
+/// Runs after `direction_tiles`, which rewrites the glyph from facing.
+pub fn show_mood(mut enemies: Query<(&EnemyAct, &mut Glyph)>) {
+    for (act, mut glyph) in enemies.iter_mut() {
+        let color = match act {
+            EnemyAct::Alert => YELLOW,
+            EnemyAct::Hunt(_) | EnemyAct::Attack(_) | EnemyAct::Hold => RED,
+            EnemyAct::Search(_) => DARK_YELLOW,
+            EnemyAct::Patrol(_) | EnemyAct::Rest => DARK_RED,
+        };
+        let mut shown = *glyph;
+        shown.color = color;
+        if *act == EnemyAct::Alert {
+            shown.ch = '!';
+        }
+        glyph.set_if_neq(shown);
     }
 }

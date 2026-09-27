@@ -21,11 +21,35 @@ pub struct EnemyMind {
     pub last_seen: Option<IVec2>,
     /// Neighbours free to step into (empty or the player), indexed like `STEPS`.
     pub open: [bool; 4],
-    /// A random-walk step rolled for this turn, `ZERO` to wait.
-    pub roll: IVec2,
+    /// Random state for the tree, reseeded from the shared RNG each turn.
+    pub seed: u32,
 }
 
 impl EnemyMind {
+    /// Aware of the player: seen now, or seen and not yet searched for.
+    pub fn aware(&self) -> bool {
+        self.last_seen.is_some()
+    }
+
+    pub fn sees_player(&self) -> bool {
+        self.player.is_some()
+    }
+
+    pub fn next_to_player(&self) -> bool {
+        self.player
+            .is_some_and(|player| (player - self.pos).abs().element_sum() == 1)
+    }
+
+    /// Xorshift over `seed`, so the tree draws without touching the world.
+    pub fn next_random(&mut self) -> u32 {
+        let mut x = self.seed.max(1);
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        self.seed = x;
+        x
+    }
+
     /// One open step that closes the distance to `target`, preferring the
     /// longer axis, or `None` when neither closing step is open.
     pub fn step_toward(&self, target: IVec2) -> Option<IVec2> {
@@ -50,24 +74,33 @@ impl EnemyMind {
     }
 }
 
-/// What an enemy is doing: one step per turn, tagged with why.
+/// What an enemy is doing this turn, and why.
 ///
 /// Present only while the enemy's tree is running. `ai::carry_out` turns it
-/// into a `MoveCommand`; the reason is kept for presentation and debugging.
+/// into a `MoveCommand`; `ai::show_mood` into the enemy's glyph.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EnemyAct {
+    /// Just noticed the player: freezes for a beat.
+    Alert,
     /// Closing on the visible player.
     Hunt(IVec2),
+    /// Bumping into the adjacent player.
+    Attack(IVec2),
+    /// Player in sight but no step closes in.
+    Hold,
     /// Heading to where the player was last seen.
     Search(IVec2),
-    /// Random walk; `ZERO` waits.
-    Wander(IVec2),
+    /// Idle: walking a straight stretch.
+    Patrol(IVec2),
+    /// Idle: standing still for a while.
+    Rest,
 }
 
 impl EnemyAct {
     pub fn step(self) -> IVec2 {
         match self {
-            Self::Hunt(step) | Self::Search(step) | Self::Wander(step) => step,
+            Self::Hunt(step) | Self::Attack(step) | Self::Search(step) | Self::Patrol(step) => step,
+            Self::Alert | Self::Hold | Self::Rest => IVec2::ZERO,
         }
     }
 }

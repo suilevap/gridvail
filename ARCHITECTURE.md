@@ -35,7 +35,8 @@ and renderers must not import it.
 - `ai/` decides enemy commands with FlatBT behavior trees inside
   `SimulationStep::Decide`, between player input and movement. `perceive`
   fills the `EnemyMind` blackboard, the tree reports an `EnemyAct`, and
-  `carry_out` writes the ordinary `MoveCommand`. Trees never mutate the world,
+  `carry_out` writes the ordinary `MoveCommand`; `show_mood` recolors the
+  enemy glyph from the act after tiles are derived. Trees never mutate the world,
   so enemies share the player's token and collision rules. Out-of-turn enemies
   are skipped with `Tick::Skip`, not guarded inside the tree.
 - `vision/` converts sensors and blocker state into cached FOV and visibility

@@ -35,10 +35,12 @@ next to this file.
 ## Deliberate deviations (all commented at the site)
 
 - Enemies run a [FlatBT](https://github.com/suilevap/flatbt) behavior tree
-  instead of the original pure random walk: hunt the player within 8 cells
-  and a clear line, else search where it was last seen, else wander. The
-  tree only reports an `EnemyAct`; `ai::carry_out` turns it into the same
-  token-gated `MoveCommand` the player uses.
+  instead of the original pure random walk. Unaware, they patrol straight
+  stretches and rest. On spotting the player within 8 cells and a clear
+  line they freeze for a beat (a yellow `!`), then hunt and attack, search
+  where it was last seen, and give up when it gets away. The tree only
+  reports an `EnemyAct`; `ai::carry_out` turns it into the same token-gated
+  `MoveCommand` the player uses, and `ai::show_mood` colors the enemy by it.
 
 - One Bevy `World` + resources instead of `EcsUniverse` type-worlds.
 - `TileSystem` computes masks two-phased; the original mutates neighbour
@@ -98,14 +100,14 @@ direction, and where new foundational versus game-specific code belongs.
 ```sh
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
-cargo test   # 55 tests, including allocation and independent C# comparisons
+cargo test   # 57 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
 ```
 
-The last command prints each enemy scenario turn by turn: `H` hunting, `S`
-searching, `w` wandering.
+The last command prints each enemy scenario turn by turn: `!` alert, `H`
+hunting, `A` attacking, `S` searching, `p` patrolling, `z` resting.
 
 The debug performance panel is visible by default and toggles with `F3`. It
 shows smoothed FPS/frame time, process and system CPU/RAM, entity count, text

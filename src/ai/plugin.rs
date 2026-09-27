@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use flatbt_bevy::prelude::*;
 
-use crate::schedule::SimulationStep;
+use crate::schedule::{GamePhase, SimulationStep};
 
 use super::*;
 
@@ -21,6 +21,12 @@ impl Plugin for AiPlugin {
                     carry_out.after(BehaviorSystems),
                 )
                     .in_set(SimulationStep::Decide),
+            )
+            .add_systems(
+                Update,
+                show_mood
+                    .after(SimulationStep::Resolve)
+                    .in_set(GamePhase::Simulation),
             );
     }
 }

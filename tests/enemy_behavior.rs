@@ -2,11 +2,13 @@
 //! maps: real turns, tokens, line of sight, and collision resolution.
 //!
 //! Each scenario records one snapshot per turn. Set `ENEMY_TRACE=1` to print
-//! them as maps: `H` hunting, `S` searching, `w` wandering, `@` the player.
+//! them as maps: `!` alert, `H` hunting, `A` attacking, `h` holding, `S`
+//! searching, `p` patrolling, `z` resting, `@` the player.
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
+use pav_ecs_game_bevy_port::lighting::YELLOW;
 use pav_ecs_game_bevy_port::model::*;
 use std::time::Duration;
 
@@ -161,9 +163,13 @@ impl Game {
             let mut acts = Vec::new();
             for &(_, pos, act) in &snap.enemies {
                 let glyph = match act {
+                    Some(EnemyAct::Alert) => '!',
                     Some(EnemyAct::Hunt(_)) => 'H',
+                    Some(EnemyAct::Attack(_)) => 'A',
+                    Some(EnemyAct::Hold) => 'h',
                     Some(EnemyAct::Search(_)) => 'S',
-                    Some(EnemyAct::Wander(_)) => 'w',
+                    Some(EnemyAct::Patrol(_)) => 'p',
+                    Some(EnemyAct::Rest) => 'z',
                     None => 'e',
                 };
                 put(pos, glyph);
@@ -181,49 +187,73 @@ fn manhattan(a: IVec2, b: IVec2) -> i32 {
     (a - b).abs().element_sum()
 }
 
+fn is_idle(act: Option<EnemyAct>) -> bool {
+    matches!(act, Some(EnemyAct::Patrol(_) | EnemyAct::Rest))
+}
+
+fn acts(game: &Game) -> Vec<Option<EnemyAct>> {
+    game.trace.iter().map(|s| s.enemies[0].2).collect()
+}
+
 #[test]
-fn a_visible_player_is_chased_down_and_bumped() {
+fn a_sighting_freezes_the_enemy_then_it_chases_and_attacks() {
     let mut game = Game::new(
         "XXXXXXXXXXXX\n\
          Xp......e..X\n\
          XXXXXXXXXXXX\n",
     );
-    game.turns(8);
-    game.print("chase down a corridor");
-
-    // One step closer every turn until adjacent, hunting all the way.
+    // The alert beat: standing still, shown as a yellow `!`.
     let player = game.trace[0].player;
-    for turn in 0..game.trace.len() {
+    assert_eq!(game.enemy(0), (IVec2::new(8, 1), Some(EnemyAct::Alert)));
+    let world = game.app.world_mut();
+    let glyph = *world
+        .query_filtered::<&Glyph, With<Enemy>>()
+        .single(world)
+        .unwrap();
+    assert_eq!((glyph.ch, glyph.color), ('!', YELLOW));
+
+    game.turns(9);
+    game.print("alert, chase, attack");
+    // Then one step closer every turn, and bumps once adjacent.
+    for turn in 1..game.trace.len() {
         let (pos, act) = game.enemy(turn);
-        assert!(
-            matches!(act, Some(EnemyAct::Hunt(_))),
-            "turn {turn}: {act:?}"
-        );
-        let expected = (6 - turn as i32).max(1);
-        assert_eq!(manhattan(pos, player), expected, "turn {turn}");
+        let before = manhattan(game.trace[turn - 1].enemies[0].1, player);
+        let expected = if before == 1 {
+            EnemyAct::Attack(IVec2::NEG_X)
+        } else {
+            EnemyAct::Hunt(IVec2::NEG_X)
+        };
+        assert_eq!(act, Some(expected), "turn {turn}");
+        assert_eq!(manhattan(pos, player), (before - 1).max(1), "turn {turn}");
     }
-    // Adjacent: it keeps pressing into the player, which is a recorded bump.
     let enemy = game.trace[0].enemies[0].0;
     assert!(game.collided(enemy, true));
 }
 
 #[test]
-fn a_wall_hides_the_player() {
+fn an_unaware_enemy_patrols_and_rests() {
     let mut game = Game::new(
-        "XXXXXXXXXXX\n\
-         Xp...X...eX\n\
-         X....X....X\n\
-         XXXXXXXXXXX\n",
+        "XXXXXXXXXXXXX\n\
+         Xp...X......X\n\
+         X....X......X\n\
+         X....X...e..X\n\
+         X....X......X\n\
+         XXXXXXXXXXXXX\n",
     );
-    game.turns(12);
-    game.print("wall between");
-    for turn in 0..game.trace.len() {
-        let (_, act) = game.enemy(turn);
-        assert!(
-            matches!(act, Some(EnemyAct::Wander(_))),
-            "turn {turn}: {act:?}"
-        );
-    }
+    game.turns(30);
+    game.print("idle behind a wall");
+    let acts = acts(&game);
+    assert!(acts.iter().all(|&a| is_idle(a)), "{acts:?}");
+    // Patrols are straight stretches, not a jitter: some last several turns.
+    let longest = acts
+        .windows(3)
+        .filter(|w| matches!(w[0], Some(EnemyAct::Patrol(_))) && w[0] == w[1] && w[1] == w[2])
+        .count();
+    assert!(longest > 0, "no patrol held its direction: {acts:?}");
+    assert!(
+        acts.contains(&Some(EnemyAct::Rest)),
+        "never rested: {acts:?}"
+    );
 }
 
 #[test]
@@ -234,9 +264,9 @@ fn a_distant_player_is_not_noticed() {
          Xp.........e.X\n\
          XXXXXXXXXXXXXX\n",
     );
-    let (_, act) = game.enemy(0);
-    assert!(matches!(act, Some(EnemyAct::Wander(_))), "{act:?}");
     game.print("out of range");
+    let (_, act) = game.enemy(0);
+    assert!(is_idle(act), "{act:?}");
 }
 
 #[test]
@@ -249,33 +279,52 @@ fn a_player_ducking_out_of_sight_is_searched_for_then_found() {
          X........X\n\
          XXXXXXXXXX\n",
     );
-    let (_, first) = game.enemy(0);
-    assert!(matches!(first, Some(EnemyAct::Hunt(_))), "{first:?}");
-    let seen_at = game.trace[0].player;
-
-    // Step left, then down out of the row, then wait.
     game.turn(Some(KeyCode::ArrowLeft));
     game.turn(Some(KeyCode::ArrowDown));
     game.turns(8);
     game.print("duck out of sight");
 
-    let acts: Vec<_> = game.trace.iter().map(|s| s.enemies[0].2).collect();
+    let acts = acts(&game);
+    assert_eq!(acts[0], Some(EnemyAct::Alert));
     let searched = acts
         .iter()
         .position(|a| matches!(a, Some(EnemyAct::Search(_))))
         .expect("never searched");
-    // Searching heads for the last sighting, not the hidden player.
-    let (_, Some(EnemyAct::Search(step))) = game.enemy(searched) else {
-        unreachable!()
-    };
-    assert_eq!(step, IVec2::NEG_X);
-    assert!(game.trace[searched].enemies[0].1.x > seen_at.x - 1);
-    // Reaching the corner brings the player back into sight.
+    assert_eq!(acts[searched], Some(EnemyAct::Search(IVec2::NEG_X)));
+    let found = acts[searched..]
+        .iter()
+        .any(|a| matches!(a, Some(EnemyAct::Hunt(_) | EnemyAct::Attack(_))));
+    assert!(found, "never found the player again: {acts:?}");
+    // One pursuit, one alert: re-sighting mid-chase does not freeze it again.
+    let alerts = acts.iter().filter(|&&a| a == Some(EnemyAct::Alert)).count();
+    assert_eq!(alerts, 1, "{acts:?}");
+}
+
+#[test]
+fn a_player_who_gets_away_is_given_up_on() {
+    // The player slips down the left shaft and along the bottom corridor,
+    // out of any line from the row where it was last seen.
+    let mut game = Game::new(
+        "XXXXXXXXXXXX\n\
+         X.p......e.X\n\
+         X.XXXXXXXXXX\n\
+         X.XXXXXXXXXX\n\
+         X..........X\n\
+         XXXXXXXXXXXX\n",
+    );
+    use KeyCode::{ArrowDown as D, ArrowLeft as L, ArrowRight as R};
+    for key in [L, D, D, D, R, R, R, R, R, R, R, R] {
+        game.turn(Some(key));
+    }
+    game.print("gets away");
+    let acts = acts(&game);
+    let searched = acts
+        .iter()
+        .position(|a| matches!(a, Some(EnemyAct::Search(_))))
+        .expect("never searched");
     assert!(
-        acts[searched..]
-            .iter()
-            .any(|a| matches!(a, Some(EnemyAct::Hunt(_)))),
-        "never found the player again: {acts:?}"
+        acts[searched..].iter().any(|&a| is_idle(a)),
+        "never gave up: {acts:?}"
     );
 }
 
@@ -292,9 +341,9 @@ fn chasers_step_around_each_other() {
     game.turns(10);
     game.print("three chasers");
     let last = game.trace.last().unwrap();
-    // Nobody queues behind an ally: each steps around and ends up adjacent.
+    // Nobody queues behind an ally: each steps around and ends up attacking.
     for &(_, pos, act) in &last.enemies {
-        assert!(matches!(act, Some(EnemyAct::Hunt(_))), "{act:?}");
+        assert!(matches!(act, Some(EnemyAct::Attack(_))), "{act:?}");
         assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
     }
 }
