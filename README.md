@@ -90,7 +90,7 @@ direction, and where new foundational versus game-specific code belongs.
 ```sh
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
-cargo test   # 43 tests, including allocation and independent C# comparisons
+cargo test   # 45 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```

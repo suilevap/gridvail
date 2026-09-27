@@ -6,6 +6,7 @@
 use bevy::{
     asset::RenderAssetUsages,
     camera::ClearColorConfig,
+    ecs::entity::EntityHashMap,
     image::ImageSampler,
     input::mouse::MouseWheel,
     mesh::VertexAttributeValues,
@@ -21,7 +22,7 @@ use crate::presentation::DynamicLight;
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::Rules;
 
-use super::text::{grid_to_world, MapCell, CELL_SIZE};
+use super::text::{grid_to_world, grid_to_world_f, MapCell, ObjectSprite, CELL_SIZE};
 
 const WALL_STROKE: f32 = 3.5;
 const WALL_HEIGHT: f32 = 16.0;
@@ -77,22 +78,21 @@ impl Plugin for ExtrudedWallRendererPlugin {
                 Update,
                 (move_camera, sync_walls, sync_floors, project_text_cells)
                     .chain()
-                    .in_set(GamePhase::Output),
+                    .in_set(GamePhase::Output)
+                    .after(super::text::place_object_sprites),
             );
     }
 }
 
+/// Wall objects drawn as meshes, with the glyph each mesh replaces.
 #[derive(Resource)]
-pub(super) struct ExtrudedWallCells {
-    symbols: Vec<char>,
+pub(super) struct ExtrudedWalls {
+    symbols: EntityHashMap<char>,
 }
 
-impl ExtrudedWallCells {
-    pub(super) fn symbol_at(&self, index: usize) -> Option<char> {
-        self.symbols
-            .get(index)
-            .copied()
-            .filter(|symbol| *symbol != '\0')
+impl ExtrudedWalls {
+    pub(super) fn symbol_of(&self, object: Entity) -> Option<char> {
+        self.symbols.get(&object).copied()
     }
 }
 
@@ -112,9 +112,10 @@ struct CameraRig {
     distance: f32,
 }
 
+/// Mesh for one wall object; it follows the object wherever it is shown.
 #[derive(Component)]
 struct ExtrudedWall {
-    cell_index: usize,
+    source: Entity,
     symbol: char,
 }
 
@@ -126,7 +127,7 @@ fn setup(
     mut commands: Commands,
     grid: Res<MapGrid>,
     rules: Res<Rules>,
-    walls: Query<(&Pos, &Glyph), With<Wall>>,
+    walls: Query<(Entity, &Pos, &Glyph), With<Wall>>,
     player: Single<&Pos, With<Player>>,
     mut cameras_2d: Query<(&mut Camera, &mut Projection), With<Camera2d>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -213,8 +214,8 @@ fn setup(
         Transform::from_xyz(0.0, 0.0, -(FLOOR_DEPTH * 0.5 + 0.05)),
     ));
 
-    let mut wall_cells = vec!['\0'; (grid.width * grid.height) as usize];
-    for (position, glyph) in &walls {
+    let mut symbols = EntityHashMap::default();
+    for (source, position, glyph) in &walls {
         let Some(mask) = rules
             .wall
             .symbols
@@ -223,13 +224,10 @@ fn setup(
         else {
             continue;
         };
-        let Some(cell_index) = grid.idx(position.0) else {
-            continue;
-        };
-        wall_cells[cell_index] = glyph.ch;
+        symbols.insert(source, glyph.ch);
         commands.spawn((
             ExtrudedWall {
-                cell_index,
+                source,
                 symbol: glyph.ch,
             },
             Mesh3d(wall_meshes[mask].clone()),
@@ -239,9 +237,7 @@ fn setup(
         ));
     }
 
-    commands.insert_resource(ExtrudedWallCells {
-        symbols: wall_cells,
-    });
+    commands.insert_resource(ExtrudedWalls { symbols });
     commands.insert_resource(WallMaterials(wall_materials));
     commands.insert_resource(FloorTexture {
         handle: light_map,
@@ -288,21 +284,24 @@ fn camera_transform(rig: &CameraRig) -> Transform {
 }
 
 fn sync_walls(
+    grid: Res<MapGrid>,
     buffers: Res<RenderBuffers>,
     materials: Res<WallMaterials>,
+    sources: Query<&Pos>,
     mut walls: Query<(
         &ExtrudedWall,
         &mut MeshMaterial3d<DungeonMaterial>,
+        &mut Transform,
         &mut Visibility,
     )>,
 ) {
-    for (wall, mut material, mut visibility) in &mut walls {
-        let cell = buffers.current[wall.cell_index];
-        if cell == buffers.previous[wall.cell_index] {
-            continue;
-        }
-        let visible = cell.ch == wall.symbol;
-        let desired_visibility = if visible {
+    for (wall, mut material, mut transform, mut visibility) in &mut walls {
+        // A wall shows while its object wins its cell in the frame.
+        let shown = sources.get(wall.source).ok().and_then(|pos| {
+            let cell = buffers.current[buffers.idx(pos.0)?];
+            (cell.ch == wall.symbol).then_some((cell.color, pos.0))
+        });
+        let desired_visibility = if shown.is_some() {
             Visibility::Visible
         } else {
             Visibility::Hidden
@@ -310,11 +309,16 @@ fn sync_walls(
         if *visibility != desired_visibility {
             *visibility = desired_visibility;
         }
-        if visible {
-            let desired = &materials.0[cell.color.min((PALETTE_SIZE - 1) as u8) as usize];
-            if material.0 != *desired {
-                material.0 = desired.clone();
-            }
+        let Some((color, cell)) = shown else {
+            continue;
+        };
+        let desired = &materials.0[color.min((PALETTE_SIZE - 1) as u8) as usize];
+        if material.0 != *desired {
+            material.0 = desired.clone();
+        }
+        let translation = grid_to_world(cell, grid.width, grid.height);
+        if transform.translation != translation {
+            transform.translation = translation;
         }
     }
 }
@@ -365,8 +369,18 @@ fn project_text_cells(
     camera_3d: Single<(&Camera, &Transform), With<WallCamera>>,
     camera_2d: Single<(&Camera, &Transform), (With<Camera2d>, Without<WallCamera>)>,
     mut cells: Query<
-        (&MapCell, &Text2d, &mut Transform, &mut Visibility),
-        (Without<WallCamera>, Without<Camera2d>),
+        (
+            Option<&MapCell>,
+            Option<&ObjectSprite>,
+            &Text2d,
+            &mut Transform,
+            &mut Visibility,
+        ),
+        (
+            Or<(With<MapCell>, With<ObjectSprite>)>,
+            Without<WallCamera>,
+            Without<Camera2d>,
+        ),
     >,
 ) {
     let (perspective, perspective_transform) = *camera_3d;
@@ -374,14 +388,20 @@ fn project_text_cells(
     let perspective_global = GlobalTransform::from(*perspective_transform);
     let overlay_global = GlobalTransform::from(*overlay_transform);
 
-    for (cell, text, mut transform, mut visibility) in &mut cells {
+    for (cell, object, text, mut transform, mut visibility) in &mut cells {
+        let position = match (cell, object) {
+            (Some(cell), _) => cell.0.as_vec2(),
+            // Hidden objects keep the visibility set by the text renderer.
+            (None, Some(object)) if object.shown => object.position(),
+            _ => continue,
+        };
         let is_billboard = text.0.contains('\n');
         let height = if is_billboard {
             BILLBOARD_CENTER_HEIGHT
         } else {
             1.0
         };
-        let ground = grid_to_world(cell.0, grid.width, grid.height) + Vec3::Z * height;
+        let ground = grid_to_world_f(position, grid.width, grid.height) + Vec3::Z * height;
         let Ok(viewport) = perspective.world_to_viewport(&perspective_global, ground) else {
             if *visibility != Visibility::Hidden {
                 *visibility = Visibility::Hidden;

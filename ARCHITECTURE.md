@@ -38,9 +38,13 @@ and renderers must not import it.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `presentation/` builds light maps and renderer-neutral composed cell frames.
+  Renderers draw each frame as two layers: `ground` (per-cell floor and fog,
+  blank under objects) and `objects` (every visible glyph entity), so any
+  object can be drawn and moved on its own.
   `PresentationPlugin` owns those systems and all map-sized frame resources.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
-  the font, `Text2d` cells, HUD, and writes changed composed cells. The optional
+  the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object.
+  Wall meshes in the 3D backend follow their objects the same way. The optional
   `ExtrudedWallRendererPlugin` adds a perspective camera plus shared wall and
   floor meshes beneath that text layer. A small GPU texture carries the same
   visibility and CPU-light results to the procedural floor shader.
