@@ -22,12 +22,30 @@ pub struct RenderCell {
     pub depth: u8,
 }
 
+/// A visible glyph entity (wall, lamp, actor...), drawn by renderers on its
+/// own, above the ground.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ObjectCell {
+    pub entity: Entity,
+    pub pos: IVec2,
+    pub cell: RenderCell,
+}
+
+/// Composed frame.
+///
+/// `current` is the flat cell view with every visible glyph. Renderers draw
+/// it as two layers instead: `ground` holds only what belongs to cells (the
+/// floor and the fog edge, blank under objects) and `objects` lists every
+/// visible glyph entity, each of which may be anywhere between cells.
 #[derive(Resource, Debug)]
 pub struct RenderBuffers {
     pub width: i32,
     pub height: i32,
     pub current: Vec<RenderCell>,
     pub previous: Vec<RenderCell>,
+    pub ground: Vec<RenderCell>,
+    pub previous_ground: Vec<RenderCell>,
+    pub objects: Vec<ObjectCell>,
 }
 
 impl RenderBuffers {
@@ -40,6 +58,9 @@ impl RenderBuffers {
             height,
             current: vec![RenderCell::default(); n],
             previous: vec![RenderCell::default(); n],
+            ground: vec![RenderCell::default(); n],
+            previous_ground: vec![RenderCell::default(); n],
+            objects: Vec::with_capacity(n),
         }
     }
 
@@ -50,6 +71,7 @@ impl RenderBuffers {
 
     pub fn swap(&mut self) {
         std::mem::swap(&mut self.current, &mut self.previous);
+        std::mem::swap(&mut self.ground, &mut self.previous_ground);
     }
 }
 
