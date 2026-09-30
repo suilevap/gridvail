@@ -126,5 +126,6 @@ fn every_glyph_entity_is_an_object_above_the_ground() {
     for object in &buffers.objects {
         let index = buffers.idx(object.pos).unwrap();
         assert_eq!(object.cell.color, buffers.current[index].color);
+        assert_eq!(object.position, object.pos.as_vec2());
     }
 }

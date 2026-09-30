@@ -6,6 +6,7 @@
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
+use pav_ecs_game_bevy_port::animation::ObjectAnimationPlugin;
 use pav_ecs_game_bevy_port::app::GamePlugin;
 use pav_ecs_game_bevy_port::model::{Player, Speed};
 use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
@@ -64,7 +65,7 @@ fn boot() -> App {
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
             16,
         )))
-        .add_plugins((GamePlugin, TextRendererPlugin));
+        .add_plugins((GamePlugin, ObjectAnimationPlugin, TextRendererPlugin));
     for _ in 0..256 {
         app.update();
     }

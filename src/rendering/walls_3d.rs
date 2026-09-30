@@ -17,7 +17,9 @@ use bevy::{
 };
 
 use crate::lighting::{light_to_palette, palette_color};
-use crate::model::{Glyph, MapGrid, Player, Pos, RenderBuffers, Vis, VisibilityMap, Wall};
+use crate::model::{
+    AnimatedPos, Glyph, MapGrid, Player, Pos, RenderBuffers, Vis, VisibilityMap, Wall,
+};
 use crate::presentation::DynamicLight;
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::Rules;
@@ -287,7 +289,7 @@ fn sync_walls(
     grid: Res<MapGrid>,
     buffers: Res<RenderBuffers>,
     materials: Res<WallMaterials>,
-    sources: Query<&Pos>,
+    sources: Query<(&Pos, Option<&AnimatedPos>)>,
     mut walls: Query<(
         &ExtrudedWall,
         &mut MeshMaterial3d<DungeonMaterial>,
@@ -297,9 +299,12 @@ fn sync_walls(
 ) {
     for (wall, mut material, mut transform, mut visibility) in &mut walls {
         // A wall shows while its object wins its cell in the frame.
-        let shown = sources.get(wall.source).ok().and_then(|pos| {
+        let shown = sources.get(wall.source).ok().and_then(|(pos, animated)| {
             let cell = buffers.current[buffers.idx(pos.0)?];
-            (cell.ch == wall.symbol).then_some((cell.color, pos.0))
+            (cell.ch == wall.symbol).then(|| {
+                let animated = animated.copied().unwrap_or(AnimatedPos::at(pos.0));
+                (cell.color, animated)
+            })
         });
         let desired_visibility = if shown.is_some() {
             Visibility::Visible
@@ -309,14 +314,14 @@ fn sync_walls(
         if *visibility != desired_visibility {
             *visibility = desired_visibility;
         }
-        let Some((color, cell)) = shown else {
+        let Some((color, animated)) = shown else {
             continue;
         };
         let desired = &materials.0[color.min((PALETTE_SIZE - 1) as u8) as usize];
         if material.0 != *desired {
             material.0 = desired.clone();
         }
-        let translation = grid_to_world(cell, grid.width, grid.height);
+        let translation = grid_to_world_f(animated.position, grid.width, grid.height);
         if transform.translation != translation {
             transform.translation = translation;
         }

@@ -90,10 +90,22 @@ direction, and where new foundational versus game-specific code belongs.
 ```sh
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
-cargo test   # 45 tests, including allocation and independent C# comparisons
+cargo run -- --motion overshoot   # motion style; M cycles it in game
+cargo test   # 55 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
+
+Every object glides when it moves (`animation::ObjectAnimationPlugin`,
+independent of the renderer): actors, and equally walls or decor that a
+level moves, by any number of cells at once. A longer move takes
+proportionally longer at the same speed; only a move across the wrapping
+map edge teleports. `--motion` picks the style: `ease-out` (default),
+`linear`, `ease-in-out`, `overshoot`, or `snap`. `M` cycles the styles at
+runtime. Code can insert
+a custom `animation::MotionStyle` (tween duration per cell and easing)
+before adding `ObjectAnimationPlugin`, and an `ObjectMotion` component
+overrides the style for one entity.
 
 The debug performance panel is visible by default and toggles with `F3`. It
 shows smoothed FPS/frame time, process and system CPU/RAM, entity count, text

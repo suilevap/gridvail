@@ -1,6 +1,7 @@
 //! PavEcsGame Lite Bevy port (library root; the window binary is thin).
 
 pub mod agent_api;
+pub mod animation;
 pub mod app;
 pub mod content;
 pub mod debug_ui;

@@ -4,10 +4,11 @@ use super::DynamicLight;
 use crate::lighting::{light_to_palette, DARK_RED};
 use crate::model::*;
 
+#[allow(clippy::type_complexity)]
 pub fn compose_frame(
     dynamic: Res<DynamicLight>,
     visibility: Query<&VisibilityMap, With<Player>>,
-    glyphs: Query<(Entity, &Pos, &Glyph, Option<&Speed>)>,
+    glyphs: Query<(Entity, &Pos, &Glyph, Option<&Speed>, Option<&AnimatedPos>)>,
     mut buffers: ResMut<RenderBuffers>,
 ) {
     let Ok(visibility) = visibility.single() else {
@@ -17,7 +18,7 @@ pub fn compose_frame(
     buffers.current.fill(RenderCell::default());
     buffers.objects.clear();
 
-    for (entity, pos, glyph, speed) in glyphs.iter() {
+    for (entity, pos, glyph, speed, shown) in glyphs.iter() {
         let Some(index) = buffers.idx(pos.0) else {
             continue;
         };
@@ -34,9 +35,11 @@ pub fn compose_frame(
             if current[index].depth <= glyph.depth {
                 current[index] = drawn;
             }
+            let shown = shown.copied().unwrap_or(AnimatedPos::at(pos.0));
             objects.push(ObjectCell {
                 entity,
                 pos: pos.0,
+                position: shown.position,
                 cell: drawn,
             });
         }

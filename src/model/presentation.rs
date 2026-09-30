@@ -23,11 +23,14 @@ pub struct RenderCell {
 }
 
 /// A visible glyph entity (wall, lamp, actor...), drawn by renderers on its
-/// own, above the ground.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// own, above the ground, where the animation step shows it.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ObjectCell {
     pub entity: Entity,
+    /// Logical cell.
     pub pos: IVec2,
+    /// Shown position in fractional cells; `pos` when nothing animates it.
+    pub position: Vec2,
     pub cell: RenderCell,
 }
 

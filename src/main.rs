@@ -2,7 +2,8 @@
 //!
 //! Turn-based dungeon demo: token-gated movement, random-walk enemies,
 //! interval-based field of view, CPU lightmaps, autotiled walls, and a
-//! player-bound direction marker. Controls: arrows or WASD.
+//! player-bound direction marker. Controls: arrows or WASD; M cycles the
+//! motion style.
 
 use bevy::prelude::*;
 use bevy::{
@@ -14,6 +15,7 @@ use bevy::{
     },
 };
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
+use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
 use pav_ecs_game_bevy_port::app::GamePlugin;
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, TextRendererPlugin};
@@ -42,9 +44,10 @@ fn main() -> AppExit {
         .set(ImagePlugin::default_nearest());
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::BLACK))
+        .insert_resource(options.motion)
         .add_plugins(plugins)
         .add_plugins(GamePlugin)
-        .add_plugins(TextRendererPlugin);
+        .add_plugins((ObjectAnimationPlugin, TextRendererPlugin));
     if renderer == Renderer::Walls3d {
         app.add_plugins(ExtrudedWallRendererPlugin);
     }
@@ -77,6 +80,7 @@ struct Options {
     walk: String,
     remote_port: Option<u16>,
     renderer: Renderer,
+    motion: MotionStyle,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -92,6 +96,7 @@ impl Options {
         let mut walk = None;
         let mut remote_port = None;
         let mut renderer = None;
+        let mut motion = None;
         let mut args = std::env::args().skip(1);
         while let Some(argument) = args.next() {
             match argument.as_str() {
@@ -116,8 +121,16 @@ impl Options {
                         _ => panic!("--renderer must be text or 3d-walls"),
                     });
                 }
+                "--motion" if motion.is_none() => {
+                    let name = args.next().expect("--motion requires a style name");
+                    motion = Some(MotionStyle::from_name(&name).unwrap_or_else(|| {
+                        let names: Vec<_> =
+                            MotionStyle::PRESETS.iter().map(|(name, _)| *name).collect();
+                        panic!("--motion must be one of: {}", names.join(", "))
+                    }));
+                }
                 _ => panic!(
-                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--remote | --remote-port PORT] [--screenshot OUTPUT.png [--walk UDLR...]]"
+                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--motion STYLE] [--remote | --remote-port PORT] [--screenshot OUTPUT.png [--walk UDLR...]]"
                 ),
             }
         }
@@ -131,6 +144,7 @@ impl Options {
             walk,
             remote_port,
             renderer: renderer.unwrap_or_default(),
+            motion: motion.unwrap_or_default(),
         }
     }
 }
