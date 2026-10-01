@@ -98,7 +98,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test   # 77 tests, including allocation and independent C# comparisons
+cargo test   # 76 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
@@ -125,7 +125,9 @@ adding `ObjectAnimationPlugin`; an `ObjectMotion` component overrides the
 style for one entity, and a `MovePath` component gives its cell moves
 another path (an arc, say). Children bound to an object (`BoundTo`, such as
 the player's direction marker) ride on their parent's animation, hop
-included, and swing around it along the shorter arc when it turns.
+included: they animate their offset from the parent with the same moves,
+along an orbit around it, so a turn swings them around the parent along the
+shorter arc.
 
 The debug performance panel is visible by default and toggles with `F3`. It
 shows smoothed FPS/frame time, process and system CPU/RAM, entity count, text

@@ -176,8 +176,20 @@ impl MotionStyle {
         Self::PRESETS[index].1
     }
 
+    /// The same timing without locomotion's momentum, hop and coast: how
+    /// children move relative to their parent, which already provides those.
+    pub fn steady(self) -> Self {
+        match self {
+            Self::Locomotion { step, .. } => Self::Tween {
+                duration: step,
+                easing: Easing::EaseInOut,
+            },
+            other => other,
+        }
+    }
+
     /// Duration and easing of a one-cell move in this style.
-    pub(crate) fn timing(&self) -> (f32, Easing) {
+    fn timing(&self) -> (f32, Easing) {
         match *self {
             Self::Snap => (0.0, Easing::Linear),
             Self::Tween { duration, easing } => (duration, easing),
@@ -201,6 +213,11 @@ pub enum Path {
     /// tangent `m1` (cells per whole move), so consecutive moves join
     /// without a visible stop.
     Hermite { m0: Vec2, m1: Vec2 },
+    /// Around `center` along the shorter arc, blending the distance from it:
+    /// a child swinging around its parent when the parent turns. A half turn
+    /// goes through the positive angle, clockwise on screen (map y grows
+    /// downward). Moves that start or end on the center go straight.
+    Orbit { center: Vec2 },
 }
 
 impl Path {
@@ -218,6 +235,18 @@ impl Path {
                     + (s3 - 2.0 * s2 + s) * m0
                     + (-2.0 * s3 + 3.0 * s2) * to
                     + (s3 - s2) * m1
+            }
+            Self::Orbit { center } => {
+                let (start, end) = (from - center, to - center);
+                if start.length() < 1e-4 || end.length() < 1e-4 {
+                    return base;
+                }
+                let mut sweep = start.angle_to(end);
+                if sweep.abs() > std::f32::consts::PI - 1e-3 {
+                    sweep = std::f32::consts::PI;
+                }
+                let radius = start.length().lerp(end.length(), s);
+                center + Vec2::from_angle(start.to_angle() + sweep * s) * radius
             }
         }
     }
@@ -707,6 +736,63 @@ mod tests {
         );
         state.advance(0.1);
         assert_eq!(state.position, Vec2::new(2.0, 0.0));
+    }
+
+    /// Points along an orbit around the origin, sampled at 10 steps.
+    fn orbit(from: Vec2, to: Vec2) -> Vec<Vec2> {
+        (1..=10)
+            .map(|i| Path::Orbit { center: Vec2::ZERO }.sample(from, to, i as f32 / 10.0))
+            .collect()
+    }
+
+    #[test]
+    fn a_quarter_orbit_keeps_its_distance_and_takes_the_shorter_arc() {
+        let path = orbit(Vec2::X, Vec2::Y);
+        for point in &path {
+            assert!(
+                (point.length() - 1.0).abs() < 1e-4,
+                "left the circle: {point}"
+            );
+        }
+        assert!(
+            path.iter().any(|p| p.x > 0.5 && p.y > 0.5),
+            "went the long way"
+        );
+        assert!((*path.last().unwrap() - Vec2::Y).length() < 1e-5);
+    }
+
+    #[test]
+    fn a_half_orbit_goes_around_not_through_the_center() {
+        let path = orbit(Vec2::X, Vec2::NEG_X);
+        for point in &path {
+            assert!(point.length() > 0.99, "passed through the center: {point}");
+        }
+        // Clockwise on screen: through positive y (down) from the right.
+        assert!(path[4].y > 0.9, "{}", path[4]);
+    }
+
+    #[test]
+    fn orbits_blend_the_distance_and_fall_back_to_straight() {
+        let path = orbit(Vec2::X, Vec2::new(2.0, 0.0));
+        assert!(
+            (path[4] - Vec2::new(1.5, 0.0)).length() < 1e-5,
+            "{}",
+            path[4]
+        );
+        let through = Path::Orbit { center: Vec2::ZERO }.sample(Vec2::ZERO, Vec2::X, 0.5);
+        assert_eq!(through, Vec2::new(0.5, 0.0));
+    }
+
+    #[test]
+    fn steady_styles_drop_locomotion_extras() {
+        assert_eq!(
+            locomotion().steady(),
+            MotionStyle::Tween {
+                duration: STEP,
+                easing: Easing::EaseInOut
+            }
+        );
+        assert_eq!(ease_out().steady(), ease_out());
     }
 
     #[test]

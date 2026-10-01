@@ -5,9 +5,7 @@ use bevy::prelude::*;
 use crate::model::*;
 use crate::schedule::GamePhase;
 
-use super::{
-    animate_children, start_child_animation, MotionState, MotionStyle, MovePath, ObjectMotion,
-};
+use super::{animate_children, MotionState, MotionStyle, MovePath, ObjectMotion, Path};
 
 /// Marks an object whose animation never holds back the next turn, for
 /// decorative or ambient motion. Children (`BoundTo`, such as the player's
@@ -32,7 +30,6 @@ impl Plugin for ObjectAnimationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MotionStyle>()
             .add_observer(start_animation)
-            .add_observer(start_child_animation)
             .add_systems(
                 Update,
                 (bump_blocked_movers, animate_objects, animate_children)
@@ -43,17 +40,59 @@ impl Plugin for ObjectAnimationPlugin {
 }
 
 /// Objects get their animation state when they are first placed, so steady
-/// frames never queue commands.
-fn start_animation(add: On<Add, Pos>, objects: Query<&Pos>, mut commands: Commands) {
-    let Ok(pos) = objects.get(add.entity) else {
+/// frames never queue commands. A child's state lives in its parent's frame:
+/// it animates its offset from the parent, not its cell.
+fn start_animation(
+    add: On<Add, Pos>,
+    objects: Query<(&Pos, Option<&BoundTo>)>,
+    facings: Query<&Facing>,
+    mut commands: Commands,
+) {
+    let Ok((pos, bound)) = objects.get(add.entity) else {
         return;
+    };
+    let start = match bound {
+        Some(bound) => rotate(bound.offset, facing_of(bound.parent, &facings)),
+        None => pos.0,
     };
     commands.entity(add.entity).insert((
         ObjectAnimation {
-            state: MotionState::at(pos.0.as_vec2()),
+            state: MotionState::at(start.as_vec2()),
         },
         AnimatedPos::at(pos.0),
     ));
+}
+
+pub(super) fn facing_of(entity: Entity, facings: &Query<&Facing>) -> IVec2 {
+    facings.get(entity).map_or(IVec2::ZERO, |facing| facing.0)
+}
+
+/// The style an object moves in: its own if it has one, else the global one.
+pub(super) fn style_of(own: Option<&ObjectMotion>, global: MotionStyle) -> MotionStyle {
+    own.map_or(global, |own| own.0)
+}
+
+/// One frame of an object's animation, shared by top-level objects (in map
+/// cells) and children (in their parent's frame): a changed target starts a
+/// move along `path`, or a jump when `jumps(from, to)`, and the animation
+/// advances by `dt`.
+pub(super) fn follow(
+    state: &mut MotionState,
+    target: Vec2,
+    path: Option<Path>,
+    motion: MotionStyle,
+    jumps: impl Fn(Vec2, Vec2) -> bool,
+    dt: f32,
+) {
+    let from = state.target();
+    if from != target {
+        if jumps(from, target) {
+            *state = MotionState::at(target);
+        } else {
+            state.move_along(target, path, motion);
+        }
+    }
+    state.advance(dt);
 }
 
 /// Shortest step from `from` to `to` on the wrapping map.
@@ -89,7 +128,7 @@ pub fn bump_blocked_movers(
         let Ok((own_style, mut animation)) = objects.get_mut(collision.source) else {
             continue;
         };
-        let motion = own_style.map_or(*style, |own| own.0);
+        let motion = style_of(own_style, *style);
         let toward = wrapped_delta(source.0, target.0, &grid).as_vec2();
         animation.state.bump(toward, motion);
     }
@@ -124,30 +163,21 @@ pub fn animate_objects(
     let dt = time.delta_secs();
     let mut blocking = 0.0_f32;
     for (pos, own_style, path, non_blocking, mut animation, mut shown) in &mut objects {
-        let motion = own_style.map_or(*style, |own| own.0);
-        let target = pos.0.as_vec2();
-        let from = animation.state.target();
-        if from != target {
-            if wrapped(from, target, &grid) {
-                animation.state = MotionState::at(target);
-            } else {
-                animation
-                    .state
-                    .move_along(target, path.map(|path| path.0), motion);
-            }
-        }
-        animation.state.advance(dt);
+        follow(
+            &mut animation.state,
+            pos.0.as_vec2(),
+            path.map(|path| path.0),
+            style_of(own_style, *style),
+            |from, to| wrapped(from, to, &grid),
+            dt,
+        );
         if !non_blocking {
             blocking = blocking.max(animation.state.remaining());
         }
-
-        let next = AnimatedPos {
+        shown.set_if_neq(AnimatedPos {
             position: animation.state.position,
             lift: animation.state.lift,
-        };
-        if *shown != next {
-            *shown = next;
-        }
+        });
     }
     // The next turn waits until every blocking animation has (nearly)
     // finished, not just the player's: an object moved last turn arrives
