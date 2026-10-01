@@ -58,6 +58,16 @@ fn measured(update: impl FnOnce()) -> usize {
     ALLOCATIONS.load(Ordering::Relaxed)
 }
 
+/// Runs `Update` (where every game and renderer system lives) on the
+/// single-threaded executor. The counter only sees allocations on this
+/// thread, so with the default multi-threaded executor whatever ran on a
+/// worker thread went uncounted and the totals shifted with scheduling.
+fn single_threaded(app: &mut App) {
+    app.edit_schedule(Update, |schedule| {
+        schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
+    });
+}
+
 fn boot() -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
@@ -66,6 +76,7 @@ fn boot() -> App {
             16,
         )))
         .add_plugins((GamePlugin, ObjectAnimationPlugin, TextRendererPlugin));
+    single_threaded(&mut app);
     for _ in 0..256 {
         app.update();
     }
@@ -105,6 +116,7 @@ fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
         )
             .chain(),
     );
+    single_threaded(&mut baseline);
     for _ in 0..256 {
         baseline.update();
     }
