@@ -131,7 +131,7 @@ pub(super) fn setup(
     commands.spawn((
         HudText,
         UiTargetCamera(camera),
-        Text::new(String::with_capacity(224)),
+        Text::new(String::with_capacity(256)),
         TextFont {
             font: font.into(),
             font_size: FontSize::Px(15.0),
@@ -326,17 +326,18 @@ fn update_hud(
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
-    players: Query<(&Pos, &Tokens), With<Player>>,
+    players: Query<(&Pos, &Tokens, Option<&Inventory>), With<Player>>,
+    keys: Query<&Key>,
     enemies: Query<Entity, (With<Enemy>, Without<DestroyRequested>)>,
     collisions: Res<CollisionBuffer>,
     motion: Option<Res<MotionStyle>>,
     mut hud: Query<&mut Text, With<HudText>>,
 ) {
-    let (position, tokens) = players
+    let (position, tokens, inventory) = players
         .iter()
         .next()
-        .map(|(pos, tokens)| (pos.0, tokens.count))
-        .unwrap_or((IVec2::ZERO, 0));
+        .map(|(pos, tokens, inventory)| (pos.0, tokens.count, inventory))
+        .unwrap_or((IVec2::ZERO, 0, None));
     for mut text in hud.iter_mut() {
         text.0.clear();
         write!(
@@ -359,6 +360,14 @@ fn update_hud(
             collisions.0.len(),
         )
         .expect("writing to String cannot fail");
+        let held = inventory
+            .into_iter()
+            .flat_map(|inventory| inventory.0.iter())
+            .filter_map(|&item| keys.get(item).ok());
+        for (i, key) in held.enumerate() {
+            let separator = if i == 0 { " | keys " } else { " " };
+            write!(text.0, "{separator}{}", key.0.name()).expect("writing to String cannot fail");
+        }
     }
 }
 

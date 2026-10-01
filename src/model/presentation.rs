@@ -34,6 +34,8 @@ pub struct ObjectCell {
     /// Height above the ground in cells.
     pub lift: f32,
     pub cell: RenderCell,
+    /// Drawn in its glyph's color rather than the light's (`OwnColor`).
+    pub own_color: bool,
 }
 
 /// Composed frame.

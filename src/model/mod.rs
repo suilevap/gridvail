@@ -6,6 +6,7 @@
 
 mod actors;
 mod animation;
+mod items;
 mod lighting;
 mod presentation;
 mod spatial;
@@ -14,6 +15,7 @@ mod world;
 
 pub use actors::*;
 pub use animation::*;
+pub use items::*;
 pub use lighting::*;
 pub use presentation::*;
 pub use spatial::*;

@@ -11,7 +11,7 @@ use bevy::prelude::*;
 
 use crate::content::map::{parse_map, SpawnKind};
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
-use crate::lighting::{GRAY, RED, WHITE};
+use crate::lighting::{BLUE, GRAY, GREEN, RED, WHITE, YELLOW};
 use crate::model::*;
 use crate::schedule::StartupPhase;
 use crate::simulation::Rules;
@@ -64,6 +64,7 @@ fn construct_map(mut commands: Commands) {
                         ),
                         Glyph::new('@', 1, WHITE),
                         Player(0),
+                        Inventory::default(),
                         Tokens::new(1),
                         Friction(1),
                         Facing::default(),
@@ -113,6 +114,7 @@ fn construct_map(mut commands: Commands) {
                     PendingPos::default(),
                     PrevPos(cell.pos),
                     Glyph::new('☺', 1, RED),
+                    Inventory::default(),
                     Tokens::new(1),
                     Friction(1),
                     Facing::default(),
@@ -164,15 +166,45 @@ fn construct_map(mut commands: Commands) {
                     initial_fov(cell_count),
                 ))
                 .id(),
+            SpawnKind::Key(letter) => {
+                let color = key_color(letter);
+                commands
+                    .spawn((
+                        Active,
+                        Item,
+                        Key(color),
+                        Pos(cell.pos),
+                        Glyph::new('♀', 0, palette_of(color)),
+                        OwnColor,
+                    ))
+                    .id()
+            }
+            SpawnKind::Door(letter) => {
+                let color = key_color(letter);
+                commands
+                    .spawn((
+                        Active,
+                        Collider,
+                        Door::closed(color),
+                        Pos(cell.pos),
+                        Glyph::new(Door::CLOSED_GLYPH, 1, palette_of(color)),
+                        OwnColor,
+                    ))
+                    .id()
+            }
         };
         if commands.get_entity(entity).is_ok()
             && matches!(
                 cell.kind,
-                SpawnKind::Wall | SpawnKind::Player | SpawnKind::Enemy
+                SpawnKind::Wall | SpawnKind::Player | SpawnKind::Enemy | SpawnKind::Door(_)
             )
         {
             // Colliders own their cells (mirrors the first UpdatePosition pass).
-            grid.set_with_blocking(cell.pos, entity, matches!(cell.kind, SpawnKind::Wall));
+            grid.set_with_blocking(
+                cell.pos,
+                entity,
+                matches!(cell.kind, SpawnKind::Wall | SpawnKind::Door(_)),
+            );
         }
     }
 
@@ -182,6 +214,19 @@ fn construct_map(mut commands: Commands) {
         triangle: DirectionTileRule::parse(TRIANGLE_RULE_TEXT).expect("triangle rule"),
         v: DirectionTileRule::parse(V_RULE_TEXT).expect("v rule"),
     });
+}
+
+fn key_color(letter: char) -> KeyColor {
+    KeyColor::from_letter(letter).expect("map parser yields key color letters")
+}
+
+fn palette_of(color: KeyColor) -> u8 {
+    match color {
+        KeyColor::Red => RED,
+        KeyColor::Green => GREEN,
+        KeyColor::Blue => BLUE,
+        KeyColor::Yellow => YELLOW,
+    }
 }
 
 fn initial_fov(cell_count: usize) -> FovResult {

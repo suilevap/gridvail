@@ -129,3 +129,27 @@ fn every_glyph_entity_is_an_object_above_the_ground() {
         assert_eq!(object.position, object.pos.as_vec2());
     }
 }
+
+#[test]
+fn own_color_glyphs_ignore_the_light() {
+    let mut app = test_app::headless();
+    app.insert_resource(DynamicLight::sized(64))
+        .insert_resource(RenderBuffers::new(8, 8));
+    let seen = Vis::VISIBLE | Vis::KNOWN;
+    app.world_mut().spawn((
+        Player(0),
+        Pos(IVec2::ZERO),
+        Speed::default(),
+        visibility(&[(IVec2::new(1, 0), seen), (IVec2::new(2, 0), seen)]),
+    ));
+    app.world_mut()
+        .spawn((Pos(IVec2::new(1, 0)), Glyph::new('♀', 0, 12), OwnColor));
+    app.world_mut()
+        .spawn((Pos(IVec2::new(2, 0)), Glyph::new('#', 1, 12)));
+    app.world_mut().run_system_once(compose_frame).unwrap();
+    let buffers = app.world().resource::<RenderBuffers>();
+    assert_eq!(buffers.current[1].color, 12, "the key keeps its color");
+    assert_ne!(buffers.current[2].color, 12, "the wall takes the light's");
+    let key = buffers.objects.iter().find(|o| o.cell.ch == '♀').unwrap();
+    assert_eq!(key.cell.color, 12);
+}

@@ -8,7 +8,14 @@ use crate::model::*;
 pub fn compose_frame(
     dynamic: Res<DynamicLight>,
     visibility: Query<&VisibilityMap, With<Player>>,
-    glyphs: Query<(Entity, &Pos, &Glyph, Option<&Speed>, Option<&AnimatedPos>)>,
+    glyphs: Query<(
+        Entity,
+        &Pos,
+        &Glyph,
+        Option<&Speed>,
+        Option<&AnimatedPos>,
+        Has<OwnColor>,
+    )>,
     mut buffers: ResMut<RenderBuffers>,
 ) {
     let Ok(visibility) = visibility.single() else {
@@ -18,7 +25,7 @@ pub fn compose_frame(
     buffers.current.fill(RenderCell::default());
     buffers.objects.clear();
 
-    for (entity, pos, glyph, speed, shown) in glyphs.iter() {
+    for (entity, pos, glyph, speed, shown, own_color) in glyphs.iter() {
         let Some(index) = buffers.idx(pos.0) else {
             continue;
         };
@@ -42,6 +49,7 @@ pub fn compose_frame(
                 position: shown.position,
                 lift: shown.lift,
                 cell: drawn,
+                own_color,
             });
         }
     }
@@ -72,7 +80,8 @@ pub fn compose_frame(
         }
     }
 
-    // Keep only objects that won their cell, and give them its lit color.
+    // Keep only objects that won their cell, and give them its lit color
+    // unless they keep their own.
     let RenderBuffers {
         width,
         current,
@@ -80,10 +89,17 @@ pub fn compose_frame(
         ..
     } = &mut *buffers;
     objects.retain_mut(|object| {
-        let cell = current[(object.pos.y * *width + object.pos.x) as usize];
+        let cell = &mut current[(object.pos.y * *width + object.pos.x) as usize];
         let shown = cell.ch == object.cell.ch && cell.depth == object.cell.depth;
-        object.cell.color = cell.color;
-        shown
+        if !shown {
+            return false;
+        }
+        if object.own_color {
+            cell.color = object.cell.color;
+        } else {
+            object.cell.color = cell.color;
+        }
+        true
     });
 }
 
