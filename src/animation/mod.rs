@@ -7,9 +7,11 @@
 //! turn waits for them (held input follows the animation). Without it the
 //! simulation runs with no delay.
 
+mod hierarchy;
 mod motion;
 mod plugin;
 
+pub use hierarchy::*;
 pub use motion::*;
 pub use plugin::*;
 
