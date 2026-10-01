@@ -2,30 +2,30 @@ use bevy::prelude::*;
 
 use crate::model::*;
 
-/// Walking into a closed door opens it when the walker carries a key of the
-/// door's color. The key is kept, and the actor enters on a later move.
+/// Walking into a closed door opens it when the walker carries a key, which
+/// is used up. The actor enters on a later move.
 pub fn open_doors(
     mut commands: Commands,
     mut grid: ResMut<MapGrid>,
     collisions: Res<CollisionBuffer>,
-    carriers: Query<&Inventory, Without<DestroyRequested>>,
-    keys: Query<&Key>,
+    mut carriers: Query<&mut Inventory, Without<DestroyRequested>>,
+    keys: Query<(), With<Key>>,
     mut doors: Query<(&Pos, &mut Door, &mut Glyph)>,
 ) {
     for collision in &collisions.0 {
         let Ok((pos, mut door, mut glyph)) = doors.get_mut(collision.target) else {
             continue;
         };
-        let Ok(inventory) = carriers.get(collision.source) else {
-            continue;
-        };
-        let has_key = inventory
-            .0
-            .iter()
-            .any(|&item| keys.get(item).is_ok_and(|key| key.0 == door.color));
-        if door.open || !has_key {
+        if door.open {
             continue;
         }
+        let Ok(mut inventory) = carriers.get_mut(collision.source) else {
+            continue;
+        };
+        let Some(slot) = inventory.0.iter().position(|&item| keys.contains(item)) else {
+            continue;
+        };
+        commands.entity(inventory.0.swap_remove(slot)).despawn();
         door.open = true;
         glyph.ch = Door::OPEN_GLYPH;
         glyph.depth = 0;

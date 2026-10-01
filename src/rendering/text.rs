@@ -327,22 +327,31 @@ fn update_hud(
     grid: Res<MapGrid>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
     players: Query<(&Pos, &Tokens, Option<&Inventory>), With<Player>>,
-    keys: Query<&Key>,
+    keys: Query<(), With<Key>>,
     enemies: Query<Entity, (With<Enemy>, Without<DestroyRequested>)>,
     collisions: Res<CollisionBuffer>,
     motion: Option<Res<MotionStyle>>,
     mut hud: Query<&mut Text, With<HudText>>,
 ) {
-    let (position, tokens, inventory) = players
+    let (position, tokens, held_keys) = players
         .iter()
         .next()
-        .map(|(pos, tokens, inventory)| (pos.0, tokens.count, inventory))
-        .unwrap_or((IVec2::ZERO, 0, None));
+        .map(|(pos, tokens, inventory)| {
+            let held_keys = inventory.map_or(0, |inventory| {
+                inventory
+                    .0
+                    .iter()
+                    .filter(|&&item| keys.contains(item))
+                    .count()
+            });
+            (pos.0, tokens.count, held_keys)
+        })
+        .unwrap_or((IVec2::ZERO, 0, 0));
     for mut text in hud.iter_mut() {
         text.0.clear();
         write!(
             text.0,
-            "PavEcsGame Lite Bevy port | arrows/WASD{} | M motion: {}\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | enemies {} | bumps {}",
+            "PavEcsGame Lite Bevy port | arrows/WASD{} | M motion: {}\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | keys {} | enemies {} | bumps {}",
             if extruded_walls.is_some() {
                 " | Q/E orbit | wheel zoom"
             } else {
@@ -356,18 +365,11 @@ fn update_hud(
             position.x,
             position.y,
             tokens,
+            held_keys,
             enemies.iter().count(),
             collisions.0.len(),
         )
         .expect("writing to String cannot fail");
-        let held = inventory
-            .into_iter()
-            .flat_map(|inventory| inventory.0.iter())
-            .filter_map(|&item| keys.get(item).ok());
-        for (i, key) in held.enumerate() {
-            let separator = if i == 0 { " | keys " } else { " " };
-            write!(text.0, "{separator}{}", key.0.name()).expect("writing to String cannot fail");
-        }
     }
 }
 

@@ -136,21 +136,21 @@ fn spawn_mover(app: &mut App, at: IVec2, inventory: Vec<Entity>) -> Entity {
     entity
 }
 
-fn spawn_key(app: &mut App, at: Option<IVec2>, color: KeyColor) -> Entity {
-    let mut key = app.world_mut().spawn((Active, Item, Key(color)));
+fn spawn_key(app: &mut App, at: Option<IVec2>) -> Entity {
+    let mut key = app.world_mut().spawn((Active, Item, Key));
     if let Some(at) = at {
         key.insert(Pos(at));
     }
     key.id()
 }
 
-fn spawn_door(app: &mut App, at: IVec2, color: KeyColor) -> Entity {
+fn spawn_door(app: &mut App, at: IVec2) -> Entity {
     let door = app
         .world_mut()
         .spawn((
             Active,
             Collider,
-            Door::closed(color),
+            Door::default(),
             Pos(at),
             Glyph::new(Door::CLOSED_GLYPH, 1, 0),
         ))
@@ -171,7 +171,7 @@ fn walk(app: &mut App, mover: Entity, step: IVec2) {
 fn stepping_onto_a_key_picks_it_up() {
     let mut app = test_app::headless();
     let mover = spawn_mover(&mut app, IVec2::new(1, 1), Vec::new());
-    let key = spawn_key(&mut app, Some(IVec2::new(2, 1)), KeyColor::Red);
+    let key = spawn_key(&mut app, Some(IVec2::new(2, 1)));
     walk(&mut app, mover, IVec2::X);
     assert_eq!(app.world().get::<Pos>(mover).unwrap().0, IVec2::new(2, 1));
     assert_eq!(app.world().get::<Inventory>(mover).unwrap().0, [key]);
@@ -182,11 +182,10 @@ fn stepping_onto_a_key_picks_it_up() {
 }
 
 #[test]
-fn a_door_opens_only_for_a_key_of_its_color() {
+fn a_door_opens_only_with_a_key_and_uses_it_up() {
     let mut app = test_app::headless();
-    let green = spawn_key(&mut app, None, KeyColor::Green);
-    let mover = spawn_mover(&mut app, IVec2::new(1, 1), vec![green]);
-    let door = spawn_door(&mut app, IVec2::new(2, 1), KeyColor::Red);
+    let mover = spawn_mover(&mut app, IVec2::new(1, 1), Vec::new());
+    let door = spawn_door(&mut app, IVec2::new(2, 1));
 
     walk(&mut app, mover, IVec2::X);
     assert_eq!(app.world().get::<Pos>(mover).unwrap().0, IVec2::new(1, 1));
@@ -196,12 +195,12 @@ fn a_door_opens_only_for_a_key_of_its_color() {
         .resource::<MapGrid>()
         .blocks_vision(IVec2::new(2, 1)));
 
-    let red = spawn_key(&mut app, None, KeyColor::Red);
+    let key = spawn_key(&mut app, None);
     app.world_mut()
         .get_mut::<Inventory>(mover)
         .unwrap()
         .0
-        .push(red);
+        .push(key);
     // The bump opens the door; the next step walks through it.
     walk(&mut app, mover, IVec2::X);
     assert_eq!(app.world().get::<Pos>(mover).unwrap().0, IVec2::new(1, 1));
@@ -212,26 +211,23 @@ fn a_door_opens_only_for_a_key_of_its_color() {
         .world()
         .resource::<MapGrid>()
         .blocks_vision(IVec2::new(2, 1)));
+    assert!(app.world().get::<Inventory>(mover).unwrap().0.is_empty());
+    assert!(app.world().get_entity(key).is_err(), "the key is used up");
 
     walk(&mut app, mover, IVec2::X);
     assert_eq!(app.world().get::<Pos>(mover).unwrap().0, IVec2::new(2, 1));
-    assert_eq!(
-        app.world().get::<Inventory>(mover).unwrap().0.len(),
-        2,
-        "keys are kept"
-    );
 }
 
 #[test]
 fn a_destroyed_actor_drops_everything_it_carries() {
     let mut app = test_app::headless();
-    let red = spawn_key(&mut app, None, KeyColor::Red);
-    let blue = spawn_key(&mut app, None, KeyColor::Blue);
-    let doomed = spawn_mover(&mut app, IVec2::new(4, 4), vec![red, blue]);
+    let first = spawn_key(&mut app, None);
+    let second = spawn_key(&mut app, None);
+    let doomed = spawn_mover(&mut app, IVec2::new(4, 4), vec![first, second]);
     app.world_mut().entity_mut(doomed).insert(DestroyRequested);
     app.update();
     assert!(app.world().get_entity(doomed).is_err());
-    for key in [red, blue] {
+    for key in [first, second] {
         assert_eq!(app.world().get::<Pos>(key).unwrap().0, IVec2::new(4, 4));
     }
 
@@ -240,7 +236,7 @@ fn a_destroyed_actor_drops_everything_it_carries() {
     walk(&mut app, finder, IVec2::X);
     let mut found = app.world().get::<Inventory>(finder).unwrap().0.clone();
     found.sort();
-    let mut expected = vec![red, blue];
+    let mut expected = vec![first, second];
     expected.sort();
     assert_eq!(found, expected);
 }

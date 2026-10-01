@@ -185,7 +185,7 @@ fn step(app: &mut App, key: KeyCode) {
     panic!("player never got its token back");
 }
 
-fn carried_keys(world: &mut World) -> Vec<KeyColor> {
+fn carried_keys(world: &mut World) -> usize {
     let items = world
         .query_filtered::<&Inventory, With<Player>>()
         .single(world)
@@ -194,32 +194,30 @@ fn carried_keys(world: &mut World) -> Vec<KeyColor> {
         .clone();
     items
         .into_iter()
-        .filter_map(|item| world.get::<Key>(item).map(|key| key.0))
-        .collect()
+        .filter(|&item| world.get::<Key>(item).is_some())
+        .count()
 }
 
 #[test]
-fn red_key_opens_the_red_door_to_the_green_key() {
+fn a_key_opens_the_closet_door_to_the_next_key() {
     use KeyCode::{ArrowDown as D, ArrowLeft as L, ArrowRight as R, ArrowUp as U};
     let mut app = boot();
     let door_pos = IVec2::new(18, 4);
     let door = {
         let world = app.world_mut();
-        let (door, pos, glyph) = world
+        world
             .query::<(Entity, &Pos, &Door)>()
             .iter(world)
-            .find(|(_, _, door)| door.color == KeyColor::Red)
-            .map(|(entity, pos, door)| (entity, pos.0, *door))
-            .unwrap();
-        assert_eq!((pos, glyph.open), (door_pos, false));
-        door
+            .find(|(_, pos, door)| pos.0 == door_pos && !door.open)
+            .map(|(entity, ..)| entity)
+            .expect("closed closet door")
     };
 
     for key in [L, L, L, L, L, U, U, U] {
         step(&mut app, key);
     }
     assert_eq!(player_of(app.world_mut()).0, IVec2::new(3, 2));
-    assert_eq!(carried_keys(app.world_mut()), [KeyColor::Red]);
+    assert_eq!(carried_keys(app.world_mut()), 1);
 
     for _ in 0..15 {
         step(&mut app, R);
@@ -228,17 +226,15 @@ fn red_key_opens_the_red_door_to_the_green_key() {
     assert_eq!(player_of(app.world_mut()).0, IVec2::new(18, 3));
     assert!(app.world().resource::<MapGrid>().blocks_vision(door_pos));
 
-    // Bumping opens the door; the player walks through on the next step.
+    // Bumping opens the door with the key; the player walks in next step.
     step(&mut app, D);
     assert_eq!(player_of(app.world_mut()).0, IVec2::new(18, 3));
     assert!(app.world().get::<Door>(door).unwrap().open);
     assert!(!app.world().resource::<MapGrid>().blocks_vision(door_pos));
+    assert_eq!(carried_keys(app.world_mut()), 0, "the key is used up");
 
     step(&mut app, D);
     step(&mut app, D);
     assert_eq!(player_of(app.world_mut()).0, IVec2::new(18, 5));
-    assert_eq!(
-        carried_keys(app.world_mut()),
-        [KeyColor::Red, KeyColor::Green]
-    );
+    assert_eq!(carried_keys(app.world_mut()), 1);
 }

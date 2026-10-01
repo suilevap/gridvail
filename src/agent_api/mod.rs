@@ -116,8 +116,8 @@ struct PlayerState {
     position: Position,
     tokens: i32,
     command_pending: bool,
-    /// Colors of the keys the player carries.
-    keys: Vec<&'static str>,
+    /// Keys the player carries.
+    keys: usize,
 }
 
 #[derive(Serialize)]
@@ -165,8 +165,8 @@ fn get_state(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
     };
     let keys = items
         .into_iter()
-        .filter_map(|item| world.get::<Key>(item).map(|key| key.0.name()))
-        .collect();
+        .filter(|&item| world.get::<Key>(item).is_some())
+        .count();
     let enemy_count = world
         .query_filtered::<Entity, (With<Enemy>, Without<DestroyRequested>)>()
         .iter(world)
