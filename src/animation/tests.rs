@@ -311,3 +311,80 @@ fn a_path_override_shapes_cell_moves() {
     assert!(off_line > 0.4, "arc did not curve: {off_line}");
     assert_eq!(*path.last().unwrap(), Vec2::new(4.0, 2.0));
 }
+
+/// The player and its direction marker (bound one cell ahead).
+fn player_and_marker(app: &mut App) -> (Entity, Entity) {
+    let world = app.world_mut();
+    let player = world
+        .query_filtered::<Entity, With<Player>>()
+        .single(world)
+        .unwrap();
+    let marker = world
+        .query::<(Entity, &BoundTo)>()
+        .iter(world)
+        .find(|(_, bound)| bound.parent == player)
+        .map(|(entity, _)| entity)
+        .expect("direction marker");
+    (player, marker)
+}
+
+fn shown(app: &App, entity: Entity) -> AnimatedPos {
+    *app.world().get::<AnimatedPos>(entity).unwrap()
+}
+
+/// Holds `key` for `frames` frames, returning (player, marker) shown each frame.
+fn hold(app: &mut App, key: KeyCode, frames: usize) -> Vec<(AnimatedPos, AnimatedPos)> {
+    let (player, marker) = player_and_marker(app);
+    (0..frames)
+        .map(|_| {
+            {
+                let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+                keys.release_all();
+                keys.press(key);
+            }
+            app.update();
+            (shown(app, player), shown(app, marker))
+        })
+        .collect()
+}
+
+#[test]
+fn children_ride_on_their_parent_and_swing_around_it() {
+    let mut app = boot(Some(MotionStyle::default()));
+    let (player, marker) = player_and_marker(&mut app);
+    // At rest the marker sits exactly on its logical cell.
+    let marker_cell = app.world().get::<Pos>(marker).unwrap().0;
+    assert_eq!(shown(&app, marker).position, marker_cell.as_vec2());
+
+    // Moving right, the marker keeps its offset and shares the hop.
+    let start = shown(&app, player).position;
+    let frames = hold(&mut app, KeyCode::ArrowRight, 6);
+    for (p, m) in &frames {
+        assert!(
+            (m.position - p.position - Vec2::X).length() < 1e-4,
+            "{p:?} {m:?}"
+        );
+        assert_eq!(m.lift, p.lift);
+    }
+    assert!(frames.iter().any(|(p, _)| p.lift > 0.05), "no hop seen");
+    assert!(frames.last().unwrap().0.position.x > start.x);
+
+    // Turning around, the marker swings around the player instead of
+    // passing through it, and ends on its new logical cell.
+    let frames = hold(&mut app, KeyCode::ArrowLeft, 40);
+    let mut swung = false;
+    for (p, m) in &frames {
+        let offset = m.position - p.position;
+        assert!(offset.length() > 0.95, "marker came within {offset}");
+        swung |= offset.y.abs() > 0.5;
+    }
+    assert!(swung, "marker did not swing around the player");
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release_all();
+    for _ in 0..60 {
+        app.update();
+    }
+    let marker_cell = app.world().get::<Pos>(marker).unwrap().0;
+    assert_eq!(shown(&app, marker).position, marker_cell.as_vec2());
+}

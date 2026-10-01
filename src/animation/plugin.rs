@@ -5,12 +5,14 @@ use bevy::prelude::*;
 use crate::model::*;
 use crate::schedule::GamePhase;
 
-use super::{MotionState, MotionStyle, MovePath, ObjectMotion};
+use super::{
+    animate_children, start_child_animation, MotionState, MotionStyle, MovePath, ObjectMotion,
+};
 
 /// Marks an object whose animation never holds back the next turn, for
-/// decorative or ambient motion. Bound decorations (`BoundTo`, such as the
-/// player's direction marker) never hold turns either: they follow their
-/// parent, which already does.
+/// decorative or ambient motion. Children (`BoundTo`, such as the player's
+/// direction marker) never hold turns either: they follow their parent,
+/// which already does.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct NonBlockingAnimation;
 
@@ -21,17 +23,19 @@ pub struct ObjectAnimation {
 }
 
 /// Animates every positioned object (actors, walls, decor) between the
-/// cells the simulation moves it through, and holds the next turn until
-/// those animations have finished.
+/// cells the simulation moves it through, places children relative to their
+/// animated parents, and holds the next turn until those animations have
+/// finished.
 pub struct ObjectAnimationPlugin;
 
 impl Plugin for ObjectAnimationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MotionStyle>()
             .add_observer(start_animation)
+            .add_observer(start_child_animation)
             .add_systems(
                 Update,
-                (bump_blocked_movers, animate_objects)
+                (bump_blocked_movers, animate_objects, animate_children)
                     .chain()
                     .in_set(GamePhase::Animation),
             );
@@ -104,19 +108,22 @@ pub fn animate_objects(
     style: Res<MotionStyle>,
     grid: Res<MapGrid>,
     mut pacing: ResMut<TurnPacing>,
-    mut objects: Query<(
-        &Pos,
-        Option<&ObjectMotion>,
-        Option<&MovePath>,
-        Has<NonBlockingAnimation>,
-        Has<BoundTo>,
-        &mut ObjectAnimation,
-        &mut AnimatedPos,
-    )>,
+    // Children are placed relative to their parent by `animate_children`.
+    mut objects: Query<
+        (
+            &Pos,
+            Option<&ObjectMotion>,
+            Option<&MovePath>,
+            Has<NonBlockingAnimation>,
+            &mut ObjectAnimation,
+            &mut AnimatedPos,
+        ),
+        Without<BoundTo>,
+    >,
 ) {
     let dt = time.delta_secs();
     let mut blocking = 0.0_f32;
-    for (pos, own_style, path, non_blocking, bound, mut animation, mut shown) in &mut objects {
+    for (pos, own_style, path, non_blocking, mut animation, mut shown) in &mut objects {
         let motion = own_style.map_or(*style, |own| own.0);
         let target = pos.0.as_vec2();
         let from = animation.state.target();
@@ -130,7 +137,7 @@ pub fn animate_objects(
             }
         }
         animation.state.advance(dt);
-        if !non_blocking && !bound {
+        if !non_blocking {
             blocking = blocking.max(animation.state.remaining());
         }
 
