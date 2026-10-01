@@ -67,6 +67,30 @@ fn held_step_gaps(motion: Option<MotionStyle>) -> Vec<u32> {
     gaps
 }
 
+fn locomotion_with_step(seconds: f32) -> MotionStyle {
+    let MotionStyle::Locomotion {
+        start,
+        ramp,
+        turn_keep,
+        stop_frequency,
+        stop_damping,
+        bob,
+        ..
+    } = MotionStyle::default()
+    else {
+        unreachable!("the default style is locomotion");
+    };
+    MotionStyle::Locomotion {
+        step: seconds,
+        start,
+        ramp,
+        turn_keep,
+        stop_frequency,
+        stop_damping,
+        bob,
+    }
+}
+
 fn tween(seconds: f32) -> MotionStyle {
     MotionStyle::Tween {
         duration: seconds,
@@ -78,9 +102,15 @@ fn tween(seconds: f32) -> MotionStyle {
 fn held_movement_waits_for_the_step_animation() {
     // 16 ms frames. A 0.12 s step reaches the 20 ms lead after 7 frames and
     // the next move happens one frame later.
-    assert_eq!(held_step_gaps(Some(tween(0.12))), vec![7, 7, 7]);
+    assert_eq!(
+        held_step_gaps(Some(locomotion_with_step(0.12))),
+        vec![7, 7, 7]
+    );
     // Slower steps slow the turns down to match.
-    assert_eq!(held_step_gaps(Some(tween(0.3))), vec![18, 18, 18]);
+    assert_eq!(
+        held_step_gaps(Some(locomotion_with_step(0.3))),
+        vec![18, 18, 18]
+    );
 }
 
 #[test]
@@ -259,4 +289,25 @@ fn a_blocked_move_bumps_toward_the_blocker() {
     let peak = shown.iter().copied().fold(0.0_f32, f32::max);
     assert!(peak > 0.15 && peak <= 0.2, "bump peak {peak}");
     assert_eq!(*shown.last().unwrap(), 0.0, "bump returned");
+}
+
+#[test]
+fn a_path_override_shapes_cell_moves() {
+    let mut app = boot(Some(MotionStyle::default()));
+    let linear = MotionStyle::from_name("linear").unwrap();
+    let block = app
+        .world_mut()
+        .spawn((
+            Pos(IVec2::new(2, 2)),
+            Glyph::new('■', 1, 7),
+            ObjectMotion(linear),
+            MovePath(Path::Arc { bulge: 0.5 }),
+        ))
+        .id();
+    app.update();
+    // Two cells at 0.1 s per cell: about halfway after 6 frames of 16 ms.
+    let path = move_and_watch(&mut app, block, IVec2::new(4, 2), 20);
+    let off_line = path.iter().map(|p| (p.y - 2.0).abs()).fold(0.0, f32::max);
+    assert!(off_line > 0.4, "arc did not curve: {off_line}");
+    assert_eq!(*path.last().unwrap(), Vec2::new(4.0, 2.0));
 }

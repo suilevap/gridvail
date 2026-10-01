@@ -98,7 +98,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test   # 62 tests, including allocation and independent C# comparisons
+cargo test   # 71 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
@@ -107,13 +107,23 @@ Every object glides when it moves (`animation::ObjectAnimationPlugin`,
 independent of the renderer): actors, and equally walls or decor that a
 level moves, by any number of cells at once. A longer move takes
 proportionally longer at the same speed; only a move across the wrapping
-map edge teleports. `--motion` picks the style: `ease-out` (default),
-`linear`, `ease-in-out`, `overshoot`, or `snap`. Animations also pace the
-turns (see above), and walking into a wall bumps toward it and back,
-taking one step's time. `M` cycles the styles at runtime. Code can insert
-a custom `animation::MotionStyle` (tween duration per cell and easing)
-before adding `ObjectAnimationPlugin`, and an `ObjectMotion` component
-overrides the style for one entity.
+map edge teleports. Each animation is a `Move`: start and end (possibly the
+same cell), a `Path` (straight, an out-and-back excursion, a sideways arc,
+or a Hermite curve), its timing, and secondary motion such as a hop per
+cell. Walking into a wall plays an excursion toward it and back, taking one
+step's time, and animations pace the turns (see above).
+
+`--motion` picks the style. The default, `locomotion`, gives each move
+`step` (0.12s) per cell along a Hermite curve: the first step after a pause
+starts slowly, a straight run flows at constant speed and gains momentum,
+turns keep part of it, and stopping after a run coasts past the last cell
+and settles back. Each cell crossed also hops slightly (`bob`), shown as a
+lift up the screen or off the floor in the 3D view. The others are
+`ease-out`, `linear`, `ease-in-out`, `overshoot`, and `snap`. `M` cycles the
+styles at runtime. Code can insert a custom `animation::MotionStyle` before
+adding `ObjectAnimationPlugin`; an `ObjectMotion` component overrides the
+style for one entity, and a `MovePath` component gives its cell moves
+another path (an arc, say).
 
 The debug performance panel is visible by default and toggles with `F3`. It
 shows smoothed FPS/frame time, process and system CPU/RAM, entity count, text
