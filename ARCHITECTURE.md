@@ -43,9 +43,10 @@ and renderers must not import it.
   a hop); a cell change plays a
   straight move and a blocked move (a simulation collision) plays an
   excursion out and back to the same cell. Children (`BoundTo`) are shown at
-  their parent's shown position plus their own offset in the parent's frame:
-  they inherit everything the parent does, swing around it when its facing
-  changes, and animate offset changes locally. `ObjectAnimationPlugin` picks the
+  their parent's shown position plus their animated offset from it: the
+  same `ObjectAnimation` and per-frame step as any object, but following
+  `rotate(offset, facing)` instead of the cell, along `Path::Orbit` around
+  the parent, so a turn swings them around it rather than through it. `ObjectAnimationPlugin` picks the
   timing from `MotionStyle` (per-entity `ObjectMotion` overrides), writes the
   shown position to `AnimatedPos`, and reports how long unfinished moves
   still run to `TurnPacing`, which holds the next turn until they have nearly
