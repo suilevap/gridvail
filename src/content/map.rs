@@ -1,7 +1,6 @@
 //! ASCII map parsing. Mirrors `LoadMapSystem.TryGetSpawnRequest`:
 //! `X`/`x` wall, `p` player, `e` enemy, `~` electricity, `i` light,
-//! `%` acid; anything else is empty floor. Additions: `r`/`g`/`b`/`y` keys
-//! and `R`/`G`/`B`/`Y` doors of the matching color.
+//! `%` acid; anything else is empty floor. Additions: `k` key, `D` door.
 
 use bevy::prelude::*;
 
@@ -14,10 +13,8 @@ pub enum SpawnKind {
     Electricity,
     Light,
     Acid,
-    /// A key; the payload is its lowercase color letter.
-    Key(char),
-    /// A door; the payload is the lowercase color letter of its key.
-    Door(char),
+    Key,
+    Door,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,8 +31,8 @@ pub fn spawn_kind_of(c: char) -> Option<SpawnKind> {
         '~' => Some(SpawnKind::Electricity),
         'i' => Some(SpawnKind::Light),
         '%' => Some(SpawnKind::Acid),
-        'r' | 'g' | 'b' | 'y' => Some(SpawnKind::Key(c)),
-        'R' | 'G' | 'B' | 'Y' => Some(SpawnKind::Door(c.to_ascii_lowercase())),
+        'k' => Some(SpawnKind::Key),
+        'D' => Some(SpawnKind::Door),
         _ => None,
     }
 }
@@ -91,16 +88,11 @@ mod tests {
     }
 
     #[test]
-    fn parses_keys_and_doors_by_color_letter() {
-        let (_, _, cells) = parse_map("rR.yB");
+    fn parses_keys_and_doors() {
+        let (_, _, cells) = parse_map("kD.d");
         assert_eq!(
             cells.iter().map(|cell| cell.kind).collect::<Vec<_>>(),
-            [
-                SpawnKind::Key('r'),
-                SpawnKind::Door('r'),
-                SpawnKind::Key('y'),
-                SpawnKind::Door('b'),
-            ]
+            [SpawnKind::Key, SpawnKind::Door]
         );
     }
 

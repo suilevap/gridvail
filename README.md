@@ -25,15 +25,14 @@ next to this file.
   swaps blocked, entering a vacated cell blocked in the same pass, one
   winner per cell in stable creation order, collisions recorded (the Lite
   container has no collision consumer — same as the original).
-- Doors and keys (an addition, not in the original): `r`/`g`/`b`/`y` map
-  letters place keys (`♀`) and `R`/`G`/`B`/`Y` doors (`+`) of the matching
-  color; both keep their own color instead of the light's. The player and
-  enemies pick up every item on a cell they enter. Walking into a closed door
-  while carrying a key of its color opens it (`'`, no longer blocking
-  movement or sight); the key is kept. An actor that is destroyed drops
-  everything it carries on its cell. `map1` has a red key near the start, a
-  red door to a closet holding a green key, and a green door further on.
-  The HUD and the agent API's `player.keys` list the keys the player holds.
+- Doors and keys (an addition, not in the original): `k` places a key
+  (`♀`) and `D` a door (`+`). The player and enemies pick up every item on a
+  cell they enter. Walking into a closed door while carrying a key opens it
+  (`'`, no longer blocking movement or sight) and uses the key up. An actor
+  that is destroyed drops everything it carries on its cell. `map1` has a
+  key near the start, a door to a closet holding a second key, and another
+  door further on. The HUD and the agent API's `player.keys` count the keys
+  the player holds.
 - Player-bound `i` direction marker via relative position + rotation.
 - Wall autotiling from `wall_rule.txt`, direction glyphs from the three
   direction rules (the file's Y-down inversion is inherited verbatim).
@@ -107,7 +106,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test   # 82 tests, including allocation and independent C# comparisons
+cargo test   # 81 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
