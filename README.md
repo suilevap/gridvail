@@ -141,7 +141,15 @@ that fits the full map when resized. Capture the actual rendered window:
 cargo run -- --screenshot screenshots/bevy-map1.png
 cargo run -- --renderer 3d-walls --screenshot screenshots/bevy-map1-3d.png
 cargo run -- --screenshot screenshots/bevy-explored.png --walk LLLUUURRRRRRRDDDDDDDDDDDDDDD
+cargo run -- --record recordings/walk --walk "LLLLL.......RRRRUU......"
 ```
+
+`--record DIR` saves every frame after warm-up as `DIR/frame_NNNNN.png`
+(fixed 16 ms timestep) plus `DIR/trace.csv` with the player's logical cell
+and drawn position per frame, then exits. Its `--walk` holds each arrow key
+for 8 frames, like a player holding the key, and `.` releases; turn into a
+video with, for example,
+`ffmpeg -framerate 60 -i DIR/frame_%05d.png -pix_fmt yuv420p walk.mp4`.
 
 Screenshot mode uses deterministic 16ms frames, optionally replays `UDLR`
 through the real keyboard system, saves a PNG, then exits. It requires GPU
