@@ -25,12 +25,78 @@ fn boot(motion: Option<MotionStyle>) -> App {
     app
 }
 
+fn player_cell(app: &mut App) -> IVec2 {
+    let world = app.world_mut();
+    world
+        .query_filtered::<&Pos, With<Player>>()
+        .single(world)
+        .unwrap()
+        .0
+}
+
+/// Frames between the player's steps while movement keys are held
+/// (alternating left and right so walls never block the walk). No renderer
+/// is installed: pacing depends only on the animation step.
+fn held_step_gaps(motion: Option<MotionStyle>) -> Vec<u32> {
+    let mut app = boot(motion);
+    let mut gaps = Vec::new();
+    let mut last = player_cell(&mut app);
+    let mut frames = 0;
+    let mut key = KeyCode::ArrowRight;
+    while gaps.len() < 4 && frames < 600 {
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.release_all();
+            keys.press(key);
+        }
+        app.update();
+        frames += 1;
+        let now = player_cell(&mut app);
+        if now != last {
+            gaps.push(frames);
+            frames = 0;
+            last = now;
+            key = if key == KeyCode::ArrowRight {
+                KeyCode::ArrowLeft
+            } else {
+                KeyCode::ArrowRight
+            };
+        }
+    }
+    gaps.remove(0);
+    gaps
+}
+
+fn tween(seconds: f32) -> MotionStyle {
+    MotionStyle::Tween {
+        duration: seconds,
+        easing: Easing::EaseOut,
+    }
+}
+
 #[test]
-fn every_object_gets_an_animated_position() {
+fn held_movement_waits_for_the_step_animation() {
+    // 16 ms frames. A 0.12 s step reaches the 20 ms lead after 7 frames and
+    // the next move happens one frame later.
+    assert_eq!(held_step_gaps(Some(tween(0.12))), vec![7, 7, 7]);
+    // Slower steps slow the turns down to match.
+    assert_eq!(held_step_gaps(Some(tween(0.3))), vec![18, 18, 18]);
+}
+
+#[test]
+fn turns_do_not_wait_without_animation() {
+    // No animation step at all, or a style that does not animate: a held key
+    // moves every frame.
+    assert_eq!(held_step_gaps(None), vec![1, 1, 1]);
+    assert_eq!(held_step_gaps(Some(MotionStyle::Snap)), vec![1, 1, 1]);
+}
+
+#[test]
+fn movers_get_animated_positions() {
     let mut app = boot(Some(MotionStyle::default()));
     let world = app.world_mut();
     let unanimated = world
-        .query_filtered::<(), (With<Pos>, Without<AnimatedPos>)>()
+        .query_filtered::<(), (With<PrevPos>, Without<AnimatedPos>)>()
         .iter(world)
         .count();
     assert_eq!(unanimated, 0);
@@ -96,4 +162,101 @@ fn moves_across_the_map_edge_teleport() {
     let width = app.world().resource::<MapGrid>().width;
     let path = move_and_watch(&mut app, block, IVec2::new(width - 1, 2), 1);
     assert_eq!(path[0], Vec2::new((width - 1) as f32, 2.0));
+}
+
+/// Holds a movement key until the player steps, pushes `block` two cells as
+/// a consequence, then keeps walking. Returns the frames until the player's
+/// next step and how far the block was from its cell when that turn began.
+fn push_then_step(non_blocking: bool) -> (u32, f32) {
+    let mut app = boot(Some(tween(0.1)));
+    let mut block = app.world_mut().spawn((
+        Pos(IVec2::new(2, 2)),
+        Glyph::new('■', 1, 7),
+        // Two cells at 0.1 s per cell: twice as long as the player's step.
+        ObjectMotion(MotionStyle::from_name("linear").unwrap()),
+    ));
+    if non_blocking {
+        block.insert(NonBlockingAnimation);
+    }
+    let block = block.id();
+    let mut key = KeyCode::ArrowRight;
+    let mut last = player_cell(&mut app);
+    let mut pushed = false;
+    let mut frames = 0;
+    let mut gap_to_cell = f32::NAN;
+    for _ in 0..600 {
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.release_all();
+            keys.press(key);
+        }
+        let shown = app.world().get::<AnimatedPos>(block).unwrap().position;
+        app.update();
+        frames += 1;
+        let now = player_cell(&mut app);
+        if now == last {
+            continue;
+        }
+        if pushed {
+            // This turn began this frame; the block was last shown `shown`.
+            gap_to_cell = shown.distance(Vec2::new(4.0, 2.0));
+            break;
+        }
+        app.world_mut().get_mut::<Pos>(block).unwrap().0 = IVec2::new(4, 2);
+        pushed = true;
+        frames = 0;
+        last = now;
+        key = KeyCode::ArrowLeft;
+    }
+    (frames, gap_to_cell)
+}
+
+#[test]
+fn the_next_turn_waits_for_every_unfinished_animation() {
+    // Without the block the player steps every 7 frames (see above). The
+    // block's 0.2 s push holds the next turn until it has nearly arrived.
+    let (frames, gap) = push_then_step(false);
+    assert!(frames >= 12, "turn started after {frames} frames");
+    assert!(gap < 0.25, "block still {gap} cells from its cell");
+
+    // Ambient motion does not hold turns: back to the player's own 0.1 s
+    // step (20 ms lead, 16 ms frames).
+    let (frames, _) = push_then_step(true);
+    assert_eq!(frames, 5);
+}
+
+#[test]
+fn a_blocked_move_bumps_toward_the_blocker() {
+    let mut app = boot(Some(tween(0.1)));
+    let start = player_cell(&mut app);
+    // A crate right of the player, registered in the map like any collider.
+    let blocker = app
+        .world_mut()
+        .spawn((Pos(start + IVec2::X), Collider, Glyph::new('■', 1, 7)))
+        .id();
+    app.world_mut()
+        .resource_mut::<MapGrid>()
+        .set(start + IVec2::X, blocker);
+
+    let mut shown = Vec::new();
+    for frame in 0..20 {
+        {
+            let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+            keys.release_all();
+            if frame == 0 {
+                keys.press(KeyCode::ArrowRight);
+            }
+        }
+        app.update();
+        let world = app.world_mut();
+        let (pos, animated) = world
+            .query_filtered::<(&Pos, &AnimatedPos), With<Player>>()
+            .single(world)
+            .unwrap();
+        assert_eq!(pos.0, start, "the move was blocked");
+        shown.push(animated.position.x - start.x as f32);
+    }
+    let peak = shown.iter().copied().fold(0.0_f32, f32::max);
+    assert!(peak > 0.15 && peak <= 0.2, "bump peak {peak}");
+    assert_eq!(*shown.last().unwrap(), 0.0, "bump returned");
 }

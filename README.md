@@ -11,9 +11,16 @@ next to this file.
 - Six entity types from map glyphs: wall `X`, player `p`, enemy `e`,
   electricity `~`, light `i`, acid `%` (all five maps + four rule files
   ship under `assets/`; `map1.txt` loads at startup).
-- Turn/token pipeline: actions fast-forward token recharge after a configurable
-  100ms minimum turn interval; idle turns advance after 1s. Recharges assign,
-  never add. Keyboard and random-walk commands remain token-gated.
+- Turn/token pipeline: each frame runs turn, simulation, animation, then
+  rendering. Once every token is spent, the next turn starts when every
+  unfinished animation (not just the player's) is within
+  `TurnPacing::animation_lead` (20ms) of finishing, so an object moved in
+  one turn arrives before it can move again, and held movement follows the
+  animation. Decorations bound to an actor and objects marked
+  `NonBlockingAnimation` never hold turns. Without an animation step
+  (headless runs, the agent API without a window, tests) or with the `snap`
+  style there is no delay at all. Idle turns advance after 1s. Recharges
+  assign, never add. Keyboard and random-walk commands remain token-gated.
 - Two-phase movement resolution with the original conservative contract:
   swaps blocked, entering a vacated cell blocked in the same pass, one
   winner per cell in stable creation order, collisions recorded (the Lite
@@ -91,7 +98,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test   # 55 tests, including allocation and independent C# comparisons
+cargo test   # 62 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
@@ -101,15 +108,17 @@ independent of the renderer): actors, and equally walls or decor that a
 level moves, by any number of cells at once. A longer move takes
 proportionally longer at the same speed; only a move across the wrapping
 map edge teleports. `--motion` picks the style: `ease-out` (default),
-`linear`, `ease-in-out`, `overshoot`, or `snap`. `M` cycles the styles at
-runtime. Code can insert
+`linear`, `ease-in-out`, `overshoot`, or `snap`. Animations also pace the
+turns (see above), and walking into a wall bumps toward it and back,
+taking one step's time. `M` cycles the styles at runtime. Code can insert
 a custom `animation::MotionStyle` (tween duration per cell and easing)
 before adding `ObjectAnimationPlugin`, and an `ObjectMotion` component
 overrides the style for one entity.
 
 The debug performance panel is visible by default and toggles with `F3`. It
 shows smoothed FPS/frame time, process and system CPU/RAM, entity count, text
-cells updated by the renderer, and current turn pacing.
+cells updated by the renderer, and whether unfinished animations still hold
+the next turn.
 
 Note: if your cargo home is not writable, point it somewhere writable,
 e.g. `CARGO_HOME=/tmp/cargo-home cargo run`.

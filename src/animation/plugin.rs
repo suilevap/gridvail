@@ -1,9 +1,18 @@
+use std::time::Duration;
+
 use bevy::prelude::*;
 
 use crate::model::*;
 use crate::schedule::GamePhase;
 
 use super::{MotionState, MotionStyle, ObjectMotion};
+
+/// Marks an object whose animation never holds back the next turn, for
+/// decorative or ambient motion. Bound decorations (`BoundTo`, such as the
+/// player's direction marker) never hold turns either: they follow their
+/// parent, which already does.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct NonBlockingAnimation;
 
 /// Animation state of one positioned object.
 #[derive(Component, Clone, Copy, Debug)]
@@ -12,14 +21,20 @@ pub struct ObjectAnimation {
 }
 
 /// Animates every positioned object (actors, walls, decor) between the
-/// cells the simulation moves it through.
+/// cells the simulation moves it through, and holds the next turn until
+/// those animations have finished.
 pub struct ObjectAnimationPlugin;
 
 impl Plugin for ObjectAnimationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MotionStyle>()
             .add_observer(start_animation)
-            .add_systems(Update, animate_objects.in_set(GamePhase::Animation));
+            .add_systems(
+                Update,
+                (bump_blocked_movers, animate_objects)
+                    .chain()
+                    .in_set(GamePhase::Animation),
+            );
     }
 }
 
@@ -37,6 +52,45 @@ fn start_animation(add: On<Add, Pos>, objects: Query<&Pos>, mut commands: Comman
     ));
 }
 
+/// Shortest step from `from` to `to` on the wrapping map.
+fn wrapped_delta(from: IVec2, to: IVec2, grid: &MapGrid) -> IVec2 {
+    let wrap = |delta: i32, size: i32| {
+        if delta.abs() * 2 > size {
+            delta - delta.signum() * size
+        } else {
+            delta
+        }
+    };
+    let delta = to - from;
+    IVec2::new(wrap(delta.x, grid.width), wrap(delta.y, grid.height))
+}
+
+/// A move the simulation blocked (walking into a wall or another actor) is
+/// shown as a bump toward what blocked it: a move out and back to the same
+/// cell, lasting one step.
+pub fn bump_blocked_movers(
+    style: Res<MotionStyle>,
+    grid: Res<MapGrid>,
+    collisions: Res<CollisionBuffer>,
+    positions: Query<&Pos>,
+    mut objects: Query<(Option<&ObjectMotion>, &mut ObjectAnimation)>,
+) {
+    for collision in &collisions.0 {
+        let (Ok(source), Ok(target)) = (
+            positions.get(collision.source),
+            positions.get(collision.target),
+        ) else {
+            continue;
+        };
+        let Ok((own_style, mut animation)) = objects.get_mut(collision.source) else {
+            continue;
+        };
+        let motion = own_style.map_or(*style, |own| own.0);
+        let toward = wrapped_delta(source.0, target.0, &grid).as_vec2();
+        animation.state.bump(toward, motion);
+    }
+}
+
 /// Whether moving from `from` to `to` crossed the map edge: the map wraps,
 /// so that move is a teleport, not a glide across the whole map.
 fn wrapped(from: Vec2, to: Vec2, grid: &MapGrid) -> bool {
@@ -44,19 +98,24 @@ fn wrapped(from: Vec2, to: Vec2, grid: &MapGrid) -> bool {
     delta.x > grid.width as f32 / 2.0 || delta.y > grid.height as f32 / 2.0
 }
 
+#[allow(clippy::type_complexity)]
 pub fn animate_objects(
     time: Res<Time>,
     style: Res<MotionStyle>,
     grid: Res<MapGrid>,
+    mut pacing: ResMut<TurnPacing>,
     mut objects: Query<(
         &Pos,
         Option<&ObjectMotion>,
+        Has<NonBlockingAnimation>,
+        Has<BoundTo>,
         &mut ObjectAnimation,
         &mut AnimatedPos,
     )>,
 ) {
     let dt = time.delta_secs();
-    for (pos, own_style, mut animation, mut shown) in &mut objects {
+    let mut blocking = 0.0_f32;
+    for (pos, own_style, non_blocking, bound, mut animation, mut shown) in &mut objects {
         let motion = own_style.map_or(*style, |own| own.0);
         let target = pos.0.as_vec2();
         let from = animation.state.target();
@@ -64,10 +123,13 @@ pub fn animate_objects(
             if wrapped(from, target, &grid) {
                 animation.state = MotionState::at(target);
             } else {
-                animation.state.retarget(target, motion);
+                animation.state.move_to(target, motion);
             }
         }
-        animation.state.advance(motion, dt);
+        animation.state.advance(dt);
+        if !non_blocking && !bound {
+            blocking = blocking.max(animation.state.remaining());
+        }
 
         let next = AnimatedPos {
             position: animation.state.position,
@@ -76,4 +138,8 @@ pub fn animate_objects(
             *shown = next;
         }
     }
+    // The next turn waits until every blocking animation has (nearly)
+    // finished, not just the player's: an object moved last turn arrives
+    // before it can be moved again.
+    pacing.report_animation(Duration::from_secs_f32(blocking));
 }

@@ -2,7 +2,10 @@
 //!
 //! The simulation moves objects from cell to cell (one step per turn for
 //! actors, or several cells at once). This step turns those moves into
-//! continuous motion (`AnimatedPos`) for any renderer.
+//! continuous motion (`AnimatedPos`) for any renderer, and tells
+//! `TurnPacing` how long the unfinished animations still run, so the next
+//! turn waits for them (held input follows the animation). Without it the
+//! simulation runs with no delay.
 
 mod motion;
 mod plugin;
