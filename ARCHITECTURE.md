@@ -38,10 +38,15 @@ and renderers must not import it.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for
-  every positioned object (actors, walls, decor). Its `ObjectAnimationPlugin`
-  keeps per-object motion state (styles in `MotionStyle`, per-entity
-  `ObjectMotion` overrides) and writes the shown position to `AnimatedPos`.
-  It needs no renderer.
+  every positioned object (actors, walls, decor). Each object plays one
+  `Move` at a time (start, end, `Path` shape, timing); a cell change plays a
+  straight move and a blocked move (a simulation collision) plays an
+  excursion out and back to the same cell. `ObjectAnimationPlugin` picks the
+  timing from `MotionStyle` (per-entity `ObjectMotion` overrides), writes the
+  shown position to `AnimatedPos`, and reports how long unfinished moves
+  still run to `TurnPacing`, which holds the next turn until they have nearly
+  finished. It needs no renderer; without it the simulation runs with no
+  delay.
 - `presentation/` builds light maps and renderer-neutral composed cell frames.
   Renderers draw each frame as two layers: `ground` (per-cell floor and fog,
   blank under objects) and `objects` (every visible glyph entity, at its

@@ -66,7 +66,8 @@ fn tokenless_enemies_do_not_block_player_input() {
 }
 
 #[test]
-fn held_key_repeats_after_recharge_and_release_stops_it() {
+fn held_key_repeats_without_delay_and_release_stops_it() {
+    // No animation step is installed, so nothing holds the turns back.
     let mut app = boot();
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
@@ -77,21 +78,12 @@ fn held_key_repeats_after_recharge_and_release_stops_it() {
         .resource_mut::<ButtonInput<KeyCode>>()
         .clear();
     let after_press = player_of(app.world_mut()).0;
-    for _ in 0..4 {
-        app.update();
-    }
-    assert_eq!(
-        player_of(app.world_mut()).0,
-        after_press,
-        "held input repeated before the 100ms minimum turn interval"
-    );
-    for _ in 0..4 {
-        app.update();
-    }
+    app.update();
     let after_hold = player_of(app.world_mut()).0;
-    assert!(
-        after_hold.x < after_press.x,
-        "held key did not produce another order after recharge"
+    assert_eq!(
+        after_hold,
+        after_press + IVec2::NEG_X,
+        "held key did not move again on the next frame"
     );
 
     app.world_mut()

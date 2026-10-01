@@ -138,14 +138,23 @@ fn update_panel(
          CPU process {process_cpu:>5.1}% | system {system_cpu:>5.1}%\n\
          RAM process {process_memory:>5.2} GiB | system {system_memory:>5.1}%\n\
          Entities {:>5.0} | text cells {:>4}/{}\n\
-         Turn {} {} | minimum {} ms",
+         Turn {} {} | ",
         entities,
         render_stats.changed_cells,
         buffers.current.len(),
         turn.tick,
         turn.phase_name(),
-        pacing.minimum_interval.as_millis(),
     )
+    .expect("writing to String cannot fail");
+    // Whether unfinished animations still hold back the next turn.
+    match pacing.animation() {
+        Some(remaining) => write!(
+            panel.0,
+            "anim {} ms left",
+            remaining.saturating_sub(pacing.animation_lead).as_millis()
+        ),
+        None => write!(panel.0, "ready"),
+    }
     .expect("writing to String cannot fail");
 }
 

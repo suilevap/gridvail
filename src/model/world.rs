@@ -119,34 +119,53 @@ impl Default for TokenTimer {
     }
 }
 
-/// Limits how quickly completed turns can refill action tokens.
+/// Decides when a completed turn may refill action tokens.
 ///
-/// Insert a custom value before adding `GamePlugin` to tune the pace without
-/// changing the simulation systems.
+/// The simulation itself never waits: without an animation step the next
+/// turn starts as soon as every token is spent. An animation system reports
+/// how long its unfinished animations still run (every moving object, not
+/// just the player), and the next turn then starts once they are all within
+/// `animation_lead` of finishing. Like the simulation within a turn, the
+/// animation of one turn completes before the next begins, so a box pushed
+/// twice arrives before it is pushed again.
+///
+/// Insert a custom value before adding `GamePlugin` to tune the lead.
 #[derive(Resource, Debug)]
 pub struct TurnPacing {
-    pub minimum_interval: std::time::Duration,
-    elapsed: std::time::Duration,
+    pub animation_lead: std::time::Duration,
+    animation: Option<std::time::Duration>,
     started: bool,
 }
 
 impl TurnPacing {
-    pub const DEFAULT_MINIMUM_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+    /// About one frame: the turn that follows is noticed a frame later.
+    pub const DEFAULT_ANIMATION_LEAD: std::time::Duration = std::time::Duration::from_millis(20);
 
-    pub const fn new(minimum_interval: std::time::Duration) -> Self {
+    pub const fn new(animation_lead: std::time::Duration) -> Self {
         Self {
-            minimum_interval,
-            elapsed: std::time::Duration::ZERO,
+            animation_lead,
+            animation: None,
             started: false,
         }
     }
 
-    pub(crate) fn tick(&mut self, delta: std::time::Duration) {
-        self.elapsed = self.elapsed.saturating_add(delta);
+    /// Time until every blocking animation finishes, as last reported by an
+    /// animation system; `None` when nothing reports.
+    pub fn animation(&self) -> Option<std::time::Duration> {
+        self.animation
+    }
+
+    /// Called by an animation system every frame with the longest time any
+    /// blocking animation still runs (zero when all are done).
+    pub fn report_animation(&mut self, remaining: std::time::Duration) {
+        self.animation = Some(remaining);
     }
 
     pub(crate) fn can_advance(&self) -> bool {
-        !self.started || self.elapsed >= self.minimum_interval
+        !self.started
+            || self
+                .animation
+                .is_none_or(|remaining| remaining <= self.animation_lead)
     }
 
     pub(crate) fn started(&mut self) {
@@ -154,13 +173,14 @@ impl TurnPacing {
     }
 
     pub(crate) fn action_committed(&mut self) {
-        self.elapsed = std::time::Duration::ZERO;
+        // The animation step reports again after this turn's moves.
+        self.animation = None;
     }
 }
 
 impl Default for TurnPacing {
     fn default() -> Self {
-        Self::new(Self::DEFAULT_MINIMUM_INTERVAL)
+        Self::new(Self::DEFAULT_ANIMATION_LEAD)
     }
 }
 
