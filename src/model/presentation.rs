@@ -31,6 +31,8 @@ pub struct ObjectCell {
     pub pos: IVec2,
     /// Shown position in fractional cells; `pos` when nothing animates it.
     pub position: Vec2,
+    /// Height above the ground in cells.
+    pub lift: f32,
     pub cell: RenderCell,
 }
 

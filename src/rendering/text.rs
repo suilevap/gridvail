@@ -24,6 +24,7 @@ pub(super) struct MapCell(pub(super) IVec2);
 #[derive(Component, Clone, Copy)]
 pub(super) struct ObjectSprite {
     position: Vec2,
+    lift: f32,
     depth: u8,
     pub(super) shown: bool,
 }
@@ -32,6 +33,11 @@ impl ObjectSprite {
     /// Displayed position in grid cells.
     pub(super) fn position(&self) -> Vec2 {
         self.position
+    }
+
+    /// Hop height above the ground, in cells.
+    pub(super) fn lift(&self) -> f32 {
+        self.lift
     }
 }
 
@@ -204,6 +210,7 @@ fn spawn_object_sprites(world: &mut World) {
                 // Hidden until the placement pass fills in the glyph this frame.
                 ObjectSprite {
                     position: object.position,
+                    lift: object.lift,
                     depth: object.cell.depth,
                     shown: false,
                 },
@@ -265,6 +272,7 @@ pub(super) fn place_object_sprites(
         drawn.clear();
         push_glyph(&mut drawn, object.cell.ch, billboards);
         sprite.position = object.position;
+        sprite.lift = object.lift;
         sprite.depth = object.cell.depth;
         sprite.shown = true;
         if text.0 != *drawn {
@@ -290,7 +298,8 @@ pub(super) fn place_object_sprites(
         if !sprite.shown || billboards {
             continue;
         }
-        let translation = object_translation(&sprite, &grid);
+        // Top-down, a hop shows as a small shift up the screen.
+        let translation = object_translation(&sprite, &grid) + Vec3::Y * sprite.lift * CELL_SIZE.y;
         if transform.translation != translation {
             transform.translation = translation;
         }

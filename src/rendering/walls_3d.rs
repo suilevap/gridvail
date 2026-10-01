@@ -321,7 +321,8 @@ fn sync_walls(
         if material.0 != *desired {
             material.0 = desired.clone();
         }
-        let translation = grid_to_world_f(animated.position, grid.width, grid.height);
+        let translation = grid_to_world_f(animated.position, grid.width, grid.height)
+            + Vec3::Z * animated.lift * CELL_SIZE.y;
         if transform.translation != translation {
             transform.translation = translation;
         }
@@ -394,10 +395,10 @@ fn project_text_cells(
     let overlay_global = GlobalTransform::from(*overlay_transform);
 
     for (cell, object, text, mut transform, mut visibility) in &mut cells {
-        let position = match (cell, object) {
-            (Some(cell), _) => cell.0.as_vec2(),
+        let (position, lift) = match (cell, object) {
+            (Some(cell), _) => (cell.0.as_vec2(), 0.0),
             // Hidden objects keep the visibility set by the text renderer.
-            (None, Some(object)) if object.shown => object.position(),
+            (None, Some(object)) if object.shown => (object.position(), object.lift()),
             _ => continue,
         };
         let is_billboard = text.0.contains('\n');
@@ -405,7 +406,7 @@ fn project_text_cells(
             BILLBOARD_CENTER_HEIGHT
         } else {
             1.0
-        };
+        } + lift * CELL_SIZE.y;
         let ground = grid_to_world_f(position, grid.width, grid.height) + Vec3::Z * height;
         let Ok(viewport) = perspective.world_to_viewport(&perspective_global, ground) else {
             if *visibility != Visibility::Hidden {

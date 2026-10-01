@@ -39,7 +39,8 @@ and renderers must not import it.
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for
   every positioned object (actors, walls, decor). Each object plays one
-  `Move` at a time (start, end, `Path` shape, timing); a cell change plays a
+  `Move` at a time (start, end, `Path` shape, timing, secondary motion such as
+  a hop); a cell change plays a
   straight move and a blocked move (a simulation collision) plays an
   excursion out and back to the same cell. `ObjectAnimationPlugin` picks the
   timing from `MotionStyle` (per-entity `ObjectMotion` overrides), writes the

@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use crate::model::*;
 use crate::schedule::GamePhase;
 
-use super::{MotionState, MotionStyle, ObjectMotion};
+use super::{MotionState, MotionStyle, MovePath, ObjectMotion};
 
 /// Marks an object whose animation never holds back the next turn, for
 /// decorative or ambient motion. Bound decorations (`BoundTo`, such as the
@@ -107,6 +107,7 @@ pub fn animate_objects(
     mut objects: Query<(
         &Pos,
         Option<&ObjectMotion>,
+        Option<&MovePath>,
         Has<NonBlockingAnimation>,
         Has<BoundTo>,
         &mut ObjectAnimation,
@@ -115,7 +116,7 @@ pub fn animate_objects(
 ) {
     let dt = time.delta_secs();
     let mut blocking = 0.0_f32;
-    for (pos, own_style, non_blocking, bound, mut animation, mut shown) in &mut objects {
+    for (pos, own_style, path, non_blocking, bound, mut animation, mut shown) in &mut objects {
         let motion = own_style.map_or(*style, |own| own.0);
         let target = pos.0.as_vec2();
         let from = animation.state.target();
@@ -123,7 +124,9 @@ pub fn animate_objects(
             if wrapped(from, target, &grid) {
                 animation.state = MotionState::at(target);
             } else {
-                animation.state.move_to(target, motion);
+                animation
+                    .state
+                    .move_along(target, path.map(|path| path.0), motion);
             }
         }
         animation.state.advance(dt);
@@ -133,6 +136,7 @@ pub fn animate_objects(
 
         let next = AnimatedPos {
             position: animation.state.position,
+            lift: animation.state.lift,
         };
         if *shown != next {
             *shown = next;

@@ -40,6 +40,7 @@ pub fn compose_frame(
                 entity,
                 pos: pos.0,
                 position: shown.position,
+                lift: shown.lift,
                 cell: drawn,
             });
         }
