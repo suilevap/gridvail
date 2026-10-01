@@ -6,7 +6,8 @@ use crate::schedule::{GamePhase, StartupPhase};
 
 use super::*;
 
-/// Turn simulation, movement, collision resolution, and tile derivation.
+/// Turn simulation, movement, collision resolution, doors and keys, and tile
+/// derivation.
 pub struct SimulationPlugin {
     rng_seed: u64,
 }
@@ -47,6 +48,9 @@ impl Plugin for SimulationPlugin {
                     resolve_commit,
                     relative_position,
                     verify_map,
+                    open_doors,
+                    pick_up_items,
+                    drop_items.run_if(has_destroy_requests),
                     destroy_entities.run_if(has_destroy_requests),
                     direction_tiles,
                 )

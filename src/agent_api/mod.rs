@@ -116,6 +116,8 @@ struct PlayerState {
     position: Position,
     tokens: i32,
     command_pending: bool,
+    /// Colors of the keys the player carries.
+    keys: Vec<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -150,13 +152,21 @@ fn get_state(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
         .0
         .len();
 
-    let (position, tokens, command_pending) = {
-        let mut players = world.query_filtered::<(&Pos, &Tokens, &MoveCommand), With<Player>>();
-        let (position, tokens, command) = players
+    let (position, tokens, command_pending, items) = {
+        let mut players = world
+            .query_filtered::<(&Pos, &Tokens, &MoveCommand, Option<&Inventory>), With<Player>>();
+        let (position, tokens, command, inventory) = players
             .single(world)
             .map_err(|error| BrpError::internal(format!("player query failed: {error}")))?;
-        (position.0, tokens.count, command.active)
+        let items = inventory
+            .map(|inventory| inventory.0.clone())
+            .unwrap_or_default();
+        (position.0, tokens.count, command.active, items)
     };
+    let keys = items
+        .into_iter()
+        .filter_map(|item| world.get::<Key>(item).map(|key| key.0.name()))
+        .collect();
     let enemy_count = world
         .query_filtered::<Entity, (With<Enemy>, Without<DestroyRequested>)>()
         .iter(world)
@@ -175,6 +185,7 @@ fn get_state(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
             position: position.into(),
             tokens,
             command_pending,
+            keys,
         },
         enemy_count,
         collision_count,

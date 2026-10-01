@@ -172,3 +172,73 @@ fn vision_and_light_fields_stay_sane() {
     let light = world.resource::<pav_ecs_game_bevy_port::presentation::DynamicLight>();
     assert!(light.data[idx].value > 1);
 }
+
+/// Presses `key` once and waits until the player can act again.
+fn step(app: &mut App, key: KeyCode) {
+    press_once(app, key);
+    for _ in 0..120 {
+        if player_of(app.world_mut()).2 > 0 && !app.world().resource::<TurnState>().simulation {
+            return;
+        }
+        app.update();
+    }
+    panic!("player never got its token back");
+}
+
+fn carried_keys(world: &mut World) -> Vec<KeyColor> {
+    let items = world
+        .query_filtered::<&Inventory, With<Player>>()
+        .single(world)
+        .unwrap()
+        .0
+        .clone();
+    items
+        .into_iter()
+        .filter_map(|item| world.get::<Key>(item).map(|key| key.0))
+        .collect()
+}
+
+#[test]
+fn red_key_opens_the_red_door_to_the_green_key() {
+    use KeyCode::{ArrowDown as D, ArrowLeft as L, ArrowRight as R, ArrowUp as U};
+    let mut app = boot();
+    let door_pos = IVec2::new(18, 4);
+    let door = {
+        let world = app.world_mut();
+        let (door, pos, glyph) = world
+            .query::<(Entity, &Pos, &Door)>()
+            .iter(world)
+            .find(|(_, _, door)| door.color == KeyColor::Red)
+            .map(|(entity, pos, door)| (entity, pos.0, *door))
+            .unwrap();
+        assert_eq!((pos, glyph.open), (door_pos, false));
+        door
+    };
+
+    for key in [L, L, L, L, L, U, U, U] {
+        step(&mut app, key);
+    }
+    assert_eq!(player_of(app.world_mut()).0, IVec2::new(3, 2));
+    assert_eq!(carried_keys(app.world_mut()), [KeyColor::Red]);
+
+    for _ in 0..15 {
+        step(&mut app, R);
+    }
+    step(&mut app, D);
+    assert_eq!(player_of(app.world_mut()).0, IVec2::new(18, 3));
+    assert!(app.world().resource::<MapGrid>().blocks_vision(door_pos));
+
+    // Bumping opens the door; the player walks through on the next step.
+    step(&mut app, D);
+    assert_eq!(player_of(app.world_mut()).0, IVec2::new(18, 3));
+    assert!(app.world().get::<Door>(door).unwrap().open);
+    assert!(!app.world().resource::<MapGrid>().blocks_vision(door_pos));
+
+    step(&mut app, D);
+    step(&mut app, D);
+    assert_eq!(player_of(app.world_mut()).0, IVec2::new(18, 5));
+    assert_eq!(
+        carried_keys(app.world_mut()),
+        [KeyColor::Red, KeyColor::Green]
+    );
+}
