@@ -5,7 +5,7 @@ The code is arranged from reusable foundations toward the concrete game:
 ```text
 foundation  content  model  schedule
      ↑        ↑       ↑       ↑
-     simulation  ai  vision  lighting  presentation
+     simulation  ai  vision  lighting  animation  presentation
              ↑       ↑       ↑
                     app       rendering  agent_api  debug_ui
                       \         |         /         /
@@ -44,10 +44,30 @@ and renderers must not import it.
   underlying algorithm remains in `foundation/`.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
+- `animation/` turns cell moves of any length into continuous motion for
+  every positioned object (actors, walls, decor). Each object plays one
+  `Move` at a time (start, end, `Path` shape, timing, secondary motion such as
+  a hop); a cell change plays a
+  straight move and a blocked move (a simulation collision) plays an
+  excursion out and back to the same cell. Children (`BoundTo`) are shown at
+  their parent's shown position plus their animated offset from it: the
+  same `ObjectAnimation` and per-frame step as any object, but following
+  `rotate(offset, facing)` instead of the cell, along `Path::Orbit` around
+  the parent, so a turn swings them around it rather than through it. `ObjectAnimationPlugin` picks the
+  timing from `MotionStyle` (per-entity `ObjectMotion` overrides), writes the
+  shown position to `AnimatedPos`, and reports how long unfinished moves
+  still run to `TurnPacing`, which holds the next turn until they have nearly
+  finished. It needs no renderer; without it the simulation runs with no
+  delay.
 - `presentation/` builds light maps and renderer-neutral composed cell frames.
+  Renderers draw each frame as two layers: `ground` (per-cell floor and fog,
+  blank under objects) and `objects` (every visible glyph entity, at its
+  animated position), so any object can move.
   `PresentationPlugin` owns those systems and all map-sized frame resources.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
-  the font, `Text2d` cells, HUD, and writes changed composed cells. The optional
+  the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
+  at its animated position. Wall meshes in the 3D backend follow their
+  objects the same way. The optional
   `ExtrudedWallRendererPlugin` adds a perspective camera plus shared wall and
   floor meshes beneath that text layer. A small GPU texture carries the same
   visibility and CPU-light results to the procedural floor shader.
@@ -59,7 +79,8 @@ and renderers must not import it.
 - `app/` wires the concrete Gridvail/PavEcsLiteGame port together. The bundled
   map choice and exact spawn bundles live in `app/map.rs`; domain composition,
   phase ordering, and compatibility decisions live in `app/mod.rs`.
-- `main.rs` selects the text or hybrid 3D-wall renderer, installs
+- `main.rs` installs the animation step, selects the text or hybrid 3D-wall
+  renderer, installs
   `DebugPerformancePlugin`, optionally installs `AgentApiPlugin`, and owns the
   window/screenshot harness.
 
@@ -78,7 +99,8 @@ When adding code, place it in the lowest layer that can own it:
 2. File-format parser: `content`.
 3. Data with no behavior: `model`.
 4. Reusable world mutation and its registration: the matching domain plugin.
-5. Renderer-neutral visual composition: `presentation`.
+5. Renderer-neutral motion over time: `animation`; visual composition:
+   `presentation`.
 6. Concrete screen, terminal, or tile output: a plugin in `rendering`.
 7. Runtime automation transport: `agent_api`.
 8. Runtime diagnostics that observe other layers: `debug_ui`.

@@ -14,7 +14,7 @@ use flatbt_bevy::prelude::Behavior;
 use crate::ai::enemy_tree;
 use crate::content::map::{parse_map, SpawnKind};
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
-use crate::lighting::{GRAY, RED, WHITE};
+use crate::lighting::{GRAY, RED, WHITE, YELLOW};
 use crate::model::*;
 use crate::schedule::StartupPhase;
 use crate::simulation::Rules;
@@ -79,6 +79,7 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
                         ),
                         Glyph::new('@', 1, WHITE),
                         Player(0),
+                        Inventory::default(),
                         Tokens::new(1),
                         Friction(1),
                         Facing::default(),
@@ -123,11 +124,14 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
                     Collider,
                     Enemy,
                     Pos(cell.pos),
-                    Speed::default(),
-                    MoveCommand::default(),
-                    PendingPos::default(),
-                    PrevPos(cell.pos),
+                    (
+                        Speed::default(),
+                        MoveCommand::default(),
+                        PendingPos::default(),
+                        PrevPos(cell.pos),
+                    ),
                     Glyph::new('☺', 1, RED),
+                    Inventory::default(),
                     Tokens::new(1),
                     Friction(1),
                     Facing::default(),
@@ -180,15 +184,31 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
                     initial_fov(cell_count),
                 ))
                 .id(),
+            SpawnKind::Key => commands
+                .spawn((Active, Item, Key, Pos(cell.pos), Glyph::new('♀', 0, YELLOW)))
+                .id(),
+            SpawnKind::Door => commands
+                .spawn((
+                    Active,
+                    Collider,
+                    Door::default(),
+                    Pos(cell.pos),
+                    Glyph::new(Door::CLOSED_GLYPH, 1, GRAY),
+                ))
+                .id(),
         };
         if commands.get_entity(entity).is_ok()
             && matches!(
                 cell.kind,
-                SpawnKind::Wall | SpawnKind::Player | SpawnKind::Enemy
+                SpawnKind::Wall | SpawnKind::Player | SpawnKind::Enemy | SpawnKind::Door
             )
         {
             // Colliders own their cells (mirrors the first UpdatePosition pass).
-            grid.set_with_blocking(cell.pos, entity, matches!(cell.kind, SpawnKind::Wall));
+            grid.set_with_blocking(
+                cell.pos,
+                entity,
+                matches!(cell.kind, SpawnKind::Wall | SpawnKind::Door),
+            );
         }
     }
 

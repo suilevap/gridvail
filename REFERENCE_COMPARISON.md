@@ -65,13 +65,14 @@ These did not prevent tests or GPU execution.
 - Rust and C# use different seeded random streams; enemy trajectories are
   not expected to match. Entity arbitration is deterministic by Bevy entity
   index/generation, not a claim of identical cross-engine filter order.
-- WASD is added; native Bevy input remains active while a key is held, with a
-  configurable 100ms minimum between turns. A press and release completed
+- WASD is added; native Bevy input remains active while a key is held. With the
+  animation step installed, turns wait for unfinished move animations to
+  nearly finish; without it (headless) they do not wait at all. A press and release completed
   entirely during simulation work is still dropped, matching the original policy.
 - The window uses an explicit font and RGB approximations of console colors.
   Screenshot mode fixes the timestep for reproducible captures; ordinary
   play uses Bevy's clock. Screenshot mode renders to a fixed-size offscreen
-  target and spaces replayed input according to the minimum turn interval.
+  target and spaces replayed input far enough apart for each step's animation.
 - The original console application was not run end-to-end. These are source,
   algorithm, integration, and Bevy rendering checks, not proof of identical
   full-game replays or pixel-identical terminal output.

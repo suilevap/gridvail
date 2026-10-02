@@ -1,6 +1,6 @@
 //! ASCII map parsing. Mirrors `LoadMapSystem.TryGetSpawnRequest`:
 //! `X`/`x` wall, `p` player, `e` enemy, `~` electricity, `i` light,
-//! `%` acid; anything else is empty floor.
+//! `%` acid; anything else is empty floor. Additions: `k` key, `D` door.
 
 use bevy::prelude::*;
 
@@ -13,6 +13,8 @@ pub enum SpawnKind {
     Electricity,
     Light,
     Acid,
+    Key,
+    Door,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,6 +31,8 @@ pub fn spawn_kind_of(c: char) -> Option<SpawnKind> {
         '~' => Some(SpawnKind::Electricity),
         'i' => Some(SpawnKind::Light),
         '%' => Some(SpawnKind::Acid),
+        'k' => Some(SpawnKind::Key),
+        'D' => Some(SpawnKind::Door),
         _ => None,
     }
 }
@@ -81,6 +85,15 @@ mod tests {
         }
         // '.' and unknown chars spawn nothing
         assert_eq!(cells.len(), 7);
+    }
+
+    #[test]
+    fn parses_keys_and_doors() {
+        let (_, _, cells) = parse_map("kD.d");
+        assert_eq!(
+            cells.iter().map(|cell| cell.kind).collect::<Vec<_>>(),
+            [SpawnKind::Key, SpawnKind::Door]
+        );
     }
 
     #[test]

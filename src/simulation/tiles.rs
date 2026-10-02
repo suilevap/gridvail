@@ -17,8 +17,14 @@ pub fn tile_system(
     grid: Res<MapGrid>,
     rules: Res<Rules>,
     tiles: Query<(Entity, &Pos, &Tile)>,
+    doors: Query<&Pos, With<Door>>,
 ) {
-    let present: std::collections::HashSet<IVec2> = tiles.iter().map(|(_, pos, _)| pos.0).collect();
+    // Walls connect to doors set into them.
+    let present: std::collections::HashSet<IVec2> = tiles
+        .iter()
+        .map(|(_, pos, _)| pos.0)
+        .chain(doors.iter().map(|pos| pos.0))
+        .collect();
     let mut masks = Vec::new();
     for (entity, pos, tile) in tiles.iter() {
         if tile.rule != "wall_rule" {

@@ -15,9 +15,10 @@ pub fn recharge_tokens(
     mut holders: Query<&mut Tokens, Or<(With<Player>, With<Enemy>)>>,
 ) {
     timer.0.tick(time.delta());
-    pacing.tick(time.delta());
     let any_left = holders.iter().any(|tokens| tokens.count > 0);
-    if pacing.can_advance() && (timer.0.is_finished() || !any_left) {
+    // A new turn starts on the timeout, or once every token is spent and the
+    // player's action has (almost) finished animating, if anything animates.
+    if timer.0.is_finished() || (!any_left && pacing.can_advance()) {
         for mut tokens in holders.iter_mut() {
             tokens.count = tokens.recharge;
         }

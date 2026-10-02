@@ -2,6 +2,7 @@
 
 pub mod agent_api;
 pub mod ai;
+pub mod animation;
 pub mod app;
 pub mod content;
 pub mod debug_ui;

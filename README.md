@@ -11,13 +11,28 @@ next to this file.
 - Six entity types from map glyphs: wall `X`, player `p`, enemy `e`,
   electricity `~`, light `i`, acid `%` (all five maps + four rule files
   ship under `assets/`; `map1.txt` loads at startup).
-- Turn/token pipeline: actions fast-forward token recharge after a configurable
-  100ms minimum turn interval; idle turns advance after 1s. Recharges assign,
-  never add. Keyboard and enemy commands remain token-gated.
+- Turn/token pipeline: each frame runs turn, simulation, animation, then
+  rendering. Once every token is spent, the next turn starts when every
+  unfinished animation (not just the player's) is within
+  `TurnPacing::animation_lead` (20ms) of finishing, so an object moved in
+  one turn arrives before it can move again, and held movement follows the
+  animation. Decorations bound to an actor and objects marked
+  `NonBlockingAnimation` never hold turns. Without an animation step
+  (headless runs, the agent API without a window, tests) or with the `snap`
+  style there is no delay at all. Idle turns advance after 1s. Recharges
+  assign, never add. Keyboard and enemy commands remain token-gated.
 - Two-phase movement resolution with the original conservative contract:
   swaps blocked, entering a vacated cell blocked in the same pass, one
   winner per cell in stable creation order, collisions recorded (the Lite
   container has no collision consumer — same as the original).
+- Doors and keys (an addition, not in the original): `k` places a key
+  (`♀`) and `D` a door (`+`). The player and enemies pick up every item on a
+  cell they enter. Walking into a closed door while carrying a key opens it
+  (`'`, no longer blocking movement or sight) and uses the key up. An actor
+  that is destroyed drops everything it carries on its cell. `map1` has a
+  key near the start, a door to a closet holding a second key, and another
+  door further on. The HUD and the agent API's `player.keys` count the keys
+  the player holds.
 - Player-bound `i` direction marker via relative position + rotation.
 - Wall autotiling from `wall_rule.txt`, direction glyphs from the three
   direction rules (the file's Y-down inversion is inherited verbatim).
@@ -100,7 +115,8 @@ direction, and where new foundational versus game-specific code belongs.
 ```sh
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
-cargo test   # 57 tests, including allocation and independent C# comparisons
+cargo run -- --motion overshoot   # motion style; M cycles it in game
+cargo test   # 95 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
@@ -109,9 +125,36 @@ ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
 The last command prints each enemy scenario turn by turn: `!` alert, `H`
 hunting, `A` attacking, `S` searching, `p` patrolling, `z` resting.
 
+Every object glides when it moves (`animation::ObjectAnimationPlugin`,
+independent of the renderer): actors, and equally walls or decor that a
+level moves, by any number of cells at once. A longer move takes
+proportionally longer at the same speed; only a move across the wrapping
+map edge teleports. Each animation is a `Move`: start and end (possibly the
+same cell), a `Path` (straight, an out-and-back excursion, a sideways arc,
+or a Hermite curve), its timing, and secondary motion such as a hop per
+cell. Walking into a wall plays an excursion toward it and back, taking one
+step's time, and animations pace the turns (see above).
+
+`--motion` picks the style. The default, `locomotion`, gives each move
+`step` (0.12s) per cell along a Hermite curve: the first step after a pause
+starts slowly, a straight run flows at constant speed and gains momentum,
+turns keep part of it, and stopping after a run coasts past the last cell
+and settles back. Each cell crossed also hops slightly (`bob`), shown as a
+lift up the screen or off the floor in the 3D view. The others are
+`ease-out`, `linear`, `ease-in-out`, `overshoot`, and `snap`. `M` cycles the
+styles at runtime. Code can insert a custom `animation::MotionStyle` before
+adding `ObjectAnimationPlugin`; an `ObjectMotion` component overrides the
+style for one entity, and a `MovePath` component gives its cell moves
+another path (an arc, say). Children bound to an object (`BoundTo`, such as
+the player's direction marker) ride on their parent's animation, hop
+included: they animate their offset from the parent with the same moves,
+along an orbit around it, so a turn swings them around the parent along the
+shorter arc.
+
 The debug performance panel is visible by default and toggles with `F3`. It
 shows smoothed FPS/frame time, process and system CPU/RAM, entity count, text
-cells updated by the renderer, and current turn pacing.
+cells updated by the renderer, and whether unfinished animations still hold
+the next turn.
 
 `rust-toolchain.toml` pins Rust 1.95, the minimum for `flatbt-bevy`, which
 is fetched from its Git repository.
@@ -127,7 +170,15 @@ that fits the full map when resized. Capture the actual rendered window:
 cargo run -- --screenshot screenshots/bevy-map1.png
 cargo run -- --renderer 3d-walls --screenshot screenshots/bevy-map1-3d.png
 cargo run -- --screenshot screenshots/bevy-explored.png --walk LLLUUURRRRRRRDDDDDDDDDDDDDDD
+cargo run -- --record recordings/walk --walk "LLLLL.......RRRRUU......"
 ```
+
+`--record DIR` saves every frame after warm-up as `DIR/frame_NNNNN.png`
+(fixed 16 ms timestep) plus `DIR/trace.csv` with the player's logical cell
+and drawn position per frame, then exits. Its `--walk` holds each arrow key
+for 8 frames, like a player holding the key, and `.` releases; turn into a
+video with, for example,
+`ffmpeg -framerate 60 -i DIR/frame_%05d.png -pix_fmt yuv420p walk.mp4`.
 
 Screenshot mode uses deterministic 16ms frames, optionally replays `UDLR`
 through the real keyboard system, saves a PNG, then exits. It requires GPU

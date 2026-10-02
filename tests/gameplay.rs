@@ -66,7 +66,8 @@ fn tokenless_enemies_do_not_block_player_input() {
 }
 
 #[test]
-fn held_key_repeats_after_recharge_and_release_stops_it() {
+fn held_key_repeats_without_delay_and_release_stops_it() {
+    // No animation step is installed, so nothing holds the turns back.
     let mut app = boot();
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
@@ -77,21 +78,12 @@ fn held_key_repeats_after_recharge_and_release_stops_it() {
         .resource_mut::<ButtonInput<KeyCode>>()
         .clear();
     let after_press = player_of(app.world_mut()).0;
-    for _ in 0..4 {
-        app.update();
-    }
-    assert_eq!(
-        player_of(app.world_mut()).0,
-        after_press,
-        "held input repeated before the 100ms minimum turn interval"
-    );
-    for _ in 0..4 {
-        app.update();
-    }
+    app.update();
     let after_hold = player_of(app.world_mut()).0;
-    assert!(
-        after_hold.x < after_press.x,
-        "held key did not produce another order after recharge"
+    assert_eq!(
+        after_hold,
+        after_press + IVec2::NEG_X,
+        "held key did not move again on the next frame"
     );
 
     app.world_mut()
@@ -179,4 +171,70 @@ fn vision_and_light_fields_stay_sane() {
     let idx = (5 * world.resource::<MapGrid>().width + 8) as usize;
     let light = world.resource::<pav_ecs_game_bevy_port::presentation::DynamicLight>();
     assert!(light.data[idx].value > 1);
+}
+
+/// Presses `key` once and waits until the player can act again.
+fn step(app: &mut App, key: KeyCode) {
+    press_once(app, key);
+    for _ in 0..120 {
+        if player_of(app.world_mut()).2 > 0 && !app.world().resource::<TurnState>().simulation {
+            return;
+        }
+        app.update();
+    }
+    panic!("player never got its token back");
+}
+
+fn carried_keys(world: &mut World) -> usize {
+    let items = world
+        .query_filtered::<&Inventory, With<Player>>()
+        .single(world)
+        .unwrap()
+        .0
+        .clone();
+    items
+        .into_iter()
+        .filter(|&item| world.get::<Key>(item).is_some())
+        .count()
+}
+
+#[test]
+fn a_key_opens_the_closet_door_to_the_next_key() {
+    use KeyCode::{ArrowDown as D, ArrowLeft as L, ArrowRight as R, ArrowUp as U};
+    let mut app = boot();
+    let door_pos = IVec2::new(18, 4);
+    let door = {
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &Pos, &Door)>()
+            .iter(world)
+            .find(|(_, pos, door)| pos.0 == door_pos && !door.open)
+            .map(|(entity, ..)| entity)
+            .expect("closed closet door")
+    };
+
+    for key in [L, L, L, L, L, U, U, U] {
+        step(&mut app, key);
+    }
+    assert_eq!(player_of(app.world_mut()).0, IVec2::new(3, 2));
+    assert_eq!(carried_keys(app.world_mut()), 1);
+
+    for _ in 0..15 {
+        step(&mut app, R);
+    }
+    step(&mut app, D);
+    assert_eq!(player_of(app.world_mut()).0, IVec2::new(18, 3));
+    assert!(app.world().resource::<MapGrid>().blocks_vision(door_pos));
+
+    // Bumping opens the door with the key; the player walks in next step.
+    step(&mut app, D);
+    assert_eq!(player_of(app.world_mut()).0, IVec2::new(18, 3));
+    assert!(app.world().get::<Door>(door).unwrap().open);
+    assert!(!app.world().resource::<MapGrid>().blocks_vision(door_pos));
+    assert_eq!(carried_keys(app.world_mut()), 0, "the key is used up");
+
+    step(&mut app, D);
+    step(&mut app, D);
+    assert_eq!(player_of(app.world_mut()).0, IVec2::new(18, 5));
+    assert_eq!(carried_keys(app.world_mut()), 1);
 }

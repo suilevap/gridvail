@@ -22,6 +22,8 @@ pub enum GamePhase {
     FieldOfView,
     Lighting,
     Visibility,
+    /// Turn whole-cell moves into continuous motion for display.
+    Animation,
     Presentation,
     Output,
     Finalize,

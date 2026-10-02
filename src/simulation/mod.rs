@@ -3,6 +3,7 @@
 #![allow(clippy::type_complexity)]
 
 mod control;
+mod items;
 mod lifecycle;
 mod motion;
 mod plugin;
@@ -11,6 +12,7 @@ mod tiles;
 mod turn;
 
 pub use control::*;
+pub use items::*;
 pub use lifecycle::*;
 pub use motion::*;
 pub use plugin::*;
