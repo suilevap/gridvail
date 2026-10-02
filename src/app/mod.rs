@@ -10,6 +10,7 @@ pub use map::MapPlugin;
 
 use bevy::prelude::*;
 
+use crate::navigation::NavigationPlugin;
 use crate::presentation::PresentationPlugin;
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::SimulationPlugin;
@@ -33,6 +34,7 @@ impl Plugin for GamePlugin {
             Update,
             (
                 GamePhase::Simulation,
+                GamePhase::Navigation,
                 GamePhase::FieldOfView,
                 GamePhase::Lighting,
                 GamePhase::Visibility,
@@ -46,6 +48,7 @@ impl Plugin for GamePlugin {
         .add_plugins((
             MapPlugin,
             SimulationPlugin::new(42),
+            NavigationPlugin,
             VisionPlugin,
             PresentationPlugin,
         ));

@@ -8,6 +8,7 @@ pub mod debug_ui;
 pub mod foundation;
 pub mod lighting;
 pub mod model;
+pub mod navigation;
 pub mod presentation;
 pub mod rendering;
 pub mod schedule;
