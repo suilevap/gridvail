@@ -5,7 +5,7 @@ The code is arranged from reusable foundations toward the concrete game:
 ```text
 foundation  content  model  schedule
      ↑        ↑       ↑       ↑
-     simulation  vision  lighting  animation  presentation
+     simulation  vision  navigation  lighting  animation  presentation
              ↑       ↑       ↑
                     app       rendering  agent_api  debug_ui
                       \         |         /         /
@@ -22,7 +22,9 @@ and renderers must not import it.
 ## Layers
 
 - `foundation/` contains engine-independent algorithms. The fractional FOV
-  implementation and its ring/range scratch storage live here.
+  implementation and its ring/range scratch storage live here, as does grid
+  pathfinding (`path.rs`): searches over pluggable `CostModel`s, built on the
+  `pathfinding` crate.
 - `content/` parses external map and tile-rule formats. It does not spawn ECS
   entities or decide which map is active.
 - `model/` contains ECS data, split into actors, spatial state, vision,
@@ -35,6 +37,10 @@ and renderers must not import it.
 - `vision/` converts sensors and blocker state into cached FOV and visibility
   components. `VisionPlugin` owns their resources and phase registration; the
   underlying algorithm remains in `foundation/`.
+- `navigation/` keeps `NavMap`, a walls/closed-doors snapshot of the map
+  rebuilt when its static blockers change, and the game's base `Terrain`
+  cost model. New pathfinding rules (enemy sight, door limits, places to
+  avoid) are `CostModel`s combined with `Terrain`.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for
