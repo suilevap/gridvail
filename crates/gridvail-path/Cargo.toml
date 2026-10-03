@@ -1,0 +1,8 @@
+[package]
+name = "gridvail-path"
+version = "0.1.0"
+edition = "2021"
+description = "Grid pathfinding with pluggable, stateful step rules and allocation-free repeated searches"
+license = "MIT"
+
+[dependencies]

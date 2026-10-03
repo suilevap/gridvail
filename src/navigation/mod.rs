@@ -1,24 +1,37 @@
-//! Pathfinding over the game map.
+//! Pathfinding over the game map, on top of the `gridvail-path` crate
+//! (re-exported as [`path`]).
 //!
 //! [`NavMap`] is a snapshot of what each cell is to a walker (floor, wall, or
 //! closed door), rebuilt only when the map's static blockers change. Its
-//! [`Terrain`] cost model is the base for game searches; combine it with
-//! further [`CostModel`]s (avoiding enemy sight, limiting doors, steering clear
-//! of places) through the searches in [`crate::foundation::path`].
+//! [`Terrain`] rules are the base for game searches; combine them with further
+//! [`Rules`] (avoiding enemy sight, limiting doors, steering clear of places)
+//! as tuples, and search with a reused [`path::PathSearch`] or
+//! [`path::RouteSearch`], for example a system's `Local`.
 //!
-//! Actors are not obstacles here: they move every turn, so a model that cares
-//! about them should add their cost itself.
+//! Actors are not obstacles here: they move every turn, so rules that care
+//! about them should add their cost themselves. Searches do not wrap around
+//! the map edges.
 
 mod plugin;
 
+pub use gridvail_path as path;
 pub use plugin::*;
 
 use bevy::prelude::*;
 
-use crate::foundation::path::{
-    alternative_paths, find_path, k_shortest_paths, Alternatives, Cost, CostModel, GridShape, Path,
-};
+use path::{Cell, Grid, Rules};
+
 use crate::model::*;
+
+/// The pathfinding cell of a map position.
+pub fn cell_of(p: IVec2) -> Cell {
+    Cell::new(p.x, p.y)
+}
+
+/// The map position of a pathfinding cell.
+pub fn pos_of(cell: Cell) -> IVec2 {
+    IVec2::new(cell.x, cell.y)
+}
 
 /// What a cell is to a walker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -30,73 +43,52 @@ pub enum NavCell {
     ClosedDoor,
 }
 
-/// Walkability of every map cell. The map wraps, like [`MapGrid`].
-#[derive(Resource, Debug, Default)]
+/// Walkability of every map cell.
+#[derive(Resource, Debug)]
 pub struct NavMap {
-    width: i32,
-    height: i32,
+    grid: Grid,
     cells: Vec<NavCell>,
     /// `MapGrid::blocker_revision` the cells were built from.
     revision: Option<u64>,
 }
 
-impl NavMap {
-    pub fn shape(&self) -> GridShape {
-        GridShape {
-            width: self.width,
-            height: self.height,
-            wrap: true,
+impl Default for NavMap {
+    fn default() -> Self {
+        Self {
+            grid: Grid::new(0, 0),
+            cells: Vec::new(),
+            revision: None,
         }
     }
+}
 
-    /// The cell at `p`; outside the map is wall.
-    pub fn cell(&self, p: IVec2) -> NavCell {
-        self.index(p)
+impl NavMap {
+    /// The searched grid.
+    pub fn grid(&self) -> &Grid {
+        &self.grid
+    }
+
+    /// The cell at `cell`; off the map is wall.
+    pub fn cell(&self, cell: Cell) -> NavCell {
+        self.grid
+            .index(cell)
             .map_or(NavCell::Wall, |index| self.cells[index])
     }
 
-    fn index(&self, p: IVec2) -> Option<usize> {
-        (p.x >= 0 && p.y >= 0 && p.x < self.width && p.y < self.height)
-            .then_some((p.y * self.width + p.x) as usize)
+    /// The cell at map position `p`.
+    pub fn at(&self, p: IVec2) -> NavCell {
+        self.cell(cell_of(p))
     }
 
-    /// The cheapest path under `model`; see [`find_path`].
-    pub fn find_path(&self, model: &impl CostModel, from: IVec2, to: IVec2) -> Option<Path> {
-        find_path(self.shape(), model, from, to)
-    }
-
-    /// The `k` cheapest paths under `model`; see [`k_shortest_paths`].
-    pub fn k_shortest_paths(
-        &self,
-        model: &impl CostModel,
-        from: IVec2,
-        to: IVec2,
-        k: usize,
-    ) -> Vec<Path> {
-        k_shortest_paths(self.shape(), model, from, to, k)
-    }
-
-    /// Routes that differ from each other; see [`alternative_paths`].
-    pub fn alternative_paths(
-        &self,
-        model: &impl CostModel,
-        from: IVec2,
-        to: IVec2,
-        options: Alternatives,
-    ) -> Vec<Path> {
-        alternative_paths(self.shape(), model, from, to, options)
-    }
-
-    /// Rebuilds the snapshot. Reuses its storage unless the map size changed.
+    /// Rebuilds the snapshot. Reuses its storage unless the map grew.
     pub fn rebuild(
         &mut self,
         grid: &MapGrid,
         walls: impl IntoIterator<Item = IVec2>,
         closed_doors: impl IntoIterator<Item = IVec2>,
     ) {
-        self.width = grid.width;
-        self.height = grid.height;
-        let cells = (grid.width * grid.height) as usize;
+        self.grid = Grid::new(grid.width.max(0) as u32, grid.height.max(0) as u32);
+        let cells = self.grid.len();
         if self.cells.len() != cells {
             self.cells.resize(cells, NavCell::Floor);
         }
@@ -111,7 +103,7 @@ impl NavMap {
     }
 
     fn set(&mut self, p: IVec2, cell: NavCell) {
-        if let Some(index) = self.index(p) {
+        if let Some(index) = self.grid.index(cell_of(p)) {
             self.cells[index] = cell;
         }
     }
@@ -127,7 +119,7 @@ impl NavMap {
 #[derive(Clone, Copy, Debug)]
 pub struct Terrain<'a> {
     pub nav: &'a NavMap,
-    pub door_cost: Option<Cost>,
+    pub door_cost: Option<u32>,
 }
 
 impl<'a> Terrain<'a> {
@@ -140,7 +132,7 @@ impl<'a> Terrain<'a> {
     }
 
     /// Closed doors pass for `door_cost` extra each.
-    pub fn through_doors(nav: &'a NavMap, door_cost: Cost) -> Self {
+    pub fn through_doors(nav: &'a NavMap, door_cost: u32) -> Self {
         Self {
             nav,
             door_cost: Some(door_cost),
@@ -148,12 +140,21 @@ impl<'a> Terrain<'a> {
     }
 }
 
-impl CostModel for Terrain<'_> {
+impl Rules for Terrain<'_> {
+    type Cost = u32;
     type State = ();
 
-    fn initial_state(&self, _start: IVec2) {}
+    fn state_count(&self) -> usize {
+        1
+    }
 
-    fn step(&self, _from: IVec2, to: IVec2, _state: &()) -> Option<(Cost, ())> {
+    fn state_index(&self, _state: &()) -> usize {
+        0
+    }
+
+    fn start_state(&self, _start: Cell) {}
+
+    fn step(&self, _from: Cell, to: Cell, _state: &()) -> Option<(u32, ())> {
         let cost = match self.nav.cell(to) {
             NavCell::Floor => 1,
             NavCell::Wall => return None,
@@ -162,7 +163,7 @@ impl CostModel for Terrain<'_> {
         Some((cost, ()))
     }
 
-    fn min_step_cost(&self) -> Cost {
+    fn min_step_cost(&self) -> u32 {
         1
     }
 }
