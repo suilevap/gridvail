@@ -33,6 +33,20 @@ next to this file.
   key near the start, a door to a closet holding a second key, and another
   door further on. The HUD and the agent API's `player.keys` count the keys
   the player holds.
+- Pathfinding (an addition): the workspace crate `crates/gridvail-path`
+  (no dependencies) runs A* over pluggable `Rules`. Rules price or forbid each
+  step and may carry a small state, such as doors passed; the search keeps one
+  layer of cells per state, so the same cell reached with a different state is
+  searched separately; a rule may declare which states dominate others (more
+  keys left beats fewer) so dominated arrivals are skipped. Rules may add
+  jumps (teleports, ladders), searched by cost alone since they break
+  distance estimates. Rules combine as tuples, and costs may be `Lex` pairs
+  ("fewest doors, then shortest"). `PathSearch` and `RouteSearch` (a stream of
+  routes that differ from one another) reuse their memory, so warmed-up
+  searches allocate nothing. `navigation::NavMap` snapshots walls and closed
+  doors, rebuilt only when static blockers change, and `navigation::Terrain`
+  is the base rule (walls block; closed doors block or cost extra). Searches
+  do not wrap around the map edges. Nothing uses it in play yet.
 - Player-bound `i` direction marker via relative position + rotation.
 - Wall autotiling from `wall_rule.txt`, direction glyphs from the three
   direction rules (the file's Y-down inversion is inherited verbatim).
@@ -83,6 +97,8 @@ src/debug_ui.rs             optional FPS and runtime performance panel
 src/model/                 ECS data split by gameplay domain
 src/simulation/            simulation plugin; control, motion, resolution, tiles
 src/vision/                vision plugin; FOV cache and player visibility
+src/navigation/            nav map snapshot and game rules for pathfinding
+crates/gridvail-path/      grid pathfinding crate (A*, route streams, no deps)
 src/lighting/              light math and palettes
 src/presentation/          renderer-neutral lighting and frame composition
 src/rendering/             swappable Text2d and extruded-wall output plugins
@@ -106,9 +122,9 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test   # 81 tests, including allocation and independent C# comparisons
-cargo clippy --all-targets -- -D warnings
-cargo fmt --check
+cargo test --workspace   # 102 tests, including allocation and independent C# comparisons
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
 ```
 
 Every object glides when it moves (`animation::ObjectAnimationPlugin`,

@@ -19,6 +19,8 @@ pub enum StartupPhase {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GamePhase {
     Simulation,
+    /// Refresh pathfinding data from the simulated map.
+    Navigation,
     FieldOfView,
     Lighting,
     Visibility,
