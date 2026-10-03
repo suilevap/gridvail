@@ -5,7 +5,7 @@ The code is arranged from reusable foundations toward the concrete game:
 ```text
 foundation  content  model  schedule
      ↑        ↑       ↑       ↑
-     simulation  vision  lighting  animation  presentation
+     simulation  ai  vision  lighting  animation  presentation
              ↑       ↑       ↑
                     app       rendering  agent_api  debug_ui
                       \         |         /         /
@@ -32,6 +32,29 @@ and renderers must not import it.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
+- `ai/` decides enemy commands with FlatBT behavior trees inside
+  `SimulationStep::Decide`, between player input and movement. `perceive`
+  fills the `EnemyMind` blackboard, the tree reports an `EnemyAct`, and
+  `carry_out` writes the ordinary `MoveCommand`; `show_mood` recolors the
+  enemy glyph from the act after tiles are derived. Trees never mutate the world,
+  so enemies share the player's token and collision rules. Out-of-turn enemies
+  are skipped with `Tick::Skip`, not guarded inside the tree.
+  A tree reaches a service (anything it cannot compute from its blackboard,
+  such as a route) by asking in its act: `EnemyAct::GoTo(dest)` is answered
+  by `navigate`, a system after the tick, which writes this turn's step into
+  the agent's `Route` and an answer the gather copies into the blackboard for
+  the next turn. Expensive work runs as a service `Job` (`ai/service.rs`)
+  whose `Ticket` is polled on later frames; `ServiceMode` runs jobs inline
+  (default, deterministic, used by tests and captures), in the background on
+  the async compute pool (the game), or deferred by a fixed number of frames
+  (deterministic slow thinking for tests). A slow answer costs that agent a
+  turn or two (it follows its old plan, or holds showing `?`), never a frame.
+  Navigation plans whole paths with a `Planner` over an `Arc`'d
+  `MapSnapshot` and follows them cheaply each turn, checking doors and actors
+  live; the interim `GridPlanner` is a Dijkstra that a planner over the
+  `navigation` module's `NavMap` is meant to replace.
+  Orders (`Order`) say where an agent should go and are written by whoever
+  commands it; hunters (`hunter_tree`) follow theirs with flatbt's goal stack.
 - `vision/` converts sensors and blocker state into cached FOV and visibility
   components. `VisionPlugin` owns their resources and phase registration; the
   underlying algorithm remains in `foundation/`.

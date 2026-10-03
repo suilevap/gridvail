@@ -20,7 +20,7 @@ next to this file.
   `NonBlockingAnimation` never hold turns. Without an animation step
   (headless runs, the agent API without a window, tests) or with the `snap`
   style there is no delay at all. Idle turns advance after 1s. Recharges
-  assign, never add. Keyboard and random-walk commands remain token-gated.
+  assign, never add. Keyboard and enemy commands remain token-gated.
 - Two-phase movement resolution with the original conservative contract:
   swaps blocked, entering a vacated cell blocked in the same pass, one
   winner per cell in stable creation order, collisions recorded (the Lite
@@ -48,6 +48,21 @@ next to this file.
   with light-mapped floor tiles while leaving actors and UI as text.
 
 ## Deliberate deviations (all commented at the site)
+
+- Enemies run a [FlatBT](https://github.com/suilevap/flatbt) behavior tree
+  instead of the original pure random walk. Unaware, they patrol straight
+  stretches and rest. On spotting the player within 8 cells and a clear
+  line they freeze for a beat (a yellow `!`), then hunt and attack, search
+  where it was last seen, and give up when it gets away. The tree only
+  reports an `EnemyAct`; `ai::carry_out` turns it into the same token-gated
+  `MoveCommand` the player uses, and `ai::show_mood` colors the enemy by it.
+- Hunters (`h` on a map) are goal-driven enemies: they follow an `Order`
+  (for now, the player's cell) along a planned route, and when a closed door
+  is on it, they fetch the nearest key and open the door. A route that is a
+  little longer but open is preferred to spending a key. Their planning runs
+  off the frame in play (`ai::ServiceMode::Background`): a hunter still
+  thinking shows `?` and holds or keeps following its last plan, and the game
+  never waits for it.
 
 - One Bevy `World` + resources instead of `EcsUniverse` type-worlds.
 - `TileSystem` computes masks two-phased; the original mutates neighbour
@@ -82,12 +97,15 @@ src/content/               map and symbol-rule parsers
 src/debug_ui.rs             optional FPS and runtime performance panel
 src/model/                 ECS data split by gameplay domain
 src/simulation/            simulation plugin; control, motion, resolution, tiles
+src/ai/                    enemy behavior trees (FlatBT): perceive, tick, services, carry out
 src/vision/                vision plugin; FOV cache and player visibility
 src/lighting/              light math and palettes
 src/presentation/          renderer-neutral lighting and frame composition
 src/rendering/             swappable Text2d and extruded-wall output plugins
 tests/full_map.rs  headless map1 boot + settle integration test
 tests/gameplay.rs  timed input, movement, collision, and vision regressions
+tests/enemy_behavior.rs  enemy behavior-tree scenarios on small ASCII maps
+tests/planner_allocations.rs  warm navigation plans allocate nothing
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
 tests/reference_parity.rs  independent C# FOV/light/palette fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
@@ -106,10 +124,15 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test   # 81 tests, including allocation and independent C# comparisons
+cargo test   # 110 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
+ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
 ```
+
+The last command prints each enemy scenario turn by turn: `!` alert, `H`
+hunting, `A` attacking, `S` searching, `p` patrolling, `z` resting, `g`
+going somewhere via navigation, `o` opening a door.
 
 Every object glides when it moves (`animation::ObjectAnimationPlugin`,
 independent of the renderer): actors, and equally walls or decor that a
@@ -141,6 +164,9 @@ The debug performance panel is visible by default and toggles with `F3`. It
 shows smoothed FPS/frame time, process and system CPU/RAM, entity count, text
 cells updated by the renderer, and whether unfinished animations still hold
 the next turn.
+
+`rust-toolchain.toml` pins Rust 1.95, the minimum for `flatbt-bevy`, which
+is fetched from its Git repository.
 
 Note: if your cargo home is not writable, point it somewhere writable,
 e.g. `CARGO_HOME=/tmp/cargo-home cargo run`.
