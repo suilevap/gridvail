@@ -1,6 +1,7 @@
 //! ASCII map parsing. Mirrors `LoadMapSystem.TryGetSpawnRequest`:
 //! `X`/`x` wall, `p` player, `e` enemy, `~` electricity, `i` light,
-//! `%` acid; anything else is empty floor. Additions: `k` key, `D` door.
+//! `%` acid; anything else is empty floor. Additions: `k` key, `D` door,
+//! `h` hunter.
 
 use bevy::prelude::*;
 
@@ -10,6 +11,7 @@ pub enum SpawnKind {
     Wall,
     Player,
     Enemy,
+    Hunter,
     Electricity,
     Light,
     Acid,
@@ -28,6 +30,7 @@ pub fn spawn_kind_of(c: char) -> Option<SpawnKind> {
         'X' | 'x' => Some(SpawnKind::Wall),
         'p' => Some(SpawnKind::Player),
         'e' => Some(SpawnKind::Enemy),
+        'h' => Some(SpawnKind::Hunter),
         '~' => Some(SpawnKind::Electricity),
         'i' => Some(SpawnKind::Light),
         '%' => Some(SpawnKind::Acid),

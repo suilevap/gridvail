@@ -11,7 +11,7 @@ use bevy::prelude::*;
 
 use flatbt_bevy::prelude::Behavior;
 
-use crate::ai::enemy_tree;
+use crate::ai::{enemy_tree, hunter_tree};
 use crate::content::map::{parse_map, SpawnKind};
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::lighting::{GRAY, RED, WHITE, YELLOW};
@@ -120,26 +120,17 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
             }
             SpawnKind::Enemy => commands
                 .spawn((
-                    Active,
-                    Collider,
-                    Enemy,
-                    Pos(cell.pos),
-                    (
-                        Speed::default(),
-                        MoveCommand::default(),
-                        PendingPos::default(),
-                        PrevPos(cell.pos),
-                    ),
-                    Glyph::new('☺', 1, RED),
-                    Inventory::default(),
-                    Tokens::new(1),
-                    Friction(1),
-                    Facing::default(),
-                    DirectionBasedOnSpeed,
-                    DirectionTile {
-                        rule: "direction_v_rule".to_string(),
-                    },
-                    (EnemyMind::default(), Behavior::for_tree(enemy_tree)),
+                    enemy_body(cell.pos),
+                    EnemyMind::default(),
+                    Behavior::for_tree(enemy_tree),
+                ))
+                .id(),
+            SpawnKind::Hunter => commands
+                .spawn((
+                    enemy_body(cell.pos),
+                    (Hunter, Order::default(), Route::default()),
+                    EnemyMind::default(),
+                    Behavior::for_tree(hunter_tree),
                 ))
                 .id(),
             SpawnKind::Electricity => commands
@@ -200,7 +191,11 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
         if commands.get_entity(entity).is_ok()
             && matches!(
                 cell.kind,
-                SpawnKind::Wall | SpawnKind::Player | SpawnKind::Enemy | SpawnKind::Door
+                SpawnKind::Wall
+                    | SpawnKind::Player
+                    | SpawnKind::Enemy
+                    | SpawnKind::Hunter
+                    | SpawnKind::Door
             )
         {
             // Colliders own their cells (mirrors the first UpdatePosition pass).
@@ -218,6 +213,28 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
         triangle: DirectionTileRule::parse(TRIANGLE_RULE_TEXT).expect("triangle rule"),
         v: DirectionTileRule::parse(V_RULE_TEXT).expect("v rule"),
     });
+}
+
+/// What every kind of enemy is made of; its role adds a mind and a tree.
+fn enemy_body(pos: IVec2) -> impl Bundle {
+    (
+        (Active, Collider, Enemy, Pos(pos)),
+        (
+            Speed::default(),
+            MoveCommand::default(),
+            PendingPos::default(),
+            PrevPos(pos),
+        ),
+        Glyph::new('☺', 1, RED),
+        Inventory::default(),
+        Tokens::new(1),
+        Friction(1),
+        Facing::default(),
+        DirectionBasedOnSpeed,
+        DirectionTile {
+            rule: "direction_v_rule".to_string(),
+        },
+    )
 }
 
 fn initial_fov(cell_count: usize) -> FovResult {

@@ -2,8 +2,9 @@
 //! maps: real turns, tokens, line of sight, and collision resolution.
 //!
 //! Each scenario records one snapshot per turn. Set `ENEMY_TRACE=1` to print
-//! them as maps: `!` alert, `H` hunting, `A` attacking, `h` holding, `S`
-//! searching, `p` patrolling, `z` resting, `@` the player.
+//! them as maps: `!` alert, `H` hunting, `A` attacking, `-` holding, `S`
+//! searching, `p` patrolling, `z` resting, `g` going (navigation), `o`
+//! opening a door, `@` the player, `k` a key, `+`/`'` a closed/open door.
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
@@ -16,6 +17,8 @@ use std::time::Duration;
 struct Snapshot {
     player: IVec2,
     enemies: Vec<(Entity, IVec2, Option<EnemyAct>)>,
+    doors: Vec<(IVec2, bool)>,
+    keys: Vec<IVec2>,
 }
 
 struct Game {
@@ -105,8 +108,23 @@ impl Game {
             .map(|(e, p, act)| (e, p.0, act.copied()))
             .collect();
         enemies.sort_by_key(|(e, ..)| *e);
+        let doors = world
+            .query::<(&Pos, &Door)>()
+            .iter(world)
+            .map(|(p, door)| (p.0, door.open))
+            .collect();
+        let keys = world
+            .query_filtered::<&Pos, With<Key>>()
+            .iter(world)
+            .map(|p| p.0)
+            .collect();
         self.check_invariants(&enemies);
-        self.trace.push(Snapshot { player, enemies });
+        self.trace.push(Snapshot {
+            player,
+            enemies,
+            doors,
+            keys,
+        });
     }
 
     /// Holds on every turn of every scenario.
@@ -159,6 +177,12 @@ impl Game {
         for (turn, snap) in self.trace.iter().enumerate() {
             let mut rows = rows.clone();
             let mut put = |p: IVec2, c: char| rows[p.y as usize][p.x as usize] = c;
+            for &(door, open) in &snap.doors {
+                put(door, if open { '\'' } else { '+' });
+            }
+            for &key in &snap.keys {
+                put(key, 'k');
+            }
             put(snap.player, '@');
             let mut acts = Vec::new();
             for &(_, pos, act) in &snap.enemies {
@@ -166,10 +190,12 @@ impl Game {
                     Some(EnemyAct::Alert) => '!',
                     Some(EnemyAct::Hunt(_)) => 'H',
                     Some(EnemyAct::Attack(_)) => 'A',
-                    Some(EnemyAct::Hold) => 'h',
+                    Some(EnemyAct::Hold) => '-',
                     Some(EnemyAct::Search(_)) => 'S',
                     Some(EnemyAct::Patrol(_)) => 'p',
                     Some(EnemyAct::Rest) => 'z',
+                    Some(EnemyAct::GoTo(_)) => 'g',
+                    Some(EnemyAct::Open(_)) => 'o',
                     None => 'e',
                 };
                 put(pos, glyph);
@@ -359,4 +385,102 @@ fn the_bundled_map_plays_consistently() {
     for snap in &game.trace {
         assert!(snap.enemies.iter().all(|(_, _, act)| act.is_some()));
     }
+}
+
+// --- hunters: follow the order (the player), opening doors on the way ------
+
+fn door_open(snap: &Snapshot) -> bool {
+    snap.doors.iter().all(|&(_, open)| open)
+}
+
+#[test]
+fn a_hunter_fetches_a_key_to_open_the_door_in_its_way() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXX\n\
+         X.k...X......X\n\
+         X.....X......X\n\
+         Xh....D....p.X\n\
+         X.....X......X\n\
+         XXXXXXXXXXXXXX\n",
+    );
+    game.turns(30);
+    game.print("hunter: key, door, player");
+    let picked = game
+        .trace
+        .iter()
+        .position(|s| s.keys.is_empty())
+        .expect("never picked up the key");
+    let opened = game
+        .trace
+        .iter()
+        .position(door_open)
+        .expect("never opened the door");
+    assert!(picked < opened, "opened before it had the key");
+    let opener = game.enemy(opened).1;
+    assert!(
+        matches!(opener, Some(EnemyAct::Open(IVec2::X))),
+        "{opener:?}"
+    );
+    let last = game.trace.last().unwrap();
+    let (_, pos, act) = last.enemies[0];
+    assert_eq!(manhattan(pos, last.player), 1);
+    assert!(matches!(act, Some(EnemyAct::Attack(_))), "{act:?}");
+}
+
+#[test]
+fn a_hunter_walks_around_a_wall() {
+    let mut game = Game::new(
+        "XXXXXXXXXXX\n\
+         X.........X\n\
+         X....X....X\n\
+         Xh...X..p.X\n\
+         X....X....X\n\
+         XXXXXXXXXXX\n",
+    );
+    game.turns(16);
+    game.print("hunter: around a wall");
+    let last = game.trace.last().unwrap();
+    let (_, pos, act) = last.enemies[0];
+    assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
+    assert!(matches!(act, Some(EnemyAct::Attack(_))), "{act:?}");
+}
+
+#[test]
+fn a_hunter_takes_an_open_detour_rather_than_spend_a_key() {
+    let mut game = Game::new(
+        "XXXXXXXXXXX\n\
+         X.........X\n\
+         X.k..X....X\n\
+         Xh...D..p.X\n\
+         X....X....X\n\
+         XXXXXXXXXXX\n",
+    );
+    game.turns(16);
+    game.print("hunter: detour over door");
+    let last = game.trace.last().unwrap();
+    assert!(!door_open(last), "opened the door");
+    assert_eq!(last.keys.len(), 1, "fetched the key");
+    let (_, pos, _) = last.enemies[0];
+    assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
+}
+
+#[test]
+fn a_hunter_without_a_key_waits_at_the_locked_door() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXX\n\
+         X....X.....X\n\
+         Xh...D...p.X\n\
+         X....X.....X\n\
+         XXXXXXXXXXXX\n",
+    );
+    game.turns(12);
+    game.print("hunter: no key");
+    let last = game.trace.last().unwrap();
+    assert!(!door_open(last));
+    let (_, pos, act) = last.enemies[0];
+    assert_eq!(pos, IVec2::new(4, 2), "not waiting at the door");
+    assert!(
+        matches!(act, Some(EnemyAct::GoTo(_) | EnemyAct::Hold)),
+        "{act:?}"
+    );
 }

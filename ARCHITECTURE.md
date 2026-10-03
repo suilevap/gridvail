@@ -39,6 +39,15 @@ and renderers must not import it.
   enemy glyph from the act after tiles are derived. Trees never mutate the world,
   so enemies share the player's token and collision rules. Out-of-turn enemies
   are skipped with `Tick::Skip`, not guarded inside the tree.
+  A tree reaches a service (anything it cannot compute from its blackboard,
+  such as a route) by asking in its act: `EnemyAct::GoTo(dest)` is answered
+  by `navigate`, a system after the tick, which writes this turn's step into
+  the agent's `Route` and an answer the gather copies into the blackboard for
+  the next turn. The search behind it is a `Router`, chosen by
+  `NavigationPlugin::<R>`; the interim `GridRouter` is a buffered Dijkstra
+  that the `navigation` module's `NavMap` search is meant to replace.
+  Orders (`Order`) say where an agent should go and are written by whoever
+  commands it; hunters (`hunter_tree`) follow theirs with flatbt's goal stack.
 - `vision/` converts sensors and blocker state into cached FOV and visibility
   components. `VisionPlugin` owns their resources and phase registration; the
   underlying algorithm remains in `foundation/`.

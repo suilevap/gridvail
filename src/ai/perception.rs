@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use rand::RngExt;
 
 use crate::foundation::line::line_clear;
-use crate::lighting::{DARK_RED, DARK_YELLOW, RED, YELLOW};
+use crate::lighting::{CYAN, DARK_RED, DARK_YELLOW, MAGENTA, RED, YELLOW};
 use crate::model::*;
 
 /// Fill each enemy's blackboard for this frame's tick.
@@ -53,13 +53,68 @@ pub fn perceive(
     }
 }
 
-/// Turn each enemy's act into a move command for the resolve step.
-pub fn carry_out(mut enemies: Query<(&EnemyAct, &EnemyMind, &mut MoveCommand)>) {
-    for (act, mind, mut command) in enemies.iter_mut() {
+/// Hunters are ordered to the player's cell. The one source of orders for
+/// now; anything else that commands an agent writes its `Order` the same way.
+pub fn order_hunters(
+    players: Query<&Pos, (With<Player>, With<Active>, Without<DestroyRequested>)>,
+    mut hunters: Query<&mut Order, With<Hunter>>,
+) {
+    let target = players.iter().next().map(|pos| pos.0);
+    for mut order in hunters.iter_mut() {
+        order.set_if_neq(Order { target });
+    }
+}
+
+/// What goal-driven agents read on top of `perceive`: their order, the
+/// navigation service's last answer, keys, and doors next to them.
+///
+/// A route answer that blamed a door which has opened since is dropped, so
+/// the tree does not go for a key it no longer needs.
+pub fn perceive_objectives(
+    grid: Res<MapGrid>,
+    doors: Query<&Door>,
+    carried_keys: Query<(), With<Key>>,
+    keys_on_map: Query<&Pos, (With<Key>, With<Item>)>,
+    mut agents: Query<(&Order, &Route, Option<&Inventory>, &mut EnemyMind)>,
+) {
+    let closed_door = |at: IVec2| {
+        grid.get(at)
+            .and_then(|occupant| doors.get(occupant).ok())
+            .is_some_and(|door| !door.open)
+    };
+    for (order, route, inventory, mut mind) in agents.iter_mut() {
+        let mind = mind.bypass_change_detection();
         if !mind.has_turn {
             continue;
         }
-        command.target = act.step();
+        mind.order = order.target;
+        mind.route = route.answer.filter(|answer| match answer.status {
+            RouteStatus::Blocked(door) => closed_door(door),
+            _ => true,
+        });
+        mind.has_key =
+            inventory.is_some_and(|items| items.0.iter().any(|&item| carried_keys.contains(item)));
+        let pos = mind.pos;
+        mind.nearest_key = keys_on_map
+            .iter()
+            .map(|key| key.0)
+            .min_by_key(|&key| (key - pos).abs().element_sum());
+        for (closed, step) in mind.closed_doors.iter_mut().zip(STEPS) {
+            *closed = closed_door(pos + step);
+        }
+    }
+}
+
+/// Turn each enemy's act into a move command for the resolve step. A `GoTo`
+/// spends the step the navigation service chose for it.
+pub fn carry_out(mut enemies: Query<(&EnemyAct, &EnemyMind, Option<&Route>, &mut MoveCommand)>) {
+    for (act, mind, route, mut command) in enemies.iter_mut() {
+        if !mind.has_turn {
+            continue;
+        }
+        command.target = act
+            .step()
+            .unwrap_or_else(|| route.map_or(IVec2::ZERO, |route| route.step));
         command.relative = true;
         command.active = true;
     }
@@ -75,6 +130,8 @@ pub fn show_mood(mut enemies: Query<(&EnemyAct, &mut Glyph)>) {
             EnemyAct::Hunt(_) | EnemyAct::Attack(_) | EnemyAct::Hold => RED,
             EnemyAct::Search(_) => DARK_YELLOW,
             EnemyAct::Patrol(_) | EnemyAct::Rest => DARK_RED,
+            EnemyAct::GoTo(_) => MAGENTA,
+            EnemyAct::Open(_) => CYAN,
         };
         let mut shown = *glyph;
         shown.color = color;

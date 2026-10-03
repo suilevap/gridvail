@@ -56,6 +56,10 @@ next to this file.
   where it was last seen, and give up when it gets away. The tree only
   reports an `EnemyAct`; `ai::carry_out` turns it into the same token-gated
   `MoveCommand` the player uses, and `ai::show_mood` colors the enemy by it.
+- Hunters (`h` on a map) are goal-driven enemies: they follow an `Order`
+  (for now, the player's cell) along a planned route, and when a closed door
+  is on it, they fetch the nearest key and open the door. A route that is a
+  little longer but open is preferred to spending a key.
 
 - One Bevy `World` + resources instead of `EcsUniverse` type-worlds.
 - `TileSystem` computes masks two-phased; the original mutates neighbour
@@ -90,7 +94,7 @@ src/content/               map and symbol-rule parsers
 src/debug_ui.rs             optional FPS and runtime performance panel
 src/model/                 ECS data split by gameplay domain
 src/simulation/            simulation plugin; control, motion, resolution, tiles
-src/ai/                    enemy behavior trees (FlatBT): perceive, tick, carry out
+src/ai/                    enemy behavior trees (FlatBT): perceive, tick, services, carry out
 src/vision/                vision plugin; FOV cache and player visibility
 src/lighting/              light math and palettes
 src/presentation/          renderer-neutral lighting and frame composition
@@ -98,6 +102,7 @@ src/rendering/             swappable Text2d and extruded-wall output plugins
 tests/full_map.rs  headless map1 boot + settle integration test
 tests/gameplay.rs  timed input, movement, collision, and vision regressions
 tests/enemy_behavior.rs  enemy behavior-tree scenarios on small ASCII maps
+tests/router_allocations.rs  warm navigation searches allocate nothing
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
 tests/reference_parity.rs  independent C# FOV/light/palette fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
@@ -116,14 +121,15 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test   # 95 tests, including allocation and independent C# comparisons
+cargo test   # 106 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
 ```
 
 The last command prints each enemy scenario turn by turn: `!` alert, `H`
-hunting, `A` attacking, `S` searching, `p` patrolling, `z` resting.
+hunting, `A` attacking, `S` searching, `p` patrolling, `z` resting, `g`
+going somewhere via navigation, `o` opening a door.
 
 Every object glides when it moves (`animation::ObjectAnimationPlugin`,
 independent of the renderer): actors, and equally walls or decor that a
