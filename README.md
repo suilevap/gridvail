@@ -37,7 +37,10 @@ next to this file.
   (no dependencies) runs A* over pluggable `Rules`. Rules price or forbid each
   step and may carry a small state, such as doors passed; the search keeps one
   layer of cells per state, so the same cell reached with a different state is
-  searched separately. Rules combine as tuples, and costs may be `Lex` pairs
+  searched separately; a rule may declare which states dominate others (more
+  keys left beats fewer) so dominated arrivals are skipped. Rules may add
+  jumps (teleports, ladders), searched by cost alone since they break
+  distance estimates. Rules combine as tuples, and costs may be `Lex` pairs
   ("fewest doors, then shortest"). `PathSearch` and `RouteSearch` (a stream of
   routes that differ from one another) reuse their memory, so warmed-up
   searches allocate nothing. `navigation::NavMap` snapshots walls and closed
@@ -119,7 +122,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 97 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 102 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
