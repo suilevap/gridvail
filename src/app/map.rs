@@ -11,7 +11,7 @@ use bevy::prelude::*;
 
 use flatbt_bevy::prelude::Behavior;
 
-use crate::ai::{enemy_tree, hunter_tree};
+use crate::ai::{enemy_tree, hunter_tree, Navigator};
 use crate::content::map::{parse_map, SpawnKind};
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::lighting::{GRAY, RED, WHITE, YELLOW};
@@ -128,7 +128,12 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
             SpawnKind::Hunter => commands
                 .spawn((
                     enemy_body(cell.pos),
-                    (Hunter, Order::default(), Route::default()),
+                    (
+                        Hunter,
+                        Order::default(),
+                        Route::default(),
+                        Navigator::default(),
+                    ),
                     EnemyMind::default(),
                     Behavior::for_tree(hunter_tree),
                 ))

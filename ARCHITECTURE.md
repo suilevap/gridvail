@@ -43,9 +43,16 @@ and renderers must not import it.
   such as a route) by asking in its act: `EnemyAct::GoTo(dest)` is answered
   by `navigate`, a system after the tick, which writes this turn's step into
   the agent's `Route` and an answer the gather copies into the blackboard for
-  the next turn. The search behind it is a `Router`, chosen by
-  `NavigationPlugin::<R>`; the interim `GridRouter` is a buffered Dijkstra
-  that the `navigation` module's `NavMap` search is meant to replace.
+  the next turn. Expensive work runs as a service `Job` (`ai/service.rs`)
+  whose `Ticket` is polled on later frames; `ServiceMode` runs jobs inline
+  (default, deterministic, used by tests and captures), in the background on
+  the async compute pool (the game), or deferred by a fixed number of frames
+  (deterministic slow thinking for tests). A slow answer costs that agent a
+  turn or two (it follows its old plan, or holds showing `?`), never a frame.
+  Navigation plans whole paths with a `Planner` over an `Arc`'d
+  `MapSnapshot` and follows them cheaply each turn, checking doors and actors
+  live; the interim `GridPlanner` is a Dijkstra that a planner over the
+  `navigation` module's `NavMap` is meant to replace.
   Orders (`Order`) say where an agent should go and are written by whoever
   commands it; hunters (`hunter_tree`) follow theirs with flatbt's goal stack.
 - `vision/` converts sensors and blocker state into cached FOV and visibility

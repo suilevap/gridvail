@@ -59,7 +59,10 @@ next to this file.
 - Hunters (`h` on a map) are goal-driven enemies: they follow an `Order`
   (for now, the player's cell) along a planned route, and when a closed door
   is on it, they fetch the nearest key and open the door. A route that is a
-  little longer but open is preferred to spending a key.
+  little longer but open is preferred to spending a key. Their planning runs
+  off the frame in play (`ai::ServiceMode::Background`): a hunter still
+  thinking shows `?` and holds or keeps following its last plan, and the game
+  never waits for it.
 
 - One Bevy `World` + resources instead of `EcsUniverse` type-worlds.
 - `TileSystem` computes masks two-phased; the original mutates neighbour
@@ -102,7 +105,7 @@ src/rendering/             swappable Text2d and extruded-wall output plugins
 tests/full_map.rs  headless map1 boot + settle integration test
 tests/gameplay.rs  timed input, movement, collision, and vision regressions
 tests/enemy_behavior.rs  enemy behavior-tree scenarios on small ASCII maps
-tests/router_allocations.rs  warm navigation searches allocate nothing
+tests/planner_allocations.rs  warm navigation plans allocate nothing
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
 tests/reference_parity.rs  independent C# FOV/light/palette fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
@@ -121,7 +124,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test   # 106 tests, including allocation and independent C# comparisons
+cargo test   # 110 tests, including allocation and independent C# comparisons
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

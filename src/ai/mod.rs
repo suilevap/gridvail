@@ -16,12 +16,14 @@ mod hunter;
 mod navigation;
 mod perception;
 mod plugin;
+mod service;
 mod tree;
 
 pub use hunter::*;
 pub use navigation::*;
 pub use perception::*;
 pub use plugin::*;
+pub use service::*;
 pub use tree::*;
 
 #[cfg(test)]

@@ -100,11 +100,14 @@ pub fn hunter_tree() -> impl BehaviorNode<EnemyMind, EnemyAct> {
     ))
 }
 
-/// Ask the navigation service to lead toward the goal; fail once it says
-/// there is no way.
+/// Ask the navigation service to lead toward the goal, and keep asking while
+/// it thinks. A fixed cell it found no way to fails the goal; a moving order
+/// keeps being asked, since the service replans when the map or the order
+/// changes.
 fn go_to(mind: &mut EnemyMind, goal: &Goal) -> NodeResult<EnemyAct> {
     let dest = goal.dest();
-    if mind.resolve(dest).is_none() || mind.route_to(dest) == Some(RouteStatus::Unreachable) {
+    let unreachable = mind.route_to(dest) == Some(RouteStatus::Unreachable);
+    if mind.resolve(dest).is_none() || (unreachable && dest != Dest::Order) {
         NodeResult::Failure
     } else {
         NodeResult::Running(EnemyAct::GoTo(dest))

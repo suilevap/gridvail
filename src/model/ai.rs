@@ -142,6 +142,8 @@ pub enum RouteStatus {
     Waiting,
     /// No route at all.
     Unreachable,
+    /// A plan is on its way and there is nothing to follow meanwhile.
+    Pending,
 }
 
 /// The service's answer, tagged with what was asked.

@@ -15,6 +15,7 @@ use bevy::{
     },
 };
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
+use pav_ecs_game_bevy_port::ai::ServiceMode;
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
 use pav_ecs_game_bevy_port::app::GamePlugin;
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
@@ -46,8 +47,17 @@ fn main() -> AppExit {
             ..default()
         })
         .set(ImagePlugin::default_nearest());
+    // AI services think off the frame in play, so a slow plan costs that
+    // enemy a turn and never a frame. Captures replay scripted input and stay
+    // deterministic.
+    let services = if capture.is_some() || record.is_some() {
+        ServiceMode::Inline
+    } else {
+        ServiceMode::Background
+    };
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::BLACK))
+        .insert_resource(services)
         .insert_resource(options.motion)
         .add_plugins(plugins)
         .add_plugins(GamePlugin)

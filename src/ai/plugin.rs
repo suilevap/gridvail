@@ -10,7 +10,7 @@ use super::*;
 ///
 /// An enemy opts in with `EnemyMind` and a `Behavior` for one of the trees:
 /// `enemy_tree` (watch, hunt, wander) or `hunter_tree` (follow the `Order`,
-/// opening doors; needs `Order` and `Route` too).
+/// opening doors; needs `Order`, `Route` and `Navigator` too).
 pub struct AiPlugin;
 
 impl Plugin for AiPlugin {
@@ -18,7 +18,7 @@ impl Plugin for AiPlugin {
         app.add_plugins((
             BehaviorPlugin::for_tree(enemy_tree).tick_mode(enemy_tick),
             BehaviorPlugin::for_tree(hunter_tree).tick_mode(enemy_tick),
-            NavigationPlugin::<GridRouter>::default(),
+            NavigationPlugin::<GridPlanner>::default(),
         ))
         .configure_sets(Update, BehaviorSystems.in_set(SimulationStep::Decide))
         .add_systems(

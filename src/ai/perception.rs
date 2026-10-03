@@ -120,11 +120,17 @@ pub fn carry_out(mut enemies: Query<(&EnemyAct, &EnemyMind, Option<&Route>, &mut
     }
 }
 
-/// Show what each enemy is up to: color by mood, `!` on the alert beat.
+/// Show what each enemy is up to: color by mood, `!` on the alert beat, `?`
+/// while waiting for a plan.
 ///
 /// Runs after `direction_tiles`, which rewrites the glyph from facing.
-pub fn show_mood(mut enemies: Query<(&EnemyAct, &mut Glyph)>) {
-    for (act, mut glyph) in enemies.iter_mut() {
+pub fn show_mood(mut enemies: Query<(&EnemyAct, Option<&Route>, &mut Glyph)>) {
+    for (act, route, mut glyph) in enemies.iter_mut() {
+        let thinking = matches!(act, EnemyAct::GoTo(_))
+            && route
+                .and_then(|route| route.answer)
+                .map(|answer| answer.status)
+                == Some(RouteStatus::Pending);
         let color = match act {
             EnemyAct::Alert => YELLOW,
             EnemyAct::Hunt(_) | EnemyAct::Attack(_) | EnemyAct::Hold => RED,
@@ -137,6 +143,8 @@ pub fn show_mood(mut enemies: Query<(&EnemyAct, &mut Glyph)>) {
         shown.color = color;
         if *act == EnemyAct::Alert {
             shown.ch = '!';
+        } else if thinking {
+            shown.ch = '?';
         }
         glyph.set_if_neq(shown);
     }
