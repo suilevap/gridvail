@@ -47,12 +47,21 @@ impl<C: Cost, S: Copy + Eq> PathSearch<C, S> {
         }
     }
 
-    /// Room for `grid` with `states` layers allocated up front, so the first
-    /// search does not grow it. The open list still grows on first use.
+    /// Room for `grid` with `states` layers allocated up front, including
+    /// the open list's worst case without jumps (every slot entered from each
+    /// of its four neighbours), so no search on that grid grows it.
     pub fn with_capacity(grid: &Grid, states: usize) -> Self {
         let mut search = Self::new();
-        search.prepare(grid.len() * states.max(1));
+        let slots = grid.len() * states.max(1);
+        search.prepare(slots);
+        search.open.reserve(slots * 4 + 1);
         search
+    }
+
+    /// Whether this search already has room for `grid` with `states` layers.
+    pub fn fits(&self, grid: &Grid, states: usize) -> bool {
+        let slots = grid.len() * states.max(1);
+        self.reached.len() >= slots && self.open.capacity() > slots * 4
     }
 
     /// Slots finished by the last search.
