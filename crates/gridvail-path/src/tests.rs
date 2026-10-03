@@ -301,3 +301,191 @@ fn adjacent_ends_have_one_route() {
     let rows = Rows::new(&["SG", ".."]);
     assert_eq!(routes(&rows, RouteOptions::default()).len(), 1);
 }
+
+/// [`DoorLimit`] where fewer doors so far dominates more.
+struct FewerDoorsDominate<'a>(DoorLimit<'a>);
+
+impl Rules for FewerDoorsDominate<'_> {
+    type Cost = u32;
+    type State = u8;
+
+    fn state_count(&self) -> usize {
+        self.0.state_count()
+    }
+
+    fn state_index(&self, doors: &u8) -> usize {
+        self.0.state_index(doors)
+    }
+
+    fn start_state(&self, start: Cell) -> u8 {
+        self.0.start_state(start)
+    }
+
+    fn step(&self, from: Cell, to: Cell, doors: &u8) -> Option<(u32, u8)> {
+        self.0.step(from, to, doors)
+    }
+
+    fn dominates(&self, a: usize, b: usize) -> bool {
+        a < b
+    }
+}
+
+#[test]
+fn dominated_states_are_skipped_without_changing_results() {
+    // Doors everywhere and the goal walled off, so the whole state space is
+    // searched: without dominance, every cell at every door count.
+    let rows = Rows::new(&[
+        "S.D.D.D.D.",
+        ".D.D.D.D.D",
+        "D.D.D.D.D.",
+        ".D.D.D.D.#",
+        "D.D.D.D.#G",
+    ]);
+    let grid = rows.grid();
+    let mut path = Vec::new();
+    for max in [1u8, 3, 6] {
+        let plain = (&rows, DoorLimit { rows: &rows, max });
+        let pruned = (&rows, FewerDoorsDominate(DoorLimit { rows: &rows, max }));
+        let mut search = PathSearch::new();
+        let expected: Option<u32> =
+            search.find(&grid, &plain, rows.find('S'), rows.find('G'), &mut path);
+        let plain_expanded = search.expanded();
+        let found = search.find(&grid, &pruned, rows.find('S'), rows.find('G'), &mut path);
+        assert_eq!((found, expected), (None, None), "max {max}");
+        assert!(
+            search.expanded() < plain_expanded,
+            "max {max}: {} < {plain_expanded}",
+            search.expanded()
+        );
+    }
+}
+
+#[test]
+fn tuple_dominance_needs_every_part() {
+    let rows = Rows::new(&DOORS);
+    let pair = (
+        FewerDoorsDominate(DoorLimit {
+            rows: &rows,
+            max: 2,
+        }),
+        NeedsKey(&rows),
+    );
+    // Layers are doors * 2 + has_key.
+    assert!(pair.dominates(0, 2), "fewer doors, same key");
+    assert!(
+        !pair.dominates(1, 2),
+        "fewer doors but NeedsKey never dominates"
+    );
+    assert!(!pair.dominates(2, 2), "a state does not dominate itself");
+    assert!(!pair.dominates(2, 0));
+}
+
+/// Teleports from one cell to another for a fixed cost.
+struct Teleport {
+    from: Cell,
+    to: Cell,
+    cost: u32,
+}
+
+impl Rules for Teleport {
+    type Cost = u32;
+    type State = ();
+
+    fn state_count(&self) -> usize {
+        1
+    }
+
+    fn state_index(&self, _state: &()) -> usize {
+        0
+    }
+
+    fn start_state(&self, _start: Cell) {}
+
+    fn step(&self, from: Cell, to: Cell, _state: &()) -> Option<(u32, ())> {
+        let jump = (from, to) == (self.from, self.to);
+        Some((if jump { self.cost } else { 0 }, ()))
+    }
+
+    fn for_each_jump(&self, from: Cell, _state: &(), visit: &mut dyn FnMut(Cell)) {
+        if from == self.from {
+            visit(self.to);
+        }
+    }
+
+    fn has_jumps(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn jumps_cross_walls_and_are_priced_by_every_rule() {
+    // The wall column is closed: only the teleport gets across.
+    let rows = Rows::new(&["S.#..", "..#.G", "..#.."]);
+    assert_eq!(search(&rows, &rows), None);
+    let teleport = Teleport {
+        from: Cell::new(1, 1),
+        to: Cell::new(3, 0),
+        cost: 5,
+    };
+    let (cost, path) = search(&rows, &(&rows, teleport)).unwrap();
+    // 2 steps to the pad, the jump (1 from `Rows` + 5), 2 steps to G.
+    assert_eq!(cost, 2 + 6 + 2);
+    let jump = path
+        .windows(2)
+        .position(|step| rows.grid().distance(step[0], step[1]) > 1)
+        .expect("a jump in the path");
+    assert_eq!(
+        (path[jump], path[jump + 1]),
+        (Cell::new(1, 1), Cell::new(3, 0))
+    );
+
+    // A wall at the landing forbids the jump: `Rows` prices it too.
+    let blocked = Rows::new(&["S.##.", "..#.G", "..#.."]);
+    let teleport = Teleport {
+        from: Cell::new(1, 1),
+        to: Cell::new(3, 0),
+        cost: 5,
+    };
+    assert_eq!(search(&blocked, &(&blocked, teleport)), None);
+}
+
+#[test]
+fn jumps_that_beat_walking_are_still_found() {
+    // A cheap teleport across an open room: a distance estimate would think
+    // the far side is far and could miss it; the search ignores estimates.
+    let rows = Rows::new(&["S........G"]);
+    let teleport = Teleport {
+        from: Cell::new(1, 0),
+        to: Cell::new(8, 0),
+        cost: 0,
+    };
+    let (cost, path) = search(&rows, &(&rows, teleport)).unwrap();
+    assert_eq!(cost, 3);
+    assert_eq!(path.len(), 4);
+}
+
+#[test]
+fn dominance_keeps_the_cheapest_path_within_limits() {
+    let rows = Rows::new(&[
+        "S.D.D.D.D.",
+        ".D.D.D.D.D",
+        "D.D.D.D.D.",
+        ".D.D.D.D.D",
+        "D.D.D.D.DG",
+    ]);
+    for max in [0u8, 1, 2, 4] {
+        let plain = search(&rows, &(&rows, DoorLimit { rows: &rows, max }));
+        let pruned = search(
+            &rows,
+            &(&rows, FewerDoorsDominate(DoorLimit { rows: &rows, max })),
+        );
+        assert_eq!(
+            pruned.as_ref().map(|(cost, _)| *cost),
+            plain.map(|(cost, _)| cost),
+            "max {max}"
+        );
+        if let Some((_, path)) = pruned {
+            assert!(rows.count(&path, 'D') <= max as usize);
+        }
+    }
+}

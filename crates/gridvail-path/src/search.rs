@@ -61,7 +61,8 @@ impl<C: Cost, S: Copy + Eq> PathSearch<C, S> {
     }
 
     /// The cheapest path from `start` to `goal`, written into `path` (start
-    /// and goal included), and its cost. `None`, with `path` empty, when no
+    /// and goal included; consecutive cells are adjacent except across
+    /// jumps), and its cost. `None`, with `path` empty, when no
     /// path exists or an end is off the grid.
     pub fn find<R>(
         &mut self,
@@ -81,11 +82,20 @@ impl<C: Cost, S: Copy + Eq> PathSearch<C, S> {
         let layers = rules.state_count().max(1);
         self.prepare(grid.len() * layers);
 
+        let jumps = rules.has_jumps();
+        let estimate = |cell: Cell| {
+            if jumps {
+                C::ZERO
+            } else {
+                rules.heuristic(grid, cell, goal)
+            }
+        };
+
         let state = rules.start_state(start);
         let slot = slot_of(start_index, layers, rules.state_index(&state));
         self.reach(slot, C::ZERO, NO_PARENT);
         self.open.push(Open {
-            estimate: rules.heuristic(grid, start, goal),
+            estimate: estimate(start),
             cost: C::ZERO,
             slot: slot as u32,
             state,
@@ -108,33 +118,75 @@ impl<C: Cost, S: Copy + Eq> PathSearch<C, S> {
                 self.open.clear();
                 return Some(cost);
             }
+            let from = Arrival {
+                cell,
+                slot,
+                cost,
+                state,
+            };
             for next in grid.neighbors(cell) {
-                let Some((step, next_state)) = rules.step(cell, next, &state) else {
-                    continue;
-                };
-                let layer = rules.state_index(&next_state);
-                debug_assert!(
-                    layer < layers,
-                    "state index {layer} >= state_count {layers}"
-                );
-                let next_slot = slot_of(grid.index(next).expect("neighbor on grid"), layers, layer);
-                let next_cost = cost + step;
-                if self.finished[next_slot] == self.stamp
-                    || (self.reached[next_slot] == self.stamp && self.best[next_slot] <= next_cost)
-                {
-                    continue;
-                }
-                self.reach(next_slot, next_cost, slot as u32);
-                self.open.push(Open {
-                    estimate: next_cost + rules.heuristic(grid, next, goal),
-                    cost: next_cost,
-                    slot: next_slot as u32,
-                    state: next_state,
+                self.relax(grid, rules, layers, &from, next, &estimate);
+            }
+            if jumps {
+                rules.for_each_jump(cell, &state, &mut |next| {
+                    if grid.contains(next) {
+                        self.relax(grid, rules, layers, &from, next, &estimate);
+                    }
                 });
             }
         }
         self.open.clear();
         None
+    }
+
+    /// Queues `next` if moving there from `from` is allowed and improves on
+    /// every way to it known so far.
+    fn relax<R>(
+        &mut self,
+        grid: &Grid,
+        rules: &R,
+        layers: usize,
+        from: &Arrival<C, S>,
+        next: Cell,
+        estimate: &impl Fn(Cell) -> C,
+    ) where
+        R: Rules<Cost = C, State = S>,
+    {
+        let Some((step, next_state)) = rules.step(from.cell, next, &from.state) else {
+            return;
+        };
+        let layer = rules.state_index(&next_state);
+        debug_assert!(
+            layer < layers,
+            "state index {layer} >= state_count {layers}"
+        );
+        let cell_slot = slot_of(grid.index(next).expect("move on grid"), layers, 0);
+        let next_slot = cell_slot + layer;
+        let next_cost = from.cost + step;
+        if self.finished[next_slot] == self.stamp
+            || (self.reached[next_slot] == self.stamp && self.best[next_slot] <= next_cost)
+        {
+            return;
+        }
+        // Another state at this cell, reached no dearer, may make this one
+        // unnecessary.
+        if layers > 1
+            && (0..layers).any(|other| {
+                other != layer
+                    && self.reached[cell_slot + other] == self.stamp
+                    && self.best[cell_slot + other] <= next_cost
+                    && rules.dominates(other, layer)
+            })
+        {
+            return;
+        }
+        self.reach(next_slot, next_cost, from.slot as u32);
+        self.open.push(Open {
+            estimate: next_cost + estimate(next),
+            cost: next_cost,
+            slot: next_slot as u32,
+            state: next_state,
+        });
     }
 
     /// Makes room for `slots` and starts a new stamp.
@@ -170,6 +222,14 @@ impl<C: Cost, S: Copy + Eq> PathSearch<C, S> {
         }
         path.reverse();
     }
+}
+
+/// The slot being expanded.
+struct Arrival<C, S> {
+    cell: Cell,
+    slot: usize,
+    cost: C,
+    state: S,
 }
 
 fn slot_of(cell: usize, layers: usize, layer: usize) -> usize {
