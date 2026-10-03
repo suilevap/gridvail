@@ -41,6 +41,9 @@ and renderers must not import it.
   rebuilt when its static blockers change, and the game's base `Terrain`
   rules for the `gridvail-path` crate. New pathfinding rules (enemy sight,
   door limits, places to avoid) are `Rules` combined with `Terrain`.
+  `NavigationPlugin` also walks actors with a `PathFollow` (wanderers pick
+  random goals) by writing their ordinary `MoveCommand`s during the
+  simulation phase, so movement still goes through the turn pipeline.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for
