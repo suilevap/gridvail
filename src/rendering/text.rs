@@ -66,6 +66,7 @@ impl Plugin for TextRendererPlugin {
                 Update,
                 (
                     cycle_motion,
+                    follow_anchor,
                     flush_cells,
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
@@ -306,6 +307,24 @@ pub(super) fn place_object_sprites(
     }
 }
 
+/// Keeps the view anchor (the player) at the centre of the screen. The
+/// perspective backend aims its own camera and projects text onto this one.
+fn follow_anchor(
+    grid: Res<MapGrid>,
+    anchor: Res<ViewAnchor>,
+    extruded_walls: Option<Res<ExtrudedWalls>>,
+    mut camera: Single<&mut Transform, With<Camera2d>>,
+) {
+    if extruded_walls.is_some() {
+        return;
+    }
+    let centre = grid_to_world_f(anchor.position, grid.width, grid.height);
+    if camera.translation.xy() != centre.xy() {
+        camera.translation.x = centre.x;
+        camera.translation.y = centre.y;
+    }
+}
+
 /// M cycles through the motion presets.
 fn cycle_motion(keys: Option<Res<ButtonInput<KeyCode>>>, motion: Option<ResMut<MotionStyle>>) {
     if let Some(mut motion) = motion {
@@ -453,6 +472,23 @@ mod tests {
             app.update();
         }
         assert_eq!(player_sprite(&mut app).1, moved.as_vec2());
+    }
+
+    #[test]
+    fn camera_keeps_the_player_centred_while_it_glides() {
+        let mut app = boot(true);
+        step_right(&mut app);
+        let (moved, gliding) = player_sprite(&mut app);
+        assert_ne!(gliding, moved.as_vec2(), "player should be mid-move");
+
+        let world = app.world_mut();
+        let grid = world.resource::<MapGrid>();
+        let centre = grid_to_world_f(gliding, grid.width, grid.height);
+        let camera = world
+            .query_filtered::<&Transform, With<Camera2d>>()
+            .single(world)
+            .unwrap();
+        assert_eq!(camera.translation.xy(), centre.xy());
     }
 
     #[test]

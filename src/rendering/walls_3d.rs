@@ -18,7 +18,7 @@ use bevy::{
 
 use crate::lighting::{light_to_palette, palette_color};
 use crate::model::{
-    AnimatedPos, Glyph, MapGrid, Player, Pos, RenderBuffers, Vis, VisibilityMap, Wall,
+    AnimatedPos, Glyph, MapGrid, Player, Pos, RenderBuffers, ViewAnchor, Vis, VisibilityMap, Wall,
 };
 use crate::presentation::DynamicLight;
 use crate::schedule::{GamePhase, StartupPhase};
@@ -252,7 +252,7 @@ fn move_camera(
     keys: Res<ButtonInput<KeyCode>>,
     mut wheel: MessageReader<MouseWheel>,
     grid: Res<MapGrid>,
-    player: Single<&Pos, With<Player>>,
+    anchor: Res<ViewAnchor>,
     mut rig: ResMut<CameraRig>,
     mut camera: Single<&mut Transform, With<WallCamera>>,
 ) {
@@ -263,12 +263,9 @@ fn move_camera(
     rig.distance =
         (rig.distance - wheel_delta * 18.0).clamp(MIN_CAMERA_DISTANCE, MAX_CAMERA_DISTANCE);
 
-    let target = grid_to_world(player.0, grid.width, grid.height);
-    let follow = 1.0 - (-8.0 * dt).exp();
-    rig.focus = rig.focus.lerp(target, follow);
-    if rig.focus.distance_squared(target) < 0.0001 {
-        rig.focus = target;
-    }
+    // Locked to the anchor: the player stays still on screen while the
+    // world moves, and the animation already makes that motion smooth.
+    rig.focus = grid_to_world_f(anchor.position, grid.width, grid.height);
     let desired = camera_transform(&rig);
     if **camera != desired {
         **camera = desired;

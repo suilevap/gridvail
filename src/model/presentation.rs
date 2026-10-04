@@ -121,3 +121,12 @@ impl Default for StaticLight {
 pub fn is_hex_pos(p: IVec2) -> bool {
     (p.x + p.y % 2) % 2 == 0
 }
+
+/// The point, in fractional grid cells, that renderers centre the view on.
+///
+/// It is the player's shown position, so the player stays still on screen
+/// while the world moves around them, smoothly during animated moves.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq)]
+pub struct ViewAnchor {
+    pub position: Vec2,
+}

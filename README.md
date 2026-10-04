@@ -69,6 +69,9 @@ next to this file.
 - CPU lightmaps: static layer with dirty-flag rebuild + dynamic layer,
   `(1 - sqD/radiusSq)` falloff, 255 saturation, same-kind sum,
   brighter-kind-wins, and the original fire/electricity/acid/gray palettes.
+- A player-centred view (an addition): both renderers keep the player's
+  animated position at the centre of the screen, so the world glides past
+  as they move. `PORTALS.md` describes the portal view built on it.
 - Renderer-neutral frame composition with depth merge, hex fill, `?` unknown
   borders, and previous-frame diffing. The default `TextRendererPlugin`
   writes changed cells onto one `Text2d` entity each. The optional hybrid

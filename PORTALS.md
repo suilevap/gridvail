@@ -1,0 +1,106 @@
+# Portals: design
+
+Portals let the player see and walk from one place on the map to another
+as if the two places were joined. What is on screen is derived from the
+player's position and field of view, not drawn straight from the map grid.
+
+This document records the agreed design. The steps at the end are built in
+order; each one keeps the game unchanged on maps without portals.
+
+## Decisions
+
+1. **The view is anchored on the player.** The screen is centred on the
+   player's shown (animated) position: the player stays still and the world
+   moves around them. This is `ViewAnchor` (step 0, done). With portals the
+   anchor becomes the origin of the player's view frame, so stepping through
+   a portal causes no jump on screen.
+2. **Portals live in walls.** A portal is one face of a wall cell. Seen
+   from the floor in front of that face, the wall shows what lies beyond the
+   paired face instead. The rest of a wall's angular slice still occludes:
+   the part of a cell that is not seen through the portal counts as hidden.
+3. **Portals are dynamic.** They are components on entities and can be
+   created, removed, retargeted or moved at runtime, like doors. The grid
+   keeps a portal revision next to `blocker_revision`, and every FOV cache
+   is keyed on it.
+4. **Moves through a portal are smooth.** Walking into a portal face moves
+   the actor to the floor in front of the paired face and continues the
+   same animation there, so it emerges from the exit face instead of
+   jumping. The view anchor follows it.
+5. **Remembered cells are dimmer.** Cells known but not visible are drawn
+   with a darker palette and come from the world around the player in the
+   current view frame. Wherever something is visible (directly or through a
+   portal) the live view replaces the memory.
+6. **Translation first, then 90° rotations.** The two faces of a portal may
+   point in different directions, so going through can turn the view by
+   0°, 90°, 180° or 270°. The first version supports only face pairs that
+   need no rotation; rotation follows, built on the same transform.
+
+## Portal transform
+
+A portal face is a wall cell `a` and its open side `n_a`: the unit vector
+from the wall towards the floor a viewer stands on. It pairs with a face
+`b`, `n_b`. Looking into `a` means looking along `-n_a`; the view comes
+out of `b` along `n_b`. The rotation `R` is the quarter turn with
+`R(-n_a) = n_b`, and a cell `c` seen through the face maps to the world
+cell
+
+```text
+T(c) = b + n_b + R(c - a)
+```
+
+so the wall cell itself (`c = a`) shows the floor in front of `b`, and
+cells further in continue from there. The floor in front of `a` maps onto
+`b` itself: `T(a + n_a) = b`, which is where an actor stepping through
+starts its emerging animation. Translation-only portals are the case
+`n_b = -n_a` (`R` is the identity). Facing and other direction vectors
+rotate by `R`; transforms of nested portals compose.
+
+## Field of view
+
+`foundation::fov` walks square rings and tracks occluded angle ranges.
+Portals add a list of **windows**: an angular range plus the transform to
+use inside it.
+
+- A ring cell whose slice falls in a window is the cell `T(origin + delta)`;
+  `is_obstacle` is asked about that world cell, so walls behind the portal
+  cast shadows.
+- A visible portal face inside a window opens a nested window whose
+  transform is the composition. Each ring is still visited once, so the
+  radius bounds the nesting (a portal seen in a portal costs nothing extra).
+- The part of a slice outside the window is occluded by the portal's wall.
+  A slice split between a window and unoccluded direct space (only at a
+  portal's edge) uses whichever covers more of it.
+- A sample carries both its view `delta` and its `world` cell.
+
+Lights and other sensors keep world-indexed results; using the portal-aware
+FOV for them lets light shine through portals, as an optional later step.
+
+## Player view
+
+The player's vision output becomes **view-indexed**: for each cell around
+the anchor, the world cell it shows, the transform it is seen through, and
+how visible it is. One world cell can appear more than once. Known cells
+(`Vis::KNOWN`) stay world-indexed, as now.
+
+`compose_frame` then fills a view-sized frame from that map instead of
+writing each glyph at its world position. Objects get an instance per place
+they are seen, keyed by entity and view instance, placed at the transform of
+their animated position. Wall autotile masks and direction glyphs are
+derived in view space, so walls next to a portal join up and rotated views
+show the right shapes.
+
+## Steps
+
+0. View anchored on the player (`ViewAnchor`): text and 3D cameras follow
+   the player's animated position. **Done.**
+1. Portal model: wall-face portal components, map glyphs for paired faces,
+   a portal revision on the grid.
+2. Portal-aware FOV with windows and transforms (translation only), with
+   unit tests; maps without portals produce identical samples.
+3. Moving through a portal, with the animation continuing at the exit face.
+4. View-indexed player vision and a view-space `compose_frame`; the text
+   renderer draws the view frame. Remembered cells dimmer.
+5. The 3D renderer in view space.
+6. 90° rotations: rotated transforms, facing, view-space autotiling, and a
+   view frame that turns with the player.
+7. Optional: light through portals.
