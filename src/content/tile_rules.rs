@@ -51,6 +51,21 @@ impl TileRule {
     pub fn symbol(&self, mask: u8) -> char {
         self.symbols[(mask & 15) as usize]
     }
+
+    /// The symbol a wall drawn as `symbol` shows in a view turned
+    /// `quarters` quarter turns counter-clockwise: the symbol of its mask
+    /// with every neighbour turned along. `None` if `symbol` is not a wall.
+    pub fn turned(&self, symbol: char, quarters: i32) -> Option<char> {
+        let mask = self.symbols.iter().position(|s| *s == symbol)? as u8;
+        Some(self.symbol(turn_mask(mask, quarters)))
+    }
+}
+
+/// Turns a neighbour mask counter-clockwise on screen (y down) by quarter
+/// turns: the +X neighbour (bit 0) shows where -Y (bit 3) was, +Y where +X
+/// was, and so on.
+fn turn_mask(mask: u8, quarters: i32) -> u8 {
+    (0..quarters.rem_euclid(4)).fold(mask & 15, |m, _| ((m >> 1) | (m << 3)) & 15)
 }
 
 impl DirectionTileRule {
@@ -92,6 +107,19 @@ impl DirectionTileRule {
 
     pub fn symbol(&self, dir: crate::model::Direction) -> char {
         self.symbols[dir.index()]
+    }
+
+    /// The symbol a direction drawn as `symbol` shows in a view turned
+    /// `quarters` quarter turns counter-clockwise. `None` if `symbol` is not
+    /// one of this rule's.
+    pub fn turned(&self, symbol: char, quarters: i32) -> Option<char> {
+        use crate::model::Direction;
+        use bevy::math::IVec2;
+        // Map vectors of the slots in `symbols` order.
+        const SLOTS: [IVec2; 5] = [IVec2::ZERO, IVec2::X, IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y];
+        let slot = self.symbols.iter().position(|s| *s == symbol)?;
+        let turned = (0..quarters.rem_euclid(4)).fold(SLOTS[slot], |v, _| IVec2::new(v.y, -v.x));
+        Some(self.symbol(Direction::of(turned)))
     }
 }
 
@@ -142,6 +170,41 @@ mod tests {
         assert_eq!(v.symbol(Direction::Left), '<');
         assert_eq!(v.symbol(Direction::Down), '^');
         assert_eq!(v.symbol(Direction::None), 'x');
+    }
+
+    #[test]
+    fn turned_walls_keep_their_connections_on_screen() {
+        let rule = TileRule::parse(WALL_RULE);
+        // Every wall shape has its own glyph, so a glyph names one mask.
+        let mut distinct = rule.symbols.to_vec();
+        distinct.sort();
+        distinct.dedup();
+        assert_eq!(distinct.len(), 16);
+        // A quarter turn counter-clockwise stands a horizontal wall up.
+        assert_eq!(rule.turned('═', 1), Some('║'));
+        // A corner joined right and down (map +X, +Y) is joined up and
+        // right after a counter-clockwise quarter turn.
+        assert_eq!(rule.turned('╔', 1), Some('╚'));
+        assert_eq!(rule.turned('╔', -1), Some('╗'));
+        // A dead end pointing right (joined to +X) points up.
+        assert_eq!(rule.turned('╞', 1), Some('╨'));
+        for symbol in rule.symbols {
+            assert_eq!(rule.turned(symbol, 4), Some(symbol));
+            assert_eq!(rule.turned(symbol, 0), Some(symbol));
+        }
+        assert_eq!(rule.turned('@', 1), None);
+    }
+
+    #[test]
+    fn turned_directions_point_the_same_way_on_the_map() {
+        let tri = DirectionTileRule::parse(TRIANGLE_RULE).expect("triangle rule");
+        // East shows at the top of a view turned counter-clockwise.
+        assert_eq!(tri.turned('►', 1), Some('▲'));
+        assert_eq!(tri.turned('►', 2), Some('◄'));
+        assert_eq!(tri.turned('►', 3), Some('▼'));
+        assert_eq!(tri.turned('▲', 1), Some('◄'));
+        assert_eq!(tri.turned('●', 1), Some('●'));
+        assert_eq!(tri.turned('x', 1), None);
     }
 
     #[test]

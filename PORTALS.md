@@ -96,7 +96,8 @@ show the right shapes.
 0. A renderer-neutral `ViewCamera` (position, rotation, zoom, offset)
    moved by a `CameraOperator` that follows the player and eases changes;
    both renderers draw from it and movement keys follow the turned view.
-   **Done.** Wall and direction glyphs do not turn yet (step 6).
+   Wall shapes and facing markers are drawn turned with the view (each
+   rule glyph maps to the glyph of its turned mask or direction). **Done.**
 1. Portal model: wall-face portal components, map glyphs for paired faces,
    a portal revision on the grid.
 2. Portal-aware FOV with windows and transforms (translation only), with
@@ -105,6 +106,8 @@ show the right shapes.
 4. View-indexed player vision and a view-space `compose_frame`; the text
    renderer draws the view frame. Remembered cells dimmer.
 5. The 3D renderer in view space.
-6. 90° rotations: rotated transforms, facing, view-space autotiling, and a
-   view frame that turns with the player.
+6. 90° rotations: rotated transforms, facing, a view frame that turns with
+   the player, and wall shapes joined across portal edges (autotiling from
+   the neighbours seen in the view, on top of the glyph turning that the
+   whole-view rotation already has).
 7. Optional: light through portals.
