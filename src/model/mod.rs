@@ -7,6 +7,7 @@
 mod actors;
 mod ai;
 mod animation;
+mod camera;
 mod items;
 mod lighting;
 mod locomotion;
@@ -18,6 +19,7 @@ mod world;
 pub use actors::*;
 pub use ai::*;
 pub use animation::*;
+pub use camera::*;
 pub use items::*;
 pub use lighting::*;
 pub use locomotion::*;

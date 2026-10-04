@@ -2,10 +2,13 @@ use bevy::prelude::*;
 
 use crate::model::*;
 
-/// Keep producing player commands while a movement key is held.
+/// Keep producing player commands while a movement key is held. Keys are
+/// directions on screen: when the view is turned, "up" walks toward the top
+/// of the screen.
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
     turn: Res<TurnState>,
+    camera: Option<Res<ViewCamera>>,
     mut players: Query<
         (&mut MoveCommand, &Tokens),
         (With<Player>, With<Active>, Without<DestroyRequested>),
@@ -25,7 +28,8 @@ pub fn player_input(
     } else {
         None
     };
-    if let Some(target) = dir {
+    if let Some(screen) = dir {
+        let target = camera.map_or(screen, |camera| camera.map_direction(screen));
         for (mut command, tokens) in players.iter_mut() {
             if tokens.count <= 0 {
                 continue;

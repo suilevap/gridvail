@@ -11,6 +11,7 @@ pub use map::MapPlugin;
 use bevy::prelude::*;
 
 use crate::ai::AiPlugin;
+use crate::camera::CameraPlugin;
 use crate::locomotion::LocomotionPlugin;
 use crate::navigation::NavigationPlugin;
 use crate::presentation::PresentationPlugin;
@@ -55,6 +56,7 @@ impl Plugin for GamePlugin {
             LocomotionPlugin,
             VisionPlugin,
             PresentationPlugin,
+            CameraPlugin,
         ));
     }
 }

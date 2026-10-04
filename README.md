@@ -69,9 +69,13 @@ next to this file.
 - CPU lightmaps: static layer with dirty-flag rebuild + dynamic layer,
   `(1 - sqD/radiusSq)` falloff, 255 saturation, same-kind sum,
   brighter-kind-wins, and the original fire/electricity/acid/gray palettes.
-- A player-centred view (an addition): both renderers keep the player's
-  animated position at the centre of the screen, so the world glides past
-  as they move. `PORTALS.md` describes the portal view built on it.
+- A view camera (an addition): both renderers draw through a
+  renderer-neutral `ViewCamera` (centre, rotation, zoom, offset) that a
+  camera operator keeps on the player's animated position, so the world
+  glides past as they move. Q/E turn the view a quarter turn and Z/X zoom,
+  both eased; arrow keys follow the turned view. In the text view, wall and
+  direction glyphs do not turn with it yet. `PORTALS.md` describes the
+  portal view built on it.
 - Renderer-neutral frame composition with depth merge, hex fill, `?` unknown
   borders, and previous-frame diffing. The default `TextRendererPlugin`
   writes changed cells onto one `Text2d` entity each. The optional hybrid
@@ -194,12 +198,13 @@ cargo run -- --record recordings/walk --walk "LLLLL.......RRRRUU......"
 `--record DIR` saves every frame after warm-up as `DIR/frame_NNNNN.png`
 (fixed 16 ms timestep) plus `DIR/trace.csv` with the player's logical cell
 and drawn position per frame, then exits. Its `--walk` holds each arrow key
-for 8 frames, like a player holding the key, and `.` releases; turn into a
+for 8 frames, like a player holding the key, taps the camera keys `Q`/`E`
+(turn) and `Z`/`X` (zoom) once, and `.` releases; turn into a
 video with, for example,
 `ffmpeg -framerate 60 -i DIR/frame_%05d.png -pix_fmt yuv420p walk.mp4`.
 
 Screenshot mode uses deterministic 16ms frames, optionally replays `UDLR`
-through the real keyboard system, saves a PNG, then exits. It requires GPU
+(and the camera keys `QEZX`) through the real keyboard system, saves a PNG, then exits. It requires GPU
 and window-server access. Capture mode renders to a fixed 1100x700 offscreen
 target, allows Bevy's render pipelines to warm up, and returns failure if
 saving fails. Normal play uses Bevy's real clock and window target. Screenshots
@@ -215,8 +220,9 @@ the sampling field across several cells, while stable world-space noise softens
 the explored boundary. This removes axis-aligned light regions without changing
 simulation resolution. The texture buffer is reused and uploaded only when its
 bytes change.
-In this mode the perspective camera follows the player. Hold `Q` or `E` to
-orbit it and use the mouse wheel to zoom; projected text cells remain attached
+In this mode the perspective camera orbits the view camera's centre: `Q`/`E`
+turn it a quarter turn and `Z`/`X` or the mouse wheel zoom, all eased by the
+camera operator; projected text cells remain attached
 to their positions on the 3D ground plane. Humanoid actors expand into small
 multiline symbol billboards without spawning extra runtime entities; compact
 environmental symbols remain single-line billboards to avoid crowding.

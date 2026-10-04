@@ -16,9 +16,10 @@ use bevy::{
     shader::ShaderRef,
 };
 
+use crate::camera::CameraOperator;
 use crate::lighting::{light_to_palette, palette_color};
 use crate::model::{
-    AnimatedPos, Glyph, MapGrid, Player, Pos, RenderBuffers, ViewAnchor, Vis, VisibilityMap, Wall,
+    AnimatedPos, Glyph, MapGrid, Player, Pos, RenderBuffers, ViewCamera, Vis, VisibilityMap, Wall,
 };
 use crate::presentation::DynamicLight;
 use crate::schedule::{GamePhase, StartupPhase};
@@ -33,8 +34,11 @@ const FLOOR_BRIGHTNESS: f32 = 0.35;
 const BILLBOARD_CENTER_HEIGHT: f32 = 12.0;
 const CAMERA_PITCH: f32 = 55.0_f32.to_radians();
 const CAMERA_FOV: f32 = 50.0_f32.to_radians();
-const MIN_CAMERA_DISTANCE: f32 = 150.0;
-const MAX_CAMERA_DISTANCE: f32 = 650.0;
+/// Camera yaw and distance at zoom 1 and no view rotation.
+const CAMERA_YAW: f32 = -45.0_f32.to_radians();
+const CAMERA_DISTANCE: f32 = 280.0;
+/// Zoom change per mouse wheel notch.
+const WHEEL_ZOOM: f32 = 0.065;
 const PALETTE_SIZE: usize = 16;
 const DUNGEON_SHADER: &str = "shaders/dungeon_material.wgsl";
 
@@ -107,11 +111,24 @@ struct FloorTexture {
     pixels: Vec<u8>,
 }
 
-#[derive(Resource)]
+/// Perspective camera placement derived from the view camera.
 struct CameraRig {
     focus: Vec3,
     yaw: f32,
     distance: f32,
+}
+
+impl CameraRig {
+    /// Orbits the view camera's centre: the view's turn becomes yaw (the map
+    /// turns counter-clockwise on screen as the camera orbits clockwise) and
+    /// its zoom brings the camera closer.
+    fn of(camera: &ViewCamera, grid: &MapGrid) -> Self {
+        Self {
+            focus: grid_to_world_f(camera.to_map(Vec2::ZERO), grid.width, grid.height),
+            yaw: CAMERA_YAW - camera.rotation,
+            distance: CAMERA_DISTANCE / camera.zoom,
+        }
+    }
 }
 
 /// Mesh for one wall object; it follows the object wherever it is shown.
@@ -131,6 +148,7 @@ fn setup(
     rules: Res<Rules>,
     walls: Query<(Entity, &Pos, &Glyph), With<Wall>>,
     player: Single<&Pos, With<Player>>,
+    view: Res<ViewCamera>,
     mut cameras_2d: Query<(&mut Camera, &mut Projection), With<Camera2d>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<DungeonMaterial>>,
@@ -145,11 +163,14 @@ fn setup(
         });
     }
 
-    let rig = CameraRig {
-        focus: grid_to_world(player.0, grid.width, grid.height),
-        yaw: -45.0_f32.to_radians(),
-        distance: 280.0,
-    };
+    // The view camera has not followed the player yet on the first frame.
+    let rig = CameraRig::of(
+        &ViewCamera {
+            position: player.0.as_vec2(),
+            ..*view
+        },
+        &grid,
+    );
     commands.spawn((
         WallCamera,
         Camera3d::default(),
@@ -165,7 +186,6 @@ fn setup(
         }),
         camera_transform(&rig),
     ));
-    commands.insert_resource(rig);
 
     let wall_meshes: Vec<_> = (0..16).map(|mask| meshes.add(wall_mesh(mask))).collect();
     let wall_materials: Vec<_> = (0..PALETTE_SIZE)
@@ -247,26 +267,20 @@ fn setup(
     });
 }
 
+/// Follows the view camera; the mouse wheel asks the operator to zoom.
 fn move_camera(
-    time: Res<Time>,
-    keys: Res<ButtonInput<KeyCode>>,
     mut wheel: MessageReader<MouseWheel>,
     grid: Res<MapGrid>,
-    anchor: Res<ViewAnchor>,
-    mut rig: ResMut<CameraRig>,
+    view: Res<ViewCamera>,
+    mut operator: ResMut<CameraOperator>,
     mut camera: Single<&mut Transform, With<WallCamera>>,
 ) {
-    let dt = time.delta_secs();
-    let orbit = (keys.pressed(KeyCode::KeyE) as i8 - keys.pressed(KeyCode::KeyQ) as i8) as f32;
-    rig.yaw += orbit * dt * 1.5;
     let wheel_delta: f32 = wheel.read().map(|event| event.y).sum();
-    rig.distance =
-        (rig.distance - wheel_delta * 18.0).clamp(MIN_CAMERA_DISTANCE, MAX_CAMERA_DISTANCE);
-
-    // Locked to the anchor: the player stays still on screen while the
-    // world moves, and the animation already makes that motion smooth.
-    rig.focus = grid_to_world_f(anchor.position, grid.width, grid.height);
-    let desired = camera_transform(&rig);
+    if wheel_delta != 0.0 {
+        let zoom = operator.target_zoom() * (1.0 + wheel_delta * WHEEL_ZOOM);
+        operator.zoom_to(zoom);
+    }
+    let desired = camera_transform(&CameraRig::of(&view, &grid));
     if **camera != desired {
         **camera = desired;
     }

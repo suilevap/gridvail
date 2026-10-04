@@ -33,8 +33,8 @@ fn main() -> AppExit {
     let walk = options.walk;
     let renderer = options.renderer;
     assert!(
-        walk.chars().all(|c| "UDLR.".contains(c)),
-        "walk steps must be U, D, L, R, or . (no key)"
+        walk.chars().all(|c| "UDLRQEZX.".contains(c)),
+        "walk steps must be U, D, L, R, Q, E, Z, X, or . (no key)"
     );
     let plugins = DefaultPlugins
         .set(WindowPlugin {
@@ -140,7 +140,7 @@ impl Options {
                     );
                 }
                 "--walk" if walk.is_none() => {
-                    walk = Some(args.next().expect("--walk requires UDLR steps"));
+                    walk = Some(args.next().expect("--walk requires UDLRQEZX steps"));
                 }
                 "--remote" if remote_port.is_none() => remote_port = Some(DEFAULT_AGENT_PORT),
                 "--remote-port" if remote_port.is_none() => {
@@ -163,7 +163,7 @@ impl Options {
                     }));
                 }
                 _ => panic!(
-                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--motion STYLE] [--remote | --remote-port PORT] [--screenshot OUTPUT.png | --record DIR] [--walk UDLR.]"
+                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--motion STYLE] [--remote | --remote-port PORT] [--screenshot OUTPUT.png | --record DIR] [--walk UDLRQEZX.]"
                 ),
             }
         }
@@ -237,6 +237,10 @@ fn walk_key(step: char) -> Option<KeyCode> {
         'D' => Some(KeyCode::ArrowDown),
         'L' => Some(KeyCode::ArrowLeft),
         'R' => Some(KeyCode::ArrowRight),
+        'Q' => Some(KeyCode::KeyQ),
+        'E' => Some(KeyCode::KeyE),
+        'Z' => Some(KeyCode::KeyZ),
+        'X' => Some(KeyCode::KeyX),
         _ => None,
     }
 }
@@ -260,11 +264,13 @@ fn hold_recorded_input(recording: Res<Recording>, mut keys: ResMut<ButtonInput<K
     let Some(frame) = recording.frames.checked_sub(30) else {
         return;
     };
-    if let Some(key) = recording
-        .walk
-        .get((frame / CAPTURE_STEP_FRAMES) as usize)
-        .and_then(|step| walk_key(*step))
-    {
+    let step = recording.walk.get((frame / CAPTURE_STEP_FRAMES) as usize);
+    // Camera keys act on each press, so they are tapped, not held.
+    let tapped = step.is_some_and(|step| "QEZX".contains(*step));
+    if tapped && !frame.is_multiple_of(CAPTURE_STEP_FRAMES) {
+        return;
+    }
+    if let Some(key) = step.and_then(|step| walk_key(*step)) {
         keys.press(key);
     }
 }

@@ -10,10 +10,12 @@
 mod hierarchy;
 mod motion;
 mod plugin;
+mod tween;
 
 pub use hierarchy::*;
 pub use motion::*;
 pub use plugin::*;
+pub use tween::*;
 
 #[cfg(test)]
 mod tests;

@@ -14,7 +14,9 @@ foundation  content  model  schedule
                          main
 ```
 
-Arrows point toward dependencies. `schedule` is the small, neutral contract
+Arrows point toward dependencies. `camera` sits on top of `animation` (it
+eases the view with the same curves) and below `app` and `rendering`.
+`schedule` is the small, neutral contract
 shared by the domain plugins and output backends. `app` is the game composition
 root: it chooses the bundled map, configures phase order, and installs game
 logic. The executable selects a renderer independently. Code that exists only
@@ -76,14 +78,21 @@ and renderers must not import it.
   Renderers draw each frame as two layers: `ground` (per-cell floor and fog,
   blank under objects) and `objects` (every visible glyph entity, at its
   animated position), so any object can move.
-  `ViewAnchor` is the point renderers centre the view on: the player's
-  animated position, so the player stays still on screen while the world
-  moves (see `PORTALS.md`, which builds the portal view on it).
+- `camera/` directs the renderer-neutral `ViewCamera` (model data: the map
+  point at the screen centre, rotation, zoom, offset, and the conversion
+  between map and view cells). `CameraOperator` follows a target (the
+  player by default), either locked on its animated position or trailing
+  it with its own moves, and eases every change of rotation, zoom, offset
+  or target with a `Tween`. Q/E turn the view a quarter turn and Z/X zoom;
+  movement keys are read as screen directions. Renderers only read the
+  camera. `PORTALS.md` builds the portal view on it.
   `PresentationPlugin` owns those systems and all map-sized frame resources.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
-  at its animated position. Wall meshes in the 3D backend follow their
-  objects the same way. The optional
+  at its animated position, each placed where the view camera shows it (its
+  2D camera never moves, so glyphs stay upright when the view turns). Wall
+  meshes in the 3D backend follow their objects the same way, and its
+  perspective camera orbits and zooms to match the view camera. The optional
   `ExtrudedWallRendererPlugin` adds a perspective camera plus shared wall and
   floor meshes beneath that text layer. A small GPU texture carries the same
   visibility and CPU-light results to the procedural floor shader.
