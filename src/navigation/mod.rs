@@ -19,7 +19,8 @@ pub use plugin::*;
 
 use bevy::prelude::*;
 
-use path::{Cell, Grid, Rules};
+use path::grid::{Cell, Grid};
+use path::Rules;
 
 use crate::model::*;
 
@@ -141,6 +142,7 @@ impl<'a> Terrain<'a> {
 }
 
 impl Rules for Terrain<'_> {
+    type Node = Cell;
     type Cost = u32;
     type State = ();
 

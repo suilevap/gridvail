@@ -34,7 +34,8 @@ next to this file.
   door further on. The HUD and the agent API's `player.keys` count the keys
   the player holds.
 - Pathfinding (an addition): the workspace crate `crates/gridvail-path`
-  (no dependencies) runs A* over pluggable `Rules`. Rules price or forbid each
+  (no dependencies) runs A* over any graph (a `Space`; a 4-connected grid is
+  built in behind the default `grid` feature) with pluggable `Rules`. Rules price or forbid each
   step and may carry a small state, such as doors passed; the search keeps one
   layer of cells per state, so the same cell reached with a different state is
   searched separately; a rule may declare which states dominate others (more
@@ -124,7 +125,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 104 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 105 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```

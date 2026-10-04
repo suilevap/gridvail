@@ -2,7 +2,16 @@
 name = "gridvail-path"
 version = "0.1.0"
 edition = "2021"
-description = "Grid pathfinding with pluggable, stateful step rules and allocation-free repeated searches"
+description = "Pathfinding with pluggable, stateful step rules and allocation-free repeated searches, with a built-in grid"
 license = "MIT"
 
+[features]
+default = ["grid"]
+# A 4-connected grid as a ready-made `Space`.
+grid = []
+
 [dependencies]
+
+[[test]]
+name = "allocations"
+required-features = ["grid"]

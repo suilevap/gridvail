@@ -1,3 +1,8 @@
+//! A 4-connected grid as a [`Space`]: cells move to their up, down, left and
+//! right neighbours, and the Manhattan distance bounds the moves needed.
+
+use crate::Space;
+
 /// A grid cell.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Cell {
@@ -60,15 +65,36 @@ impl Grid {
     }
 
     /// Fewest steps between two cells, ignoring obstacles.
-    pub fn distance(&self, a: Cell, b: Cell) -> u32 {
-        a.x.abs_diff(b.x) + a.y.abs_diff(b.y)
+    pub fn distance(&self, from: Cell, to: Cell) -> u32 {
+        from.x.abs_diff(to.x) + from.y.abs_diff(to.y)
+    }
+}
+
+impl Space for Grid {
+    type Node = Cell;
+
+    fn node_count(&self) -> usize {
+        self.len()
     }
 
-    /// The up to four on-grid neighbours of `cell`.
-    pub fn neighbors(&self, cell: Cell) -> impl Iterator<Item = Cell> + '_ {
-        [(1, 0), (-1, 0), (0, 1), (0, -1)]
-            .into_iter()
-            .map(move |(dx, dy)| Cell::new(cell.x + dx, cell.y + dy))
-            .filter(|next| self.contains(*next))
+    fn index(&self, cell: Cell) -> Option<usize> {
+        Grid::index(self, cell)
+    }
+
+    fn node(&self, index: usize) -> Cell {
+        self.cell(index)
+    }
+
+    fn for_each_neighbor(&self, cell: Cell, visit: &mut dyn FnMut(Cell)) {
+        for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            let next = Cell::new(cell.x + dx, cell.y + dy);
+            if self.contains(next) {
+                visit(next);
+            }
+        }
+    }
+
+    fn min_moves(&self, from: Cell, to: Cell) -> u32 {
+        self.distance(from, to)
     }
 }

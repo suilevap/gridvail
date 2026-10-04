@@ -4,6 +4,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell as StdCell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use gridvail_path::grid::{Cell, Grid};
 use gridvail_path::*;
 
 struct Counting;
@@ -56,6 +57,7 @@ fn wall(cell: Cell) -> bool {
 struct Doors;
 
 impl Rules for Doors {
+    type Node = Cell;
     type Cost = u32;
     type State = u8;
 
@@ -76,8 +78,8 @@ impl Rules for Doors {
         (doors <= 2).then_some((0, doors))
     }
 
-    fn dominates(&self, a: usize, b: usize) -> bool {
-        a < b
+    fn dominates(&self, dominant: usize, dominated: usize) -> bool {
+        dominant < dominated
     }
 }
 
@@ -85,6 +87,7 @@ impl Rules for Doors {
 struct Pads;
 
 impl Rules for Pads {
+    type Node = Cell;
     type Cost = u32;
     type State = ();
 
@@ -123,7 +126,7 @@ impl Rules for Pads {
 #[test]
 fn warmed_up_searches_and_path_streams_allocate_nothing() {
     let grid = Grid::new(W, H);
-    let terrain = StepFn::new(1u32, |_, to| {
+    let terrain = StepFn::new(1u32, |_, to: Cell| {
         (!wall(to)).then_some(if to.x % 7 == 0 { 3 } else { 1 })
     });
     let rules = (&terrain, Doors);
@@ -139,20 +142,20 @@ fn warmed_up_searches_and_path_streams_allocate_nothing() {
     let mut jump_search = PathSearch::new();
     let mut path = Vec::new();
 
-    let run = |search: &mut PathSearch<u32, ((), u8)>,
-               stream: &mut PathSearch<u32, ((), u8)>,
+    let run = |search: &mut PathSearch<Cell, u32, ((), u8)>,
+               stream: &mut PathSearch<Cell, u32, ((), u8)>,
                path: &mut Vec<Cell>| {
         let mut found = 0;
         for &(start, goal) in &ends {
             found += usize::from(search.find(&grid, &rules, start, goal, path).is_some());
             stream.begin(&grid, &rules, start, goal);
-            while stream.next(&rules, path).is_some() {
+            while stream.next(&grid, &rules, path).is_some() {
                 found += 1;
             }
         }
         found
     };
-    let run_jumps = |search: &mut PathSearch<u32, (((), u8), ())>, path: &mut Vec<Cell>| {
+    let run_jumps = |search: &mut PathSearch<Cell, u32, (((), u8), ())>, path: &mut Vec<Cell>| {
         ends.iter()
             .filter(|(start, goal)| search.find(&grid, &jumping, *start, *goal, path).is_some())
             .count()

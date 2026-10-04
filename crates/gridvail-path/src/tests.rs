@@ -1,3 +1,4 @@
+use crate::grid::{Cell, Grid};
 use crate::*;
 
 /// A map from rows of text: `#` wall, `D` closed door, `k` key, `.` floor.
@@ -32,6 +33,7 @@ impl Rows {
 
 /// Walls block; everything else costs 1.
 impl Rules for Rows {
+    type Node = Cell;
     type Cost = u32;
     type State = ();
 
@@ -61,6 +63,7 @@ struct DoorLimit<'a> {
 }
 
 impl Rules for DoorLimit<'_> {
+    type Node = Cell;
     type Cost = u32;
     type State = u8;
 
@@ -86,6 +89,7 @@ impl Rules for DoorLimit<'_> {
 struct NeedsKey<'a>(&'a Rows);
 
 impl Rules for NeedsKey<'_> {
+    type Node = Cell;
     type Cost = u32;
     type State = bool;
 
@@ -113,7 +117,10 @@ impl Rules for NeedsKey<'_> {
 // Two ways from S to G: through two doors (6 steps) or around (10).
 const DOORS: [&str; 3] = ["S.D.D.G", ".#####.", "......."];
 
-fn search<R: Rules>(rows: &Rows, rules: &R) -> Option<(R::Cost, Vec<Cell>)> {
+fn search<TestRules: Rules<Node = Cell>>(
+    rows: &Rows,
+    rules: &TestRules,
+) -> Option<(TestRules::Cost, Vec<Cell>)> {
     let mut path = Vec::new();
     PathSearch::new()
         .find(
@@ -202,14 +209,14 @@ fn a_cell_is_searched_again_with_a_different_state() {
         [2, 1, 0, 1, 2, 3, 4, 5, 6]
     );
     // Without the key layer it is impossible.
-    let no_key = StepFn::new(1u32, |_, to| (rows.at(to) != 'D').then_some(1));
+    let no_key = StepFn::new(1u32, |_, to: Cell| (rows.at(to) != 'D').then_some(1));
     assert_eq!(search(&rows, &no_key), None);
 }
 
 #[test]
 fn lexicographic_costs_prefer_fewer_doors_then_fewer_steps() {
     let rows = Rows::new(&DOORS);
-    let doors_first = StepFn::new(Lex(0u32, 1u32), |_, to| match rows.at(to) {
+    let doors_first = StepFn::new(Lex(0u32, 1u32), |_, to: Cell| match rows.at(to) {
         '#' => None,
         'D' => Some(Lex(1, 1)),
         _ => Some(Lex(0, 1)),
@@ -222,7 +229,9 @@ fn lexicographic_costs_prefer_fewer_doors_then_fewer_steps() {
 #[test]
 fn closure_costs_steer_the_path() {
     let rows = Rows::new(&DOORS);
-    let doors_hurt = StepFn::new(0, |_, to| Some(if rows.at(to) == 'D' { 10 } else { 0 }));
+    let doors_hurt = StepFn::new(0u32, |_, to: Cell| {
+        Some(if rows.at(to) == 'D' { 10 } else { 0 })
+    });
     assert_eq!(search(&rows, &(&rows, doors_hurt)).unwrap().0, 10);
 }
 
@@ -249,16 +258,20 @@ fn one_search_serves_many_queries() {
 }
 
 /// Every path [`PathSearch::next`] streams: cost, final state, cells.
-fn stream<R: Rules>(rows: &Rows, rules: &R) -> Vec<(R::Cost, R::State, Vec<Cell>)> {
+fn stream<TestRules: Rules<Node = Cell>>(
+    rows: &Rows,
+    rules: &TestRules,
+) -> Vec<(TestRules::Cost, TestRules::State, Vec<Cell>)> {
     let mut search = PathSearch::new();
     let mut path = Vec::new();
     let mut found = Vec::new();
-    assert!(search.begin(&rows.grid(), rules, rows.find('S'), rows.find('G')));
-    while let Some((cost, state)) = search.next(rules, &mut path) {
+    let grid = rows.grid();
+    assert!(search.begin(&grid, rules, rows.find('S'), rows.find('G')));
+    while let Some((cost, state)) = search.next(&grid, rules, &mut path) {
         found.push((cost, state, path.clone()));
     }
     assert!(
-        search.next(rules, &mut path).is_none(),
+        search.next(&grid, rules, &mut path).is_none(),
         "an ended stream stays ended"
     );
     found
@@ -308,7 +321,9 @@ fn one_search_streams_the_cheapest_path_per_final_state() {
 fn streamed_paths_come_cheapest_first_and_skip_dominated_ones() {
     let rows = Rows::new(&DOORS);
     // Doors cost 10 more each: going around is cheaper.
-    let doors_hurt = StepFn::new(0, |_, to| Some(if rows.at(to) == 'D' { 10 } else { 0 }));
+    let doors_hurt = StepFn::new(0u32, |_, to: Cell| {
+        Some(if rows.at(to) == 'D' { 10 } else { 0 })
+    });
     let plain = (
         &doors_hurt,
         (
@@ -357,7 +372,7 @@ fn begin_rejects_ends_off_the_grid() {
     let mut search = PathSearch::new();
     let mut path = vec![Cell::new(1, 0)];
     assert!(!search.begin(&rows.grid(), &rows, Cell::new(0, 0), Cell::new(9, 0)));
-    assert_eq!(search.next(&rows, &mut path), None);
+    assert_eq!(search.next(&rows.grid(), &rows, &mut path), None);
     assert!(path.is_empty());
 }
 
@@ -365,6 +380,7 @@ fn begin_rejects_ends_off_the_grid() {
 struct FewerDoorsDominate<'a>(DoorLimit<'a>);
 
 impl Rules for FewerDoorsDominate<'_> {
+    type Node = Cell;
     type Cost = u32;
     type State = u8;
 
@@ -384,8 +400,8 @@ impl Rules for FewerDoorsDominate<'_> {
         self.0.step(from, to, doors)
     }
 
-    fn dominates(&self, a: usize, b: usize) -> bool {
-        a < b
+    fn dominates(&self, dominant: usize, dominated: usize) -> bool {
+        dominant < dominated
     }
 }
 
@@ -447,6 +463,7 @@ struct Teleport {
 }
 
 impl Rules for Teleport {
+    type Node = Cell;
     type Cost = u32;
     type State = ();
 

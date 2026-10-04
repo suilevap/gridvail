@@ -24,7 +24,8 @@ and renderers must not import it.
 - `foundation/` contains engine-independent algorithms. The fractional FOV
   implementation and its ring/range scratch storage live here. Grid
   pathfinding is one level lower still, in its own workspace crate,
-  `crates/gridvail-path`, with no dependencies.
+  `crates/gridvail-path`, with no dependencies: its core searches any graph
+  (`Space`), and its `grid` feature adds the grid the game uses.
 - `content/` parses external map and tile-rule formats. It does not spawn ECS
   entities or decide which map is active.
 - `model/` contains ECS data, split into actors, spatial state, vision,
