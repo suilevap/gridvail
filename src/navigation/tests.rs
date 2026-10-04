@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use super::path::grid::Cell;
 use super::path::{PathSearch, StepFn};
 use super::*;
 use crate::app::GamePlugin;
@@ -18,12 +19,12 @@ fn boot() -> App {
 }
 
 /// The cheapest path between two map positions under `rules`.
-fn find<R: Rules>(
+fn find<TestRules: Rules<Node = Cell>>(
     nav: &NavMap,
-    rules: &R,
+    rules: &TestRules,
     from: IVec2,
     to: IVec2,
-) -> Option<(R::Cost, Vec<IVec2>)> {
+) -> Option<(TestRules::Cost, Vec<IVec2>)> {
     let mut path = Vec::new();
     PathSearch::new()
         .find(nav.grid(), rules, cell_of(from), cell_of(to), &mut path)
@@ -83,6 +84,7 @@ struct DoorLimit<'a> {
 }
 
 impl Rules for DoorLimit<'_> {
+    type Node = Cell;
     type Cost = u32;
     type State = u8;
 
@@ -135,7 +137,7 @@ fn game_rules_compose() {
     );
 
     // Steer around a place: row 2 costs a lot to enter.
-    let avoid_row = StepFn::new(0, |_, to: Cell| Some(if to.y == 2 { 50 } else { 0 }));
+    let avoid_row = StepFn::new(0u32, |_, to: Cell| Some(if to.y == 2 { 50 } else { 0 }));
     let far = IVec2::new(25, 2);
     let (_, direct) = find(nav, &terrain, PLAYER, far).unwrap();
     let (_, steered) = find(nav, &(terrain, avoid_row), PLAYER, far).unwrap();
@@ -149,6 +151,7 @@ fn game_rules_compose() {
 struct DoorsUsed<'a>(&'a NavMap);
 
 impl Rules for DoorsUsed<'_> {
+    type Node = Cell;
     type Cost = u32;
     type State = u8;
 
@@ -169,8 +172,8 @@ impl Rules for DoorsUsed<'_> {
         (doors <= 1).then_some((0, doors))
     }
 
-    fn dominates(&self, a: usize, b: usize) -> bool {
-        a < b
+    fn dominates(&self, dominant: usize, dominated: usize) -> bool {
+        dominant < dominated
     }
 }
 
@@ -188,7 +191,7 @@ fn one_search_offers_the_door_and_the_long_way_round() {
     let mut path = Vec::new();
     let mut found = Vec::new();
     assert!(search.begin(nav.grid(), &rules, cell_of(from), cell_of(to)));
-    while let Some((cost, (_, doors))) = search.next(&rules, &mut path) {
+    while let Some((cost, (_, doors))) = search.next(nav.grid(), &rules, &mut path) {
         found.push((
             cost,
             doors,
