@@ -76,6 +76,9 @@ and renderers must not import it.
   Renderers draw each frame as two layers: `ground` (per-cell floor and fog,
   blank under objects) and `objects` (every visible glyph entity, at its
   animated position), so any object can move.
+  `ViewAnchor` is the point renderers centre the view on: the player's
+  animated position, so the player stays still on screen while the world
+  moves (see `PORTALS.md`, which builds the portal view on it).
   `PresentationPlugin` owns those systems and all map-sized frame resources.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object

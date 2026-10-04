@@ -129,3 +129,30 @@ fn every_glyph_entity_is_an_object_above_the_ground() {
         assert_eq!(object.position, object.pos.as_vec2());
     }
 }
+
+#[test]
+fn view_anchors_on_the_player_where_it_is_shown() {
+    let mut app = test_app::headless();
+    app.init_resource::<ViewAnchor>();
+    let player = app
+        .world_mut()
+        .spawn((Player(0), Pos(IVec2::new(3, 2))))
+        .id();
+    app.world_mut().run_system_once(anchor_view).unwrap();
+    assert_eq!(
+        app.world().resource::<ViewAnchor>().position,
+        Vec2::new(3.0, 2.0),
+        "without animation the anchor is the player's cell"
+    );
+
+    let shown = AnimatedPos {
+        position: Vec2::new(3.4, 2.0),
+        lift: 0.2,
+    };
+    app.world_mut().entity_mut(player).insert(shown);
+    app.world_mut().run_system_once(anchor_view).unwrap();
+    assert_eq!(
+        app.world().resource::<ViewAnchor>().position,
+        shown.position
+    );
+}
