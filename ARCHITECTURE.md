@@ -90,7 +90,8 @@ and renderers must not import it.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
   at its animated position, each placed where the view camera shows it (its
-  2D camera never moves, so glyphs stay upright when the view turns). Wall
+  2D camera never moves, so glyphs stay upright when the view turns, and
+  wall and facing glyphs are swapped for their turned versions). Wall
   meshes in the 3D backend follow their objects the same way, and its
   perspective camera orbits and zooms to match the view camera. The optional
   `ExtrudedWallRendererPlugin` adds a perspective camera plus shared wall and

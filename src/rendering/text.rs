@@ -3,11 +3,13 @@
 use std::fmt::Write;
 
 use bevy::ecs::entity::EntityHashMap;
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
 use crate::lighting::{palette_color, GRAY};
 use crate::model::*;
 use crate::schedule::{GamePhase, StartupPhase};
+use crate::simulation::Rules;
 
 use super::walls_3d::{billboard_pattern, ExtrudedWalls};
 use crate::animation::MotionStyle;
@@ -48,6 +50,41 @@ pub(super) struct ObjectSprites(EntityHashMap<Entity>);
 #[derive(Resource, Clone)]
 pub(super) struct CellFont(Handle<Font>);
 
+/// Glyphs that depend on direction (wall shapes, facing markers), each as
+/// drawn in a view turned 0 to 3 quarter turns counter-clockwise, so they
+/// keep pointing the same way on the map when the view turns.
+#[derive(Resource, Default)]
+pub(super) struct TurnedGlyphs(HashMap<char, [char; 4]>);
+
+impl TurnedGlyphs {
+    fn from_rules(rules: &Rules) -> Self {
+        let mut table = HashMap::default();
+        // Blank slots (a rule without that shape) have nothing to turn.
+        for symbol in rules.wall.symbols.into_iter().filter(|s| *s != ' ') {
+            table.insert(
+                symbol,
+                [0, 1, 2, 3].map(|q| rules.wall.turned(symbol, q).unwrap()),
+            );
+        }
+        for rule in [&rules.triangle, &rules.v] {
+            for symbol in rule.symbols.into_iter().filter(|s| *s != ' ') {
+                table.insert(
+                    symbol,
+                    [0, 1, 2, 3].map(|q| rule.turned(symbol, q).unwrap()),
+                );
+            }
+        }
+        Self(table)
+    }
+
+    /// `symbol` as drawn in the view; glyphs without a direction stay.
+    pub(super) fn get(&self, symbol: char, camera: &ViewCamera) -> char {
+        self.0
+            .get(&symbol)
+            .map_or(symbol, |turns| turns[camera.quarter_turns() as usize])
+    }
+}
+
 /// Per-frame work performed by the text renderer.
 #[derive(Resource, Debug, Default)]
 pub struct TextRenderStats {
@@ -81,6 +118,7 @@ impl Plugin for TextRendererPlugin {
 pub(super) fn setup(
     mut commands: Commands,
     grid: Res<MapGrid>,
+    rules: Option<Res<Rules>>,
     fonts: Option<ResMut<Assets<Font>>>,
 ) {
     let (width, height) = (grid.width, grid.height);
@@ -129,6 +167,9 @@ pub(super) fn setup(
     }
 
     commands.insert_resource(CellFont(font.clone()));
+    commands.insert_resource(rules.map_or_else(TurnedGlyphs::default, |rules| {
+        TurnedGlyphs::from_rules(&rules)
+    }));
     commands.spawn((
         HudText,
         UiTargetCamera(camera),
@@ -238,6 +279,7 @@ pub(super) fn place_object_sprites(
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
     index: Res<ObjectSprites>,
+    turned: Res<TurnedGlyphs>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
     mut drawn: Local<String>,
     mut sprites: Query<(
@@ -268,7 +310,7 @@ pub(super) fn place_object_sprites(
             continue;
         };
         drawn.clear();
-        push_glyph(&mut drawn, object.cell.ch, billboards);
+        push_glyph(&mut drawn, turned.get(object.cell.ch, &camera), billboards);
         sprite.position = object.position;
         sprite.lift = object.lift;
         sprite.depth = object.cell.depth;
@@ -424,6 +466,7 @@ mod tests {
     use crate::animation::ObjectAnimationPlugin;
     use crate::app::GamePlugin;
     use crate::camera::CameraOperator;
+    use crate::simulation::Rules;
 
     fn player_sprite(app: &mut App) -> (IVec2, Vec2) {
         let world = app.world_mut();
@@ -545,6 +588,46 @@ mod tests {
         assert!(east.translation.xy().distance(Vec2::new(0.0, CELL_SIZE.y)) < 1e-3);
         assert_eq!(east.rotation, Quat::IDENTITY);
         assert_eq!(player_transform(&mut app).translation.xy(), Vec2::ZERO);
+    }
+
+    #[test]
+    fn turned_view_turns_wall_shapes_and_facing_markers() {
+        let mut app = boot(false);
+        let mut operator = app.world_mut().resource_mut::<CameraOperator>();
+        operator.turn_by_quarters(1);
+        operator.snap();
+        app.update();
+
+        let world = app.world_mut();
+        let drawn: Vec<(char, String)> = {
+            let sprites = world.resource::<ObjectSprites>().0.clone();
+            let mut glyphs = world.query::<&Glyph>();
+            let mut texts = world.query::<(&ObjectSprite, &Text2d)>();
+            sprites
+                .iter()
+                .filter_map(|(object, sprite)| {
+                    let glyph = glyphs.get(world, *object).ok()?;
+                    let (sprite, text) = texts.get(world, *sprite).ok()?;
+                    sprite.shown.then(|| (glyph.ch, text.0.clone()))
+                })
+                .collect()
+        };
+        let rules = world.resource::<Rules>();
+        let mut walls = 0;
+        let mut markers = 0;
+        for (ch, text) in drawn {
+            let expected = if let Some(turned) = rules.wall.turned(ch, 1) {
+                walls += 1;
+                turned
+            } else if let Some(turned) = rules.triangle.turned(ch, 1) {
+                markers += 1;
+                turned
+            } else {
+                ch
+            };
+            assert_eq!(text, expected.to_string(), "glyph {ch}");
+        }
+        assert!(walls > 0 && markers > 0, "walls {walls}, markers {markers}");
     }
 
     #[test]
