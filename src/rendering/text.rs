@@ -66,7 +66,7 @@ impl Plugin for TextRendererPlugin {
                 Update,
                 (
                     cycle_motion,
-                    follow_anchor,
+                    place_cells,
                     flush_cells,
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
@@ -202,8 +202,7 @@ fn spawn_object_sprites(world: &mut World) {
             .copied()
             .collect()
     };
-    let grid = world.resource::<MapGrid>();
-    let (width, height) = (grid.width, grid.height);
+    let camera = *world.resource::<ViewCamera>();
     let font = world.resource::<CellFont>().0.clone();
     for object in missing {
         let sprite = world
@@ -223,9 +222,7 @@ fn spawn_object_sprites(world: &mut World) {
                     ..default()
                 },
                 TextColor(palette_color(object.cell.color)),
-                Transform::from_translation(
-                    grid_to_world_f(object.position, width, height) + Vec3::Z,
-                ),
+                Transform::from_translation(view_translation(&camera, object.position) + Vec3::Z),
                 Visibility::Hidden,
             ))
             .id();
@@ -238,7 +235,7 @@ fn spawn_object_sprites(world: &mut World) {
 
 /// Draws one text sprite per visible object at its animated position.
 pub(super) fn place_object_sprites(
-    grid: Res<MapGrid>,
+    camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
     index: Res<ObjectSprites>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
@@ -300,28 +297,35 @@ pub(super) fn place_object_sprites(
             continue;
         }
         // Top-down, a hop shows as a small shift up the screen.
-        let translation = object_translation(&sprite, &grid) + Vec3::Y * sprite.lift * CELL_SIZE.y;
+        let translation = object_translation(&sprite, &camera)
+            + Vec3::Y * sprite.lift * CELL_SIZE.y * camera.zoom;
         if transform.translation != translation {
             transform.translation = translation;
+        }
+        let scale = Vec3::splat(camera.zoom);
+        if transform.scale != scale {
+            transform.scale = scale;
         }
     }
 }
 
-/// Keeps the view anchor (the player) at the centre of the screen. The
-/// perspective backend aims its own camera and projects text onto this one.
-fn follow_anchor(
-    grid: Res<MapGrid>,
-    anchor: Res<ViewAnchor>,
+/// Places the ground cells where the view camera shows them. The map turns
+/// and zooms around the screen centre; the 2D camera itself never moves, so
+/// glyphs stay upright. The perspective backend projects cells itself.
+fn place_cells(
+    camera: Res<ViewCamera>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
-    mut camera: Single<&mut Transform, With<Camera2d>>,
+    mut placed: Local<Option<ViewCamera>>,
+    mut cells: Query<(&MapCell, &mut Transform)>,
 ) {
-    if extruded_walls.is_some() {
+    if extruded_walls.is_some() || *placed == Some(*camera) {
         return;
     }
-    let centre = grid_to_world_f(anchor.position, grid.width, grid.height);
-    if camera.translation.xy() != centre.xy() {
-        camera.translation.x = centre.x;
-        camera.translation.y = centre.y;
+    *placed = Some(*camera);
+    let scale = Vec3::splat(camera.zoom);
+    for (cell, mut transform) in &mut cells {
+        transform.translation = view_translation(&camera, cell.0.as_vec2());
+        transform.scale = scale;
     }
 }
 
@@ -335,9 +339,15 @@ fn cycle_motion(keys: Option<Res<ButtonInput<KeyCode>>>, motion: Option<ResMut<M
 }
 
 /// Objects draw above the ground cells, deeper glyphs on top.
-fn object_translation(sprite: &ObjectSprite, grid: &MapGrid) -> Vec3 {
-    grid_to_world_f(sprite.position, grid.width, grid.height)
-        + Vec3::Z * (1.0 + sprite.depth as f32 * 0.1)
+fn object_translation(sprite: &ObjectSprite, camera: &ViewCamera) -> Vec3 {
+    view_translation(camera, sprite.position) + Vec3::Z * (1.0 + sprite.depth as f32 * 0.1)
+}
+
+/// Where the view camera shows a map point, in 2D world units around the
+/// screen centre.
+fn view_translation(camera: &ViewCamera, map: Vec2) -> Vec3 {
+    let view = camera.to_view(map);
+    Vec3::new(view.x * CELL_SIZE.x, -view.y * CELL_SIZE.y, 0.0)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -370,9 +380,9 @@ fn update_hud(
         text.0.clear();
         write!(
             text.0,
-            "PavEcsGame Lite Bevy port | arrows/WASD{} | M motion: {}\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | keys {} | enemies {} | bumps {}",
+            "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {}\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | keys {} | enemies {} | bumps {}",
             if extruded_walls.is_some() {
-                " | Q/E orbit | wheel zoom"
+                " | wheel zoom"
             } else {
                 ""
             },
@@ -413,6 +423,7 @@ mod tests {
     use super::*;
     use crate::animation::ObjectAnimationPlugin;
     use crate::app::GamePlugin;
+    use crate::camera::CameraOperator;
 
     fn player_sprite(app: &mut App) -> (IVec2, Vec2) {
         let world = app.world_mut();
@@ -424,6 +435,29 @@ mod tests {
         let sprite = world.resource::<ObjectSprites>().0[&player];
         let sprite = world.get::<ObjectSprite>(sprite).expect("player sprite");
         (pos, sprite.position())
+    }
+
+    fn player_transform(app: &mut App) -> Transform {
+        let world = app.world_mut();
+        let player = world
+            .query_filtered::<Entity, With<Player>>()
+            .single(world)
+            .unwrap();
+        let sprite = world.resource::<ObjectSprites>().0[&player];
+        *world.get::<Transform>(sprite).expect("player sprite")
+    }
+
+    fn player_lift(app: &mut App) -> f32 {
+        let world = app.world_mut();
+        let player = world
+            .query_filtered::<Entity, With<Player>>()
+            .single(world)
+            .unwrap();
+        let sprite = world.resource::<ObjectSprites>().0[&player];
+        world
+            .get::<ObjectSprite>(sprite)
+            .expect("player sprite")
+            .lift()
     }
 
     fn boot(animated: bool) -> App {
@@ -481,14 +515,36 @@ mod tests {
         let (moved, gliding) = player_sprite(&mut app);
         assert_ne!(gliding, moved.as_vec2(), "player should be mid-move");
 
+        // The world moves past the player, who stays at the screen centre
+        // (only a hop lifts them up the screen).
+        let lift = player_lift(&mut app);
+        assert_eq!(
+            player_transform(&mut app).translation.xy(),
+            Vec2::new(0.0, lift * CELL_SIZE.y)
+        );
+    }
+
+    #[test]
+    fn turned_view_keeps_glyphs_upright_around_the_player() {
+        let mut app = boot(false);
+        let (cell, _) = player_sprite(&mut app);
+        let mut operator = app.world_mut().resource_mut::<CameraOperator>();
+        operator.turn_by_quarters(1);
+        operator.snap();
+        app.update();
+
+        // A quarter turn counter-clockwise shows the cell east of the
+        // player above them, one cell height up the screen.
         let world = app.world_mut();
-        let grid = world.resource::<MapGrid>();
-        let centre = grid_to_world_f(gliding, grid.width, grid.height);
-        let camera = world
-            .query_filtered::<&Transform, With<Camera2d>>()
-            .single(world)
-            .unwrap();
-        assert_eq!(camera.translation.xy(), centre.xy());
+        let east = world
+            .query::<(&MapCell, &Transform)>()
+            .iter(world)
+            .find(|(map_cell, _)| map_cell.0 == cell + IVec2::X)
+            .map(|(_, transform)| *transform)
+            .expect("ground cell east of the player");
+        assert!(east.translation.xy().distance(Vec2::new(0.0, CELL_SIZE.y)) < 1e-3);
+        assert_eq!(east.rotation, Quat::IDENTITY);
+        assert_eq!(player_transform(&mut app).translation.xy(), Vec2::ZERO);
     }
 
     #[test]

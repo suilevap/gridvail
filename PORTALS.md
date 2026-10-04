@@ -9,11 +9,13 @@ order; each one keeps the game unchanged on maps without portals.
 
 ## Decisions
 
-1. **The view is anchored on the player.** The screen is centred on the
-   player's shown (animated) position: the player stays still and the world
-   moves around them. This is `ViewAnchor` (step 0, done). With portals the
-   anchor becomes the origin of the player's view frame, so stepping through
-   a portal causes no jump on screen.
+1. **The view is a camera that follows the player.** `ViewCamera` holds the
+   map point at the screen centre, a rotation, a zoom and an offset;
+   `CameraOperator` keeps it on the player's shown (animated) position and
+   eases every change (step 0, done). The player stays still and the world
+   moves around them. With portals the camera becomes the origin of the
+   player's view frame, so stepping through a portal causes no jump on
+   screen, and a rotating portal turns the camera with the player.
 2. **Portals live in walls.** A portal is one face of a wall cell. Seen
    from the floor in front of that face, the wall shows what lies beyond the
    paired face instead. The rest of a wall's angular slice still occludes:
@@ -25,7 +27,7 @@ order; each one keeps the game unchanged on maps without portals.
 4. **Moves through a portal are smooth.** Walking into a portal face moves
    the actor to the floor in front of the paired face and continues the
    same animation there, so it emerges from the exit face instead of
-   jumping. The view anchor follows it.
+   jumping. The camera follows it.
 5. **Remembered cells are dimmer.** Cells known but not visible are drawn
    with a darker palette and come from the world around the player in the
    current view frame. Wherever something is visible (directly or through a
@@ -78,7 +80,7 @@ FOV for them lets light shine through portals, as an optional later step.
 ## Player view
 
 The player's vision output becomes **view-indexed**: for each cell around
-the anchor, the world cell it shows, the transform it is seen through, and
+the camera, the world cell it shows, the transform it is seen through, and
 how visible it is. One world cell can appear more than once. Known cells
 (`Vis::KNOWN`) stay world-indexed, as now.
 
@@ -91,8 +93,10 @@ show the right shapes.
 
 ## Steps
 
-0. View anchored on the player (`ViewAnchor`): text and 3D cameras follow
-   the player's animated position. **Done.**
+0. A renderer-neutral `ViewCamera` (position, rotation, zoom, offset)
+   moved by a `CameraOperator` that follows the player and eases changes;
+   both renderers draw from it and movement keys follow the turned view.
+   **Done.** Wall and direction glyphs do not turn yet (step 6).
 1. Portal model: wall-face portal components, map glyphs for paired faces,
    a portal revision on the grid.
 2. Portal-aware FOV with windows and transforms (translation only), with

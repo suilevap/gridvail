@@ -1,23 +1,18 @@
 use bevy::prelude::*;
 
-use crate::model::{MapGrid, RenderBuffers, StaticLight, ViewAnchor};
+use crate::model::{MapGrid, RenderBuffers, StaticLight};
 use crate::schedule::{GamePhase, StartupPhase};
 
-use super::{anchor_view, compose_frame, render_light_layers, DynamicLight};
+use super::{compose_frame, render_light_layers, DynamicLight};
 
-/// Light-map processing, the view anchor, and composition of a
-/// renderer-neutral cell frame.
+/// Light-map processing and composition of a renderer-neutral cell frame.
 pub struct PresentationPlugin;
 
 impl Plugin for PresentationPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ViewAnchor>()
-            .add_systems(Startup, setup_buffers.in_set(StartupPhase::Presentation))
+        app.add_systems(Startup, setup_buffers.in_set(StartupPhase::Presentation))
             .add_systems(Update, render_light_layers.in_set(GamePhase::Lighting))
-            .add_systems(
-                Update,
-                (anchor_view, compose_frame).in_set(GamePhase::Presentation),
-            );
+            .add_systems(Update, compose_frame.in_set(GamePhase::Presentation));
     }
 }
 
