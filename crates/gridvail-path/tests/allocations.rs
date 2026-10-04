@@ -1,4 +1,4 @@
-//! Repeated searches allocate nothing once warmed up.
+//! Repeated searches and path streams allocate nothing once warmed up.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell as StdCell;
@@ -121,7 +121,7 @@ impl Rules for Pads {
 }
 
 #[test]
-fn warmed_up_searches_and_route_streams_allocate_nothing() {
+fn warmed_up_searches_and_path_streams_allocate_nothing() {
     let grid = Grid::new(W, H);
     let terrain = StepFn::new(1u32, |_, to| {
         (!wall(to)).then_some(if to.x % 7 == 0 { 3 } else { 1 })
@@ -135,17 +135,17 @@ fn warmed_up_searches_and_route_streams_allocate_nothing() {
         (Cell::new(1, 1), Cell::new(4, 0)), // a wall cell: unreachable
     ];
     let mut search = PathSearch::new();
-    let mut stream = RouteSearch::new(RouteOptions::default());
+    let mut stream = PathSearch::new();
     let mut jump_search = PathSearch::new();
     let mut path = Vec::new();
 
     let run = |search: &mut PathSearch<u32, ((), u8)>,
-               stream: &mut RouteSearch<u32, ((), u8)>,
+               stream: &mut PathSearch<u32, ((), u8)>,
                path: &mut Vec<Cell>| {
         let mut found = 0;
         for &(start, goal) in &ends {
             found += usize::from(search.find(&grid, &rules, start, goal, path).is_some());
-            stream.begin(&grid, start, goal);
+            stream.begin(&grid, &rules, start, goal);
             while stream.next(&rules, path).is_some() {
                 found += 1;
             }

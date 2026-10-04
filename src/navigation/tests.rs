@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::path::{PathSearch, RouteOptions, RouteSearch, StepFn};
+use super::path::{PathSearch, StepFn};
 use super::*;
 use crate::app::GamePlugin;
 
@@ -145,30 +145,74 @@ fn game_rules_compose() {
     assert_eq!(on_row(&steered), 2);
 }
 
+/// Counts closed doors passed, up to one; fewer beats more.
+struct DoorsUsed<'a>(&'a NavMap);
+
+impl Rules for DoorsUsed<'_> {
+    type Cost = u32;
+    type State = u8;
+
+    fn state_count(&self) -> usize {
+        2
+    }
+
+    fn state_index(&self, doors: &u8) -> usize {
+        *doors as usize
+    }
+
+    fn start_state(&self, _start: Cell) -> u8 {
+        0
+    }
+
+    fn step(&self, _from: Cell, to: Cell, doors: &u8) -> Option<(u32, u8)> {
+        let doors = doors + u8::from(self.0.cell(to) == NavCell::ClosedDoor);
+        (doors <= 1).then_some((0, doors))
+    }
+
+    fn dominates(&self, a: usize, b: usize) -> bool {
+        a < b
+    }
+}
+
 #[test]
-fn several_routes_between_two_places() {
+fn one_search_offers_the_door_and_the_long_way_round() {
     let app = boot();
     let nav = app.world().resource::<NavMap>();
-    let terrain = Terrain::walls_and_doors(nav);
-    let goal = IVec2::new(25, 8);
-    let (cheapest, _) = find(nav, &terrain, PLAYER, goal).unwrap();
+    // Either side of the green door, whose wall has a gap far to the west.
+    let (from, to) = (IVec2::new(72, 14), IVec2::new(72, 18));
+    let door = IVec2::new(72, 16);
+    assert_eq!(nav.at(door), NavCell::ClosedDoor);
+    let rules = (Terrain::through_doors(nav, 5), DoorsUsed(nav));
 
-    let mut routes = RouteSearch::new(RouteOptions::default());
-    routes.begin(nav.grid(), cell_of(PLAYER), cell_of(goal));
+    let mut search = PathSearch::new();
     let mut path = Vec::new();
     let mut found = Vec::new();
-    while let Some(cost) = routes.next(&terrain, &mut path) {
-        found.push((cost, path.clone()));
+    assert!(search.begin(nav.grid(), &rules, cell_of(from), cell_of(to)));
+    while let Some((cost, (_, doors))) = search.next(&rules, &mut path) {
+        found.push((
+            cost,
+            doors,
+            path.iter().copied().map(pos_of).collect::<Vec<_>>(),
+        ));
     }
-    assert!(found.len() >= 2, "found {} routes", found.len());
-    assert_eq!(found[0].0, cheapest);
-    for (cost, path) in &found {
-        assert_eq!(path.first(), Some(&cell_of(PLAYER)));
-        assert_eq!(path.last(), Some(&cell_of(goal)));
-        assert_eq!(*cost as usize, path.len() - 1);
-        assert!(path.iter().all(|cell| nav.cell(*cell) == NavCell::Floor));
+
+    assert_eq!(found.len(), 2, "through the door, then around");
+    let (door_cost, door_count, through) = &found[0];
+    assert_eq!((*door_cost, *door_count), (4 + 5, 1));
+    assert!(through.contains(&door));
+    let (around_cost, around_count, around) = &found[1];
+    assert_eq!(*around_count, 0);
+    assert!(!around.contains(&door));
+    assert!(around_cost > door_cost);
+    assert!(
+        around.iter().any(|p| p.x < 45),
+        "around goes by the western gap"
+    );
+    for (_, _, path) in &found {
+        assert_eq!(path.first(), Some(&from));
+        assert_eq!(path.last(), Some(&to));
         assert!(path
             .windows(2)
-            .all(|step| nav.grid().distance(step[0], step[1]) == 1));
+            .all(|step| (step[1] - step[0]).abs().element_sum() == 1));
     }
 }

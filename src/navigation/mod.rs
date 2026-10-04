@@ -5,8 +5,8 @@
 //! closed door), rebuilt only when the map's static blockers change. Its
 //! [`Terrain`] rules are the base for game searches; combine them with further
 //! [`Rules`] (avoiding enemy sight, limiting doors, steering clear of places)
-//! as tuples, and search with a reused [`path::PathSearch`] or
-//! [`path::RouteSearch`], for example a system's `Local`.
+//! as tuples, and search with a reused [`path::PathSearch`], for example a
+//! system's `Local`.
 //!
 //! Actors are not obstacles here: they move every turn, so rules that care
 //! about them should add their cost themselves. Searches do not wrap around

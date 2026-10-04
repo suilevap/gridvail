@@ -41,9 +41,11 @@ next to this file.
   keys left beats fewer) so dominated arrivals are skipped. Rules may add
   jumps (teleports, ladders), searched by cost alone since they break
   distance estimates. Rules combine as tuples, and costs may be `Lex` pairs
-  ("fewest doors, then shortest"). `PathSearch` and `RouteSearch` (a stream of
-  routes that differ from one another) reuse their memory, so warmed-up
-  searches allocate nothing. `navigation::NavMap` snapshots walls and closed
+  ("fewest doors, then shortest"). Besides the cheapest path, one search can
+  stream the cheapest path for each other state the goal is reachable in, in
+  order of cost: with doors counted, the way through the door and the long
+  way round. `PathSearch` reuses its memory, so warmed-up searches allocate
+  nothing. `navigation::NavMap` snapshots walls and closed
   doors, rebuilt only when static blockers change, and `navigation::Terrain`
   is the base rule (walls block; closed doors block or cost extra). Searches
   do not wrap around the map edges. Nothing uses it in play yet.
@@ -98,7 +100,7 @@ src/model/                 ECS data split by gameplay domain
 src/simulation/            simulation plugin; control, motion, resolution, tiles
 src/vision/                vision plugin; FOV cache and player visibility
 src/navigation/            nav map snapshot and game rules for pathfinding
-crates/gridvail-path/      grid pathfinding crate (A*, route streams, no deps)
+crates/gridvail-path/      grid pathfinding crate (A*, per-state paths, no deps)
 src/lighting/              light math and palettes
 src/presentation/          renderer-neutral lighting and frame composition
 src/rendering/             swappable Text2d and extruded-wall output plugins
@@ -122,7 +124,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 102 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 104 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
