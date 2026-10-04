@@ -14,6 +14,16 @@ const NO_PARENT: u32 = u32::MAX;
 /// and the open list grow to the largest search made, then are reused: after
 /// that, searches allocate nothing.
 ///
+/// [`PathSearch::find`] returns the cheapest path. [`PathSearch::begin`] and
+/// [`PathSearch::next`] go on from there: each `next` returns the cheapest
+/// path reaching the goal in a state not reached before (with doors counted
+/// in the state: the cheapest way with 2 doors, then with 1, then with
+/// none, in order of cost), so differing in what the path does along the
+/// way, not in where it runs. Arrivals that [`Rules::dominates`] says an
+/// earlier, no dearer arrival beats are skipped. Without dominance, a
+/// counter-like state also yields detours that only change the count
+/// (stepping into a door and back): declare dominance to drop those.
+///
 /// One `PathSearch` serves any rules with the same cost and state types.
 #[derive(Debug)]
 pub struct PathSearch<C, S> {
@@ -26,6 +36,19 @@ pub struct PathSearch<C, S> {
     parent: Vec<u32>,
     open: BinaryHeap<Open<C, S>>,
     expanded: usize,
+    /// The search `next` continues, if any.
+    query: Option<Query>,
+    /// State layers of the goal arrivals returned so far.
+    returned: Vec<usize>,
+}
+
+/// What [`PathSearch::begin`] set up.
+#[derive(Clone, Copy, Debug)]
+struct Query {
+    grid: Grid,
+    goal: Cell,
+    layers: usize,
+    jumps: bool,
 }
 
 impl<C: Cost, S: Copy + Eq> Default for PathSearch<C, S> {
@@ -44,26 +67,40 @@ impl<C: Cost, S: Copy + Eq> PathSearch<C, S> {
             parent: Vec::new(),
             open: BinaryHeap::new(),
             expanded: 0,
+            query: None,
+            returned: Vec::new(),
         }
     }
 
-    /// Room for `grid` with `states` layers allocated up front, so the first
-    /// search does not grow it. The open list still grows on first use.
+    /// Room for `grid` with `states` layers allocated up front, including
+    /// the open list's worst case without jumps (every slot entered from each
+    /// of its four neighbours), so no search on that grid grows it.
     pub fn with_capacity(grid: &Grid, states: usize) -> Self {
         let mut search = Self::new();
-        search.prepare(grid.len() * states.max(1));
+        let slots = grid.len() * states.max(1);
+        search.prepare(slots);
+        search.open.reserve(slots * 4 + 1);
+        search.returned.reserve(states.max(1));
         search
     }
 
-    /// Slots finished by the last search.
+    /// Whether this search already has room for `grid` with `states` layers.
+    pub fn fits(&self, grid: &Grid, states: usize) -> bool {
+        let slots = grid.len() * states.max(1);
+        self.reached.len() >= slots
+            && self.open.capacity() > slots * 4
+            && self.returned.capacity() >= states.max(1)
+    }
+
+    /// Slots finished so far by the current search.
     pub fn expanded(&self) -> usize {
         self.expanded
     }
 
     /// The cheapest path from `start` to `goal`, written into `path` (start
     /// and goal included; consecutive cells are adjacent except across
-    /// jumps), and its cost. `None`, with `path` empty, when no
-    /// path exists or an end is off the grid.
+    /// jumps), and its cost. `None`, with `path` empty, when no path exists
+    /// or an end is off the grid.
     pub fn find<R>(
         &mut self,
         grid: &Grid,
@@ -76,31 +113,66 @@ impl<C: Cost, S: Copy + Eq> PathSearch<C, S> {
         R: Rules<Cost = C, State = S>,
     {
         path.clear();
+        if !self.begin(grid, rules, start, goal) {
+            return None;
+        }
+        let found = self.next(rules, path).map(|(cost, _)| cost);
+        self.query = None;
+        self.open.clear();
+        found
+    }
+
+    /// Starts a search from `start` to `goal` whose paths [`PathSearch::next`]
+    /// returns; false (and nothing to return) if an end is off the grid.
+    pub fn begin<R>(&mut self, grid: &Grid, rules: &R, start: Cell, goal: Cell) -> bool
+    where
+        R: Rules<Cost = C, State = S>,
+    {
         self.expanded = 0;
-        let start_index = grid.index(start)?;
-        grid.index(goal)?;
+        self.returned.clear();
+        self.query = None;
+        let (Some(start_index), Some(_)) = (grid.index(start), grid.index(goal)) else {
+            self.open.clear();
+            return false;
+        };
         let layers = rules.state_count().max(1);
         self.prepare(grid.len() * layers);
-
-        let jumps = rules.has_jumps();
-        let estimate = |cell: Cell| {
-            if jumps {
-                C::ZERO
-            } else {
-                rules.heuristic(grid, cell, goal)
-            }
+        let query = Query {
+            grid: *grid,
+            goal,
+            layers,
+            jumps: rules.has_jumps(),
         };
-
         let state = rules.start_state(start);
         let slot = slot_of(start_index, layers, rules.state_index(&state));
         self.reach(slot, C::ZERO, NO_PARENT);
         self.open.push(Open {
-            estimate: estimate(start),
+            estimate: estimate(&query, rules, start),
             cost: C::ZERO,
             slot: slot as u32,
             state,
         });
+        self.query = Some(query);
+        true
+    }
 
+    /// The next cheapest path to the goal of [`PathSearch::begin`] that
+    /// reaches it in a state no earlier path did (and that no earlier path's
+    /// state dominates), written into `path`, with its cost and final state.
+    /// Costs never decrease from one call to the next. `None` once no such
+    /// path remains. `rules` must be the ones given to `begin`.
+    pub fn next<R>(&mut self, rules: &R, path: &mut Vec<Cell>) -> Option<(C, S)>
+    where
+        R: Rules<Cost = C, State = S>,
+    {
+        path.clear();
+        let query = self.query?;
+        let Query {
+            grid,
+            goal,
+            layers,
+            jumps,
+        } = query;
         while let Some(Open {
             cost, slot, state, ..
         }) = self.open.pop()
@@ -114,9 +186,18 @@ impl<C: Cost, S: Copy + Eq> PathSearch<C, S> {
             self.expanded += 1;
             let cell = grid.cell(slot / layers);
             if cell == goal {
-                self.trace(grid, layers, slot, path);
-                self.open.clear();
-                return Some(cost);
+                // Goals end paths: nothing continues from them.
+                let layer = slot % layers;
+                let dominated = self
+                    .returned
+                    .iter()
+                    .any(|&earlier| rules.dominates(earlier, layer));
+                if dominated {
+                    continue;
+                }
+                self.returned.push(layer);
+                self.trace(&grid, layers, slot, path);
+                return Some((cost, state));
             }
             let from = Arrival {
                 cell,
@@ -125,33 +206,27 @@ impl<C: Cost, S: Copy + Eq> PathSearch<C, S> {
                 state,
             };
             for next in grid.neighbors(cell) {
-                self.relax(grid, rules, layers, &from, next, &estimate);
+                self.relax(&query, rules, &from, next);
             }
             if jumps {
                 rules.for_each_jump(cell, &state, &mut |next| {
                     if grid.contains(next) {
-                        self.relax(grid, rules, layers, &from, next, &estimate);
+                        self.relax(&query, rules, &from, next);
                     }
                 });
             }
         }
-        self.open.clear();
+        self.query = None;
         None
     }
 
     /// Queues `next` if moving there from `from` is allowed and improves on
     /// every way to it known so far.
-    fn relax<R>(
-        &mut self,
-        grid: &Grid,
-        rules: &R,
-        layers: usize,
-        from: &Arrival<C, S>,
-        next: Cell,
-        estimate: &impl Fn(Cell) -> C,
-    ) where
+    fn relax<R>(&mut self, query: &Query, rules: &R, from: &Arrival<C, S>, next: Cell)
+    where
         R: Rules<Cost = C, State = S>,
     {
+        let Query { grid, layers, .. } = *query;
         let Some((step, next_state)) = rules.step(from.cell, next, &from.state) else {
             return;
         };
@@ -182,7 +257,7 @@ impl<C: Cost, S: Copy + Eq> PathSearch<C, S> {
         }
         self.reach(next_slot, next_cost, from.slot as u32);
         self.open.push(Open {
-            estimate: next_cost + estimate(next),
+            estimate: next_cost + estimate(query, rules, next),
             cost: next_cost,
             slot: next_slot as u32,
             state: next_state,
@@ -221,6 +296,16 @@ impl<C: Cost, S: Copy + Eq> PathSearch<C, S> {
             slot = self.parent[slot as usize];
         }
         path.reverse();
+    }
+}
+
+/// Lower bound on the cost from `cell` to the goal; zero with jumps, which
+/// can beat any distance based bound.
+fn estimate<R: Rules>(query: &Query, rules: &R, cell: Cell) -> R::Cost {
+    if query.jumps {
+        R::Cost::ZERO
+    } else {
+        rules.heuristic(&query.grid, cell, query.goal)
     }
 }
 

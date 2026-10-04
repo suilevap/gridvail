@@ -248,58 +248,117 @@ fn one_search_serves_many_queries() {
     }
 }
 
-fn shared(route: &[Cell], other: &[Cell]) -> f32 {
-    let interior = &route[1..route.len() - 1];
-    interior.iter().filter(|cell| other.contains(cell)).count() as f32 / interior.len() as f32
-}
-
-fn routes(rows: &Rows, options: RouteOptions) -> Vec<(u32, Vec<Cell>)> {
-    let mut stream = RouteSearch::new(options);
-    stream.begin(&rows.grid(), rows.find('S'), rows.find('G'));
+/// Every path [`PathSearch::next`] streams: cost, final state, cells.
+fn stream<R: Rules>(rows: &Rows, rules: &R) -> Vec<(R::Cost, R::State, Vec<Cell>)> {
+    let mut search = PathSearch::new();
     let mut path = Vec::new();
     let mut found = Vec::new();
-    while let Some(cost) = stream.next(rows, &mut path) {
-        found.push((cost, path.clone()));
+    assert!(search.begin(&rows.grid(), rules, rows.find('S'), rows.find('G')));
+    while let Some((cost, state)) = search.next(rules, &mut path) {
+        found.push((cost, state, path.clone()));
     }
+    assert!(
+        search.next(rules, &mut path).is_none(),
+        "an ended stream stays ended"
+    );
     found
 }
 
 #[test]
-fn routes_stream_different_ways_cheapest_first() {
+fn one_search_streams_the_cheapest_path_per_final_state() {
     let rows = Rows::new(&DOORS);
-    let found = routes(&rows, RouteOptions::default());
-    assert_eq!(
-        found.iter().map(|(cost, _)| *cost).collect::<Vec<_>>(),
-        [6, 10],
-        "only two ways exist"
+    let found = stream(
+        &rows,
+        &(
+            &rows,
+            DoorLimit {
+                rows: &rows,
+                max: 2,
+            },
+        ),
     );
-
-    let rows = Rows::new(&[
-        "S........",
-        ".........",
-        ".........",
-        ".........",
-        "........G",
-    ]);
-    let options = RouteOptions {
-        max_routes: 3,
-        max_shared: 0.3,
-        ..RouteOptions::default()
-    };
-    let found = routes(&rows, options);
-    assert_eq!(found.len(), 3);
-    assert_eq!(found[0].0, 12, "the first route is the cheapest");
-    for (i, (_, a)) in found.iter().enumerate() {
-        for (_, b) in &found[i + 1..] {
-            assert!(shared(b, a) <= 0.3);
-        }
+    // Through both doors, around, and around after stepping into the first
+    // door and back: legal for these rules, which only count doors.
+    let summary: Vec<_> = found
+        .iter()
+        .map(|(cost, (_, doors), _)| (*cost, *doors))
+        .collect();
+    assert_eq!(summary, [(6, 2), (10, 0), (14, 1)]);
+    for (_, (_, doors), path) in &found {
+        assert_eq!(rows.count(path, 'D'), *doors as usize);
+        assert_eq!(path.first(), Some(&rows.find('S')));
+        assert_eq!(path.last(), Some(&rows.find('G')));
     }
+    // Declaring that fewer doors beat more drops the pointless detour.
+    let pruned = (
+        &rows,
+        FewerDoorsDominate(DoorLimit {
+            rows: &rows,
+            max: 2,
+        }),
+    );
+    let summary: Vec<_> = stream(&rows, &pruned)
+        .iter()
+        .map(|(cost, (_, doors), _)| (*cost, *doors))
+        .collect();
+    assert_eq!(summary, [(6, 2), (10, 0)]);
 }
 
 #[test]
-fn adjacent_ends_have_one_route() {
-    let rows = Rows::new(&["SG", ".."]);
-    assert_eq!(routes(&rows, RouteOptions::default()).len(), 1);
+fn streamed_paths_come_cheapest_first_and_skip_dominated_ones() {
+    let rows = Rows::new(&DOORS);
+    // Doors cost 10 more each: going around is cheaper.
+    let doors_hurt = StepFn::new(0, |_, to| Some(if rows.at(to) == 'D' { 10 } else { 0 }));
+    let plain = (
+        &doors_hurt,
+        (
+            &rows,
+            DoorLimit {
+                rows: &rows,
+                max: 2,
+            },
+        ),
+    );
+    let costs: Vec<_> = stream(&rows, &plain)
+        .iter()
+        .map(|(cost, ..)| *cost)
+        .collect();
+    assert_eq!(costs, [10, 24, 26]);
+    // With fewer doors dominating more, every way through doors is
+    // pointless after the cheaper one without any.
+    let pruned = (
+        &doors_hurt,
+        (
+            &rows,
+            FewerDoorsDominate(DoorLimit {
+                rows: &rows,
+                max: 2,
+            }),
+        ),
+    );
+    let costs: Vec<_> = stream(&rows, &pruned)
+        .iter()
+        .map(|(cost, ..)| *cost)
+        .collect();
+    assert_eq!(costs, [10]);
+}
+
+#[test]
+fn stateless_rules_stream_a_single_path() {
+    let rows = Rows::new(&["S........", ".........", "........G"]);
+    let found = stream(&rows, &rows);
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].0, 10);
+}
+
+#[test]
+fn begin_rejects_ends_off_the_grid() {
+    let rows = Rows::new(&["S.G"]);
+    let mut search = PathSearch::new();
+    let mut path = vec![Cell::new(1, 0)];
+    assert!(!search.begin(&rows.grid(), &rows, Cell::new(0, 0), Cell::new(9, 0)));
+    assert_eq!(search.next(&rows, &mut path), None);
+    assert!(path.is_empty());
 }
 
 /// [`DoorLimit`] where fewer doors so far dominates more.
