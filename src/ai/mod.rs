@@ -1,8 +1,9 @@
 //! Decisions: where actors want to go and what things are worth to them.
 //!
-//! The AI writes intentions (a [`MoveCommand`] for a single random step, or a
-//! [`Destination`] to walk to and what a door is worth on the way); the
-//! `locomotion` module turns destinations into steps.
+//! The AI writes intentions: a [`MoveCommand`] for a single random step, or
+//! a [`Destination`] to walk to plus [`TraversalPrefs`] (what a door is worth
+//! to the actor). The `locomotion` module turns destinations into steps and
+//! reports back in [`PathFollow::status`]; the AI decides what to do next.
 
 #![allow(clippy::type_complexity)]
 
@@ -72,19 +73,24 @@ pub fn random_walk(
     }
 }
 
-/// Gives every idle wanderer a random floor cell to walk to.
+/// Gives every wanderer without a goal, or whose walk ended (arrived,
+/// unreachable or blocked), a new random floor cell to walk to.
 pub fn wander_goals(
     turn: Res<TurnState>,
     nav: Res<NavMap>,
     mut rng: ResMut<SharedRng>,
-    mut wanderers: Query<&mut Destination, (With<Wander>, With<Active>, Without<DestroyRequested>)>,
+    mut wanderers: Query<
+        (&mut Destination, Option<&PathFollow>),
+        (With<Wander>, With<Active>, Without<DestroyRequested>),
+    >,
 ) {
     if turn.simulation || nav.grid().is_empty() {
         return;
     }
     let (width, height) = (nav.grid().width() as i32, nav.grid().height() as i32);
-    for mut destination in &mut wanderers {
-        if destination.goal.is_some() {
+    for (mut destination, follow) in &mut wanderers {
+        let walk_ended = follow.is_some_and(|follow| follow.status.is_done());
+        if destination.goal().is_some() && !walk_ended {
             continue;
         }
         for _ in 0..WANDER_TRIES {
@@ -97,13 +103,13 @@ pub fn wander_goals(
     }
 }
 
-/// Keeps each destination's door cost in line with the keys its actor holds.
+/// Keeps each actor's door cost in line with the keys it holds.
 pub fn price_doors(
     policy: Res<DoorPolicy>,
     keys: Query<(), With<Key>>,
-    mut actors: Query<(&mut Destination, Option<&Inventory>), Without<DestroyRequested>>,
+    mut actors: Query<(&mut TraversalPrefs, Option<&Inventory>), Without<DestroyRequested>>,
 ) {
-    for (mut destination, inventory) in &mut actors {
+    for (mut prefs, inventory) in &mut actors {
         let held = inventory.map_or(0, |inventory| {
             inventory
                 .0
@@ -112,8 +118,8 @@ pub fn price_doors(
                 .count()
         });
         let door_cost = policy.door_cost(held);
-        if destination.door_cost != door_cost {
-            destination.door_cost = door_cost;
+        if prefs.door_cost != door_cost {
+            prefs.door_cost = door_cost;
         }
     }
 }

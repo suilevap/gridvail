@@ -5,7 +5,7 @@ use crate::schedule::GamePhase;
 use crate::simulation::move_commands;
 
 /// Walks actors with a [`Destination`](crate::model::Destination) and a
-/// [`PathFollow`](crate::model::PathFollow) there.
+/// [`PathFollow`](crate::model::PathFollow) there, reporting the outcome.
 pub struct LocomotionPlugin;
 
 impl Plugin for LocomotionPlugin {

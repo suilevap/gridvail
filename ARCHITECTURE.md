@@ -45,15 +45,16 @@ and renderers must not import it.
   rules for the `gridvail-path` crate. New pathfinding rules (enemy sight,
   door limits, places to avoid) are `Rules` combined with `Terrain`;
   `PathPlanner` plans on the map with reused memory.
+- `locomotion/` walks actors to their `Destination` (its input, which
+  anything may write): it plans with the navigation planner using the
+  actor's `TraversalPrefs`, keeps progress and the outcome in `PathFollow`,
+  and writes ordinary `MoveCommand`s during the simulation phase, so
+  movement still goes through the turn pipeline. It reports, and never
+  changes the destination.
 - `ai/` decides what actors want: random steps for enemies without a
-  destination, random floor cells for wanderers (`Destination`), and what a
-  door is worth given the keys held (`DoorPolicy`). It writes intentions,
-  never moves anything itself.
-- `locomotion/` walks actors to their `Destination`: it plans with the
-  navigation planner, keeps progress in `PathFollow`, and writes ordinary
-  `MoveCommand`s during the simulation phase, so movement still goes through
-  the turn pipeline. It clears the destination on arrival or when it gives
-  up.
+  destination, random floor cells for wanderers (and a new one when a walk
+  ends), and what doors cost given the keys held (`DoorPolicy` into
+  `TraversalPrefs`). It writes intentions, never moves anything itself.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for
