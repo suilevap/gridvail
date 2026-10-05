@@ -41,7 +41,16 @@ pub fn player_input(
 pub fn enemy_ai(
     turn: Res<TurnState>,
     mut rng: ResMut<SharedRng>,
-    mut enemies: Query<&mut MoveCommand, (With<Enemy>, With<Active>, Without<DestroyRequested>)>,
+    // Enemies that follow paths are steered by navigation instead.
+    mut enemies: Query<
+        &mut MoveCommand,
+        (
+            With<Enemy>,
+            With<Active>,
+            Without<DestroyRequested>,
+            Without<PathFollow>,
+        ),
+    >,
 ) {
     if turn.simulation {
         return;

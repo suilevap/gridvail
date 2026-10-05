@@ -12,8 +12,12 @@
 //! about them should add their cost themselves. Searches do not wrap around
 //! the map edges.
 
+#![allow(clippy::type_complexity)]
+
+mod follow;
 mod plugin;
 
+pub use follow::*;
 pub use gridvail_path as path;
 pub use plugin::*;
 
