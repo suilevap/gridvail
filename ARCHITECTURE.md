@@ -6,6 +6,8 @@ The code is arranged from reusable foundations toward the concrete game:
 foundation  content  model  schedule
      ↑        ↑       ↑       ↑
      simulation  vision  navigation  lighting  animation  presentation
+          ↑               ↑
+          ai  →  locomotion
              ↑       ↑       ↑
                     app       rendering  agent_api  debug_ui
                       \         |         /         /
@@ -41,10 +43,17 @@ and renderers must not import it.
 - `navigation/` keeps `NavMap`, a walls/closed-doors snapshot of the map
   rebuilt when its static blockers change, and the game's base `Terrain`
   rules for the `gridvail-path` crate. New pathfinding rules (enemy sight,
-  door limits, places to avoid) are `Rules` combined with `Terrain`.
-  `NavigationPlugin` also walks actors with a `PathFollow` (wanderers pick
-  random goals) by writing their ordinary `MoveCommand`s during the
-  simulation phase, so movement still goes through the turn pipeline.
+  door limits, places to avoid) are `Rules` combined with `Terrain`;
+  `PathPlanner` plans on the map with reused memory.
+- `ai/` decides what actors want: random steps for enemies without a
+  destination, random floor cells for wanderers (`Destination`), and what a
+  door is worth given the keys held (`DoorPolicy`). It writes intentions,
+  never moves anything itself.
+- `locomotion/` walks actors to their `Destination`: it plans with the
+  navigation planner, keeps progress in `PathFollow`, and writes ordinary
+  `MoveCommand`s during the simulation phase, so movement still goes through
+  the turn pipeline. It clears the destination on arrival or when it gives
+  up.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for

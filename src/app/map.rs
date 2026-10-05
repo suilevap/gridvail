@@ -117,7 +117,11 @@ fn construct_map(mut commands: Commands) {
                     ),
                     Glyph::new('☺', 1, RED),
                     Inventory::default(),
-                    (Wander, PathFollow::with_capacity(cell_count)),
+                    (
+                        Wander,
+                        Destination::default(),
+                        PathFollow::with_capacity(cell_count),
+                    ),
                     Tokens::new(1),
                     Friction(1),
                     Facing::default(),

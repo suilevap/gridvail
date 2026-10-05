@@ -51,13 +51,16 @@ next to this file.
   is the base rule (walls block; closed doors block or cost extra). Searches
   do not wrap around the map edges.
 - Enemies wander along planned paths (a deviation: the original random-walks
-  them one step at a time). Each picks a random floor cell, plans a path with
-  `navigation::follow_paths`, and takes one step per action. Blocked three
-  times in a row by another actor, or with no path, it picks a new goal. An
-  enemy carrying a key may plan through a closed door (at an extra 10 steps'
-  cost), opening it with the key on its way. Planning memory is sized to the
-  map, so steady turns stay allocation-free. `PathFollow::go_to` sends any
-  actor somewhere.
+  them one step at a time). The AI (`ai/`) decides where to go: each enemy
+  picks a random floor cell as its `Destination`, and `DoorPolicy` sets what
+  spending a key on a closed door is worth, more for the last key (one key
+  20 steps of detour, two 10, ten 2) and nothing without a key, when doors
+  block. Locomotion (`locomotion/`) walks there: it plans a path with the
+  navigation planner, takes one step per action, replans when the
+  destination or door price changes, and gives up (clearing the destination)
+  when blocked three times in a row or with no path. Planning memory is
+  sized to the map, so steady turns stay allocation-free. Setting a
+  `Destination` sends any actor somewhere.
 - Player-bound `i` direction marker via relative position + rotation.
 - Wall autotiling from `wall_rule.txt`, direction glyphs from the three
   direction rules (the file's Y-down inversion is inherited verbatim).
@@ -108,7 +111,9 @@ src/debug_ui.rs             optional FPS and runtime performance panel
 src/model/                 ECS data split by gameplay domain
 src/simulation/            simulation plugin; control, motion, resolution, tiles
 src/vision/                vision plugin; FOV cache and player visibility
-src/navigation/            nav map snapshot and game rules for pathfinding
+src/navigation/            nav map snapshot, game rules and planner for pathfinding
+src/ai/                    enemy decisions: random steps, wander goals, door prices
+src/locomotion/            walking actors to their destination along planned paths
 crates/gridvail-path/      grid pathfinding crate (A*, per-state paths, no deps)
 src/lighting/              light math and palettes
 src/presentation/          renderer-neutral lighting and frame composition
@@ -133,7 +138,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 109 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 111 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
