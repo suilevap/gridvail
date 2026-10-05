@@ -219,3 +219,40 @@ fn one_search_offers_the_door_and_the_long_way_round() {
             .all(|step| (step[1] - step[0]).abs().element_sum() == 1));
     }
 }
+
+/// An open 5x3 room with one actor standing in the middle of row 1.
+fn crowded_room() -> (MapGrid, NavMap) {
+    let mut grid = MapGrid::new(5, 3);
+    grid.set_with_blocking(IVec2::new(2, 1), Entity::from_raw_u32(7).unwrap(), false);
+    let mut nav = NavMap::default();
+    nav.rebuild(&grid, [], []);
+    (grid, nav)
+}
+
+#[test]
+fn a_crowd_cost_routes_around_actors() {
+    let (grid, nav) = crowded_room();
+    let (from, goal, actor) = (IVec2::new(0, 1), IVec2::new(4, 1), IVec2::new(2, 1));
+    let mut planner = PathPlanner::default();
+    let mut steps = Vec::new();
+
+    assert!(planner.plan(&nav, from, goal, None, &mut steps));
+    assert!(steps.contains(&actor), "actors are no obstacle: {steps:?}");
+
+    let crowd = Crowd {
+        terrain: Terrain::walls_and_doors(&nav),
+        grid: &grid,
+        goal: cell_of(goal),
+        cost: 4,
+    };
+    assert!(planner.plan_with(&nav, &crowd, from, goal, &mut steps));
+    assert!(!steps.contains(&actor), "walked through: {steps:?}");
+
+    // An actor on the goal is the point of the walk, not in its way.
+    let crowd = Crowd {
+        goal: cell_of(actor),
+        ..crowd
+    };
+    assert!(planner.plan_with(&nav, &crowd, from, actor, &mut steps));
+    assert_eq!(steps.len(), 3, "{steps:?}");
+}

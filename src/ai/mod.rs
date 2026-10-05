@@ -4,12 +4,31 @@
 //! a [`Destination`] to walk to plus [`TraversalPrefs`] (what a door is worth
 //! to the actor). The `locomotion` module turns destinations into steps and
 //! reports back in [`PathFollow::status`]; the AI decides what to do next.
+//!
+//! Enemies decide with FlatBT behavior trees, in three steps around the tick:
+//!
+//! 1. `perceive` (and `perceive_objectives` for agents with orders) fills
+//!    each enemy's `EnemyMind` blackboard, including locomotion's report on
+//!    its current walk;
+//! 2. the tree (`enemy_tree`, or `hunter_tree` for hunters) writes what the
+//!    enemy is doing into `EnemyAct`;
+//! 3. `carry_out` turns that act into a single step (a [`MoveCommand`]) or a
+//!    walk (a [`Destination`]), which locomotion then follows.
+//!
+//! The tree never touches the world, so enemies share the player's tokens,
+//! movement, and collision rules.
 
 #![allow(clippy::type_complexity)]
 
+mod hunter;
+mod perception;
 mod plugin;
+mod tree;
 
+pub use hunter::*;
+pub use perception::*;
 pub use plugin::*;
+pub use tree::*;
 
 use bevy::prelude::*;
 use rand::RngExt;

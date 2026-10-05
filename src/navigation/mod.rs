@@ -174,5 +174,45 @@ impl Rules for Terrain<'_> {
     }
 }
 
+/// [`Terrain`] that also charges `cost` extra for entering a floor cell
+/// another actor occupies (in `grid`), except the goal: walking into it is
+/// how a bump or an attack happens. Actors move, so this steers around who
+/// is in the way now rather than forbidding their cells.
+#[derive(Clone, Copy, Debug)]
+pub struct Crowd<'a> {
+    pub terrain: Terrain<'a>,
+    pub grid: &'a MapGrid,
+    pub goal: Cell,
+    pub cost: u32,
+}
+
+impl Rules for Crowd<'_> {
+    type Node = Cell;
+    type Cost = u32;
+    type State = ();
+
+    fn state_count(&self) -> usize {
+        1
+    }
+
+    fn state_index(&self, _state: &()) -> usize {
+        0
+    }
+
+    fn start_state(&self, _start: Cell) {}
+
+    fn step(&self, from: Cell, to: Cell, state: &()) -> Option<(u32, ())> {
+        let (cost, ()) = self.terrain.step(from, to, state)?;
+        let crowded = to != self.goal
+            && self.terrain.nav.cell(to) == NavCell::Floor
+            && self.grid.get(pos_of(to)).is_some();
+        Some((cost + if crowded { self.cost } else { 0 }, ()))
+    }
+
+    fn min_step_cost(&self) -> u32 {
+        1
+    }
+}
+
 #[cfg(test)]
 mod tests;

@@ -57,6 +57,15 @@ and renderers must not import it.
   destination, random floor cells for wanderers (and a new one when a walk
   ends), and what doors cost given the keys held (`DoorPolicy` into
   `TraversalPrefs`). It writes intentions, never moves anything itself.
+  Enemies decide with FlatBT behavior trees: `perceive` fills the
+  `EnemyMind` blackboard (sight, last sighting, locomotion's report on the
+  current walk), the tree reports an `EnemyAct`, and `carry_out` turns it
+  into a single step or a `Destination`. A walk is requested again only when
+  its goal changes or a step of it failed, so locomotion replans around
+  whoever is in the way. Out-of-turn enemies are skipped with `Tick::Skip`.
+  Hunters (`hunter_tree`) follow an `Order` with flatbt's goal stack:
+  unreachable without a key, they fetch one, and door pricing plus
+  locomotion take them through the door.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for

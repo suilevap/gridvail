@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use super::path::grid::Cell;
-use super::path::PathSearch;
+use super::path::{PathSearch, Rules};
 use super::{cell_of, pos_of, NavMap, Terrain};
 
 /// Working memory for planning, sized to the map so planning never
@@ -26,13 +26,25 @@ impl PathPlanner {
         door_cost: Option<u32>,
         steps: &mut Vec<IVec2>,
     ) -> bool {
+        self.plan_with(nav, &Terrain { nav, door_cost }, from, goal, steps)
+    }
+
+    /// Plans the cheapest path under `rules`, such as [`Terrain`] combined
+    /// with further costs into one stateless rule; see [`PathPlanner::plan`].
+    pub fn plan_with(
+        &mut self,
+        nav: &NavMap,
+        rules: &impl Rules<Node = Cell, Cost = u32, State = ()>,
+        from: IVec2,
+        goal: IVec2,
+        steps: &mut Vec<IVec2>,
+    ) -> bool {
         self.fit(nav);
-        let terrain = Terrain { nav, door_cost };
         let found = self
             .search
             .find(
                 nav.grid(),
-                &terrain,
+                rules,
                 cell_of(from),
                 cell_of(goal),
                 &mut self.cells,

@@ -87,3 +87,129 @@ fn a_wanderer_picks_a_new_goal_when_its_walk_ends() {
     let goal = app.world().get::<Destination>(enemy).unwrap().goal();
     assert!(goal.is_some_and(|goal| goal != closet), "new goal {goal:?}");
 }
+
+/// Behavior-tree decisions in a bare app: no locomotion, so these check what
+/// the trees ask for (acts, steps, destinations), not where enemies end up.
+mod trees {
+    use bevy::prelude::*;
+    use flatbt_bevy::prelude::Behavior;
+    use rand::SeedableRng;
+
+    use crate::ai::{enemy_tree, AiPlugin};
+    use crate::model::*;
+    use crate::navigation::NavMap;
+
+    const ENEMY: IVec2 = IVec2::new(1, 1);
+    const PLAYER: IVec2 = IVec2::new(5, 1);
+
+    fn headless() -> App {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AiPlugin))
+            .insert_resource(MapGrid::new(8, 8))
+            .init_resource::<NavMap>()
+            .init_resource::<TurnState>()
+            .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(42)));
+        app.world_mut().spawn((Active, Player(0), Pos(PLAYER)));
+        app
+    }
+
+    fn spawn_enemy(app: &mut App, tokens: i32) -> Entity {
+        app.world_mut()
+            .spawn((
+                (Active, Enemy, Pos(ENEMY)),
+                Tokens {
+                    count: tokens,
+                    recharge: 1,
+                },
+                MoveCommand::default(),
+                (Destination::default(), PathFollow::default()),
+                EnemyMind::default(),
+                Behavior::for_tree(enemy_tree),
+            ))
+            .id()
+    }
+
+    fn wall_at(app: &mut App, pos: IVec2) {
+        let wall = app.world_mut().spawn((Wall, Pos(pos))).id();
+        app.world_mut()
+            .resource_mut::<MapGrid>()
+            .set_with_blocking(pos, wall, true);
+    }
+
+    fn act_of(app: &App, enemy: Entity) -> Option<EnemyAct> {
+        app.world().get::<EnemyAct>(enemy).copied()
+    }
+
+    fn goal_of(app: &App, enemy: Entity) -> Option<IVec2> {
+        app.world().get::<Destination>(enemy).unwrap().goal()
+    }
+
+    fn is_idle(act: Option<EnemyAct>) -> bool {
+        matches!(act, Some(EnemyAct::Patrol(_) | EnemyAct::Rest))
+    }
+
+    // Nothing spends tokens in this app, so every update is another turn.
+
+    #[test]
+    fn a_sighting_freezes_for_a_beat_then_walks_at_the_player() {
+        let mut app = headless();
+        let enemy = spawn_enemy(&mut app, 1);
+        app.update();
+        assert_eq!(act_of(&app, enemy), Some(EnemyAct::Alert));
+        let command = app.world().get::<MoveCommand>(enemy).unwrap();
+        assert!(command.active && command.target == IVec2::ZERO);
+        assert_eq!(goal_of(&app, enemy), None);
+
+        app.update();
+        assert_eq!(act_of(&app, enemy), Some(EnemyAct::Hunt(PLAYER)));
+        assert_eq!(goal_of(&app, enemy), Some(PLAYER), "a walk for locomotion");
+    }
+
+    #[test]
+    fn a_wall_between_hides_the_player() {
+        let mut app = headless();
+        wall_at(&mut app, IVec2::new(3, 1));
+        let enemy = spawn_enemy(&mut app, 1);
+        for _ in 0..10 {
+            app.update();
+            assert!(is_idle(act_of(&app, enemy)), "{:?}", act_of(&app, enemy));
+        }
+    }
+
+    #[test]
+    fn a_lost_player_is_searched_for_without_a_second_alert() {
+        let mut app = headless();
+        let enemy = spawn_enemy(&mut app, 1);
+        app.update();
+        app.update();
+        wall_at(&mut app, IVec2::new(3, 1));
+        app.update();
+        assert_eq!(act_of(&app, enemy), Some(EnemyAct::Search(PLAYER)));
+        assert_eq!(goal_of(&app, enemy), Some(PLAYER));
+    }
+
+    #[test]
+    fn a_search_locomotion_cannot_finish_is_given_up() {
+        let mut app = headless();
+        let enemy = spawn_enemy(&mut app, 1);
+        app.update();
+        app.update();
+        wall_at(&mut app, IVec2::new(3, 1));
+        app.update();
+        // Locomotion reports there is no way to the last sighting.
+        app.world_mut().get_mut::<PathFollow>(enemy).unwrap().status = WalkStatus::Unreachable;
+        app.update();
+        assert!(is_idle(act_of(&app, enemy)), "{:?}", act_of(&app, enemy));
+        assert_eq!(app.world().get::<EnemyMind>(enemy).unwrap().last_seen, None);
+        assert_eq!(goal_of(&app, enemy), None, "the walk was called off");
+    }
+
+    #[test]
+    fn an_enemy_without_a_token_is_not_ticked() {
+        let mut app = headless();
+        let enemy = spawn_enemy(&mut app, 0);
+        app.update();
+        assert_eq!(act_of(&app, enemy), None);
+        assert!(!app.world().get::<MoveCommand>(enemy).unwrap().active);
+    }
+}
