@@ -36,6 +36,11 @@ and renderers must not import it.
   lighting, world resources, and presentation buffers. It contains no systems.
 - `schedule.rs` defines startup and update phase sets. It contains no systems
   and lets plugins declare ordering without depending on `app`.
+- `service.rs` runs work that may take longer than a frame as a `Job` (owned
+  inputs) behind a `Ticket` polled on later frames; dropping it cancels the
+  job. `ServiceMode` runs jobs inline (default, deterministic: tests and
+  captures), in the background on the async compute pool (the game), or
+  inline but handed over a fixed number of polls later (tests).
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
@@ -52,7 +57,12 @@ and renderers must not import it.
   actor's `TraversalPrefs`, keeps progress and the outcome in `PathFollow`,
   and writes ordinary `MoveCommand`s during the simulation phase, so
   movement still goes through the turn pipeline. It reports, and never
-  changes the destination.
+  changes the destination. Actors with a `Planning` component plan as
+  service jobs when `ServiceMode` is not inline, over shared copies of the
+  nav map and occupancy (`SharedNav`): until a plan lands they keep to their
+  old path while it leads near the goal, or wait, reporting
+  `WalkStatus::Planning`, so a slow plan costs that actor a turn and never a
+  frame. A landed plan is taken only if it passes where the actor stands.
 - `ai/` decides what actors want: random steps for enemies without a
   destination, random floor cells for wanderers (and a new one when a walk
   ends), and what doors cost given the keys held (`DoorPolicy` into

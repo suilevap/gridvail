@@ -241,7 +241,7 @@ fn a_crowd_cost_routes_around_actors() {
 
     let crowd = Crowd {
         terrain: Terrain::walls_and_doors(&nav),
-        grid: &grid,
+        occupied: &grid,
         goal: cell_of(goal),
         cost: 4,
     };

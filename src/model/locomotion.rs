@@ -61,6 +61,9 @@ pub enum WalkStatus {
     /// Gave up after too many steps that did not move the actor (another
     /// actor in the way).
     Blocked,
+    /// A plan is on its way (see `locomotion::Planning`); the actor keeps to
+    /// its old path meanwhile, or waits.
+    Planning,
 }
 
 impl WalkStatus {

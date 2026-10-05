@@ -15,6 +15,7 @@ use crate::ai::{enemy_tree, hunter_tree};
 use crate::content::map::{parse_map, SpawnKind};
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::lighting::{GRAY, RED, WHITE, YELLOW};
+use crate::locomotion::Planning;
 use crate::model::*;
 use crate::schedule::StartupPhase;
 use crate::simulation::Rules;
@@ -238,6 +239,7 @@ fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
                 crowd_cost: Some(ENEMY_CROWD_COST),
             },
             PathFollow::with_capacity(cell_count),
+            Planning::with_capacity(cell_count),
         ),
         Tokens::new(1),
         Friction(1),

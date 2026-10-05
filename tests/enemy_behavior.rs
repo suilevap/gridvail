@@ -4,7 +4,8 @@
 //! Each scenario records one snapshot per turn. Set `ENEMY_TRACE=1` to print
 //! them as maps: `!` alert, `H` hunting, `A` attacking, `-` holding, `S`
 //! searching, `p` patrolling, `z` resting, `g` going to an order, `@` the
-//! player, `k` a key, `+`/`'` a closed/open door. Walking acts (hunt,
+//! player, `?` waiting for a path, `k` a key, `+`/`'` a closed/open door.
+//! Walking acts (hunt,
 //! search, patrol, go) are carried out by locomotion along planned paths.
 
 use bevy::prelude::*;
@@ -12,11 +13,14 @@ use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::lighting::YELLOW;
 use pav_ecs_game_bevy_port::model::*;
+use pav_ecs_game_bevy_port::service::ServiceMode;
 use std::time::Duration;
 
 #[derive(Clone, Debug)]
 struct Snapshot {
     player: IVec2,
+    /// Per enemy, in `enemies` order: waiting for a path to be planned.
+    thinking: Vec<bool>,
     enemies: Vec<(Entity, IVec2, Option<EnemyAct>)>,
     doors: Vec<(IVec2, bool)>,
     keys: Vec<IVec2>,
@@ -30,8 +34,13 @@ struct Game {
 
 impl Game {
     fn new(map: &'static str) -> Self {
+        Self::with_services(map, ServiceMode::Inline)
+    }
+
+    fn with_services(map: &'static str, mode: ServiceMode) -> Self {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
+            .insert_resource(mode)
             .init_resource::<ButtonInput<KeyCode>>()
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
                 16,
@@ -104,11 +113,19 @@ impl Game {
             .unwrap()
             .0;
         let mut enemies: Vec<_> = world
-            .query_filtered::<(Entity, &Pos, Option<&EnemyAct>), With<Enemy>>()
+            .query_filtered::<(Entity, &Pos, Option<&EnemyAct>, &PathFollow), With<Enemy>>()
             .iter(world)
-            .map(|(e, p, act)| (e, p.0, act.copied()))
+            .map(|(e, p, act, follow)| (e, p.0, act.copied(), follow.status))
             .collect();
         enemies.sort_by_key(|(e, ..)| *e);
+        let thinking = enemies
+            .iter()
+            .map(|&(.., status)| status == WalkStatus::Planning)
+            .collect();
+        let enemies: Vec<_> = enemies
+            .into_iter()
+            .map(|(e, p, act, _)| (e, p, act))
+            .collect();
         let doors = world
             .query::<(&Pos, &Door)>()
             .iter(world)
@@ -122,6 +139,7 @@ impl Game {
         self.check_invariants(&enemies);
         self.trace.push(Snapshot {
             player,
+            thinking,
             enemies,
             doors,
             keys,
@@ -186,8 +204,9 @@ impl Game {
             }
             put(snap.player, '@');
             let mut acts = Vec::new();
-            for &(_, pos, act) in &snap.enemies {
+            for (&(_, pos, act), &thinking) in snap.enemies.iter().zip(&snap.thinking) {
                 let glyph = match act {
+                    _ if thinking => '?',
                     Some(EnemyAct::Alert) => '!',
                     Some(EnemyAct::Hunt(_)) => 'H',
                     Some(EnemyAct::Attack(_)) => 'A',
@@ -487,4 +506,84 @@ fn a_hunter_without_a_key_holds_behind_a_locked_door() {
     let (_, pos, act) = last.enemies[0];
     assert_eq!(pos, IVec2::new(1, 2), "wandered off");
     assert_eq!(act, Some(EnemyAct::GoTo(Dest::Order)));
+}
+
+/// Planning that takes longer than a turn holds the hunter, not the game.
+/// Each plan here lands 20 frames after it is asked for, a few of the
+/// player's turns: the hunter thinks (`?`) while the player keeps moving,
+/// then follows its plan, and keeps moving while each replan for the moving
+/// player is on its way.
+#[test]
+fn a_slow_plan_holds_the_hunter_not_the_game() {
+    let mut game = Game::with_services(
+        "XXXXXXXXXXXXX\n\
+         X...........X\n\
+         X.....X.....X\n\
+         Xh....X..p..X\n\
+         X.....X.....X\n\
+         XXXXXXXXXXXXX\n",
+        ServiceMode::Deferred(20),
+    );
+    use KeyCode::{ArrowLeft as L, ArrowRight as R};
+    for key in [R, L].into_iter().cycle().take(30) {
+        game.turn(Some(key));
+    }
+    game.print("hunter: slow planning");
+
+    let start = game.trace[0].enemies[0].1;
+    let thinking: Vec<_> = game.trace.iter().map(|s| s.thinking[0]).collect();
+    let first_move = game
+        .trace
+        .iter()
+        .position(|s| s.enemies[0].1 != start)
+        .expect("never moved");
+    assert!(
+        first_move >= 2,
+        "planned too fast to show: turn {first_move}"
+    );
+    // From the first turn the map can be planned on (the nav map is built
+    // after the startup frame's simulation) until the plan lands.
+    assert!(thinking[1..first_move].iter().all(|&t| t), "{thinking:?}");
+    // The game did not wait: the player moved while the hunter thought.
+    let player_moves = game.trace[..=first_move]
+        .windows(2)
+        .filter(|w| w[0].player != w[1].player)
+        .count();
+    assert!(player_moves >= 2, "player stalled: {player_moves}");
+    // Once on its way it never idles out of reach: replans for the moving
+    // player arrive while it follows the old plan. (A step can still lose a
+    // cell to the player moving into it the same turn, which leaves the two
+    // adjacent.)
+    for turn in first_move + 1..game.trace.len() {
+        let (before, after) = (&game.trace[turn - 1], &game.trace[turn]);
+        let out_of_reach = |snap: &Snapshot| manhattan(snap.enemies[0].1, snap.player) > 1;
+        if out_of_reach(before) && out_of_reach(after) {
+            assert_ne!(
+                game.trace[turn].enemies[0].1, before.enemies[0].1,
+                "stood still on turn {turn}"
+            );
+        }
+    }
+    let last = game.trace.last().unwrap();
+    assert_eq!(manhattan(last.enemies[0].1, last.player), 1);
+}
+
+/// The same chase with plans made on the async compute pool, as in the game.
+/// When each plan lands depends on the threads, so this checks the outcome.
+#[test]
+fn a_hunter_planning_in_the_background_still_gets_there() {
+    let mut game = Game::with_services(
+        "XXXXXXXXXXX\n\
+         X.........X\n\
+         X....X....X\n\
+         Xh...X..p.X\n\
+         X....X....X\n\
+         XXXXXXXXXXX\n",
+        ServiceMode::Background,
+    );
+    game.turns(24);
+    let last = game.trace.last().unwrap();
+    let (_, pos, act) = last.enemies[0];
+    assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
+    assert!(matches!(act, Some(EnemyAct::Attack(_))), "{act:?}");
 }

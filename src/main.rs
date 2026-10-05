@@ -21,6 +21,7 @@ use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{AnimatedPos, Player, Pos, ViewCamera};
 use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, TextRendererPlugin};
 use pav_ecs_game_bevy_port::schedule::StartupPhase;
+use pav_ecs_game_bevy_port::service::ServiceMode;
 
 const CAPTURE_STEP_FRAMES: u32 = 8;
 /// Frames recorded after the walk, so the last move can settle on camera.
@@ -46,8 +47,17 @@ fn main() -> AppExit {
             ..default()
         })
         .set(ImagePlugin::default_nearest());
+    // Paths are planned off the frame in play, so a slow plan costs that
+    // enemy a turn and never a frame. Captures replay scripted input and stay
+    // deterministic.
+    let services = if capture.is_some() || record.is_some() {
+        ServiceMode::Inline
+    } else {
+        ServiceMode::Background
+    };
     let mut app = App::new();
     app.insert_resource(ClearColor(Color::BLACK))
+        .insert_resource(services)
         .insert_resource(options.motion)
         .add_plugins(plugins)
         .add_plugins(GamePlugin)

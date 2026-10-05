@@ -133,9 +133,10 @@ pub fn carry_out(
         };
         match walk_to {
             Some(goal) => {
-                // The last step was ordered from here, and here we still are.
-                let stuck =
-                    follow.ordered_from == Some(mind.pos) || follow.status == WalkStatus::Blocked;
+                // The last step was ordered from here, was carried out (no
+                // command still waiting for a token), and here we still are.
+                let stuck = (follow.ordered_from == Some(mind.pos) && !command.active)
+                    || follow.status == WalkStatus::Blocked;
                 if destination.goal() != Some(goal) || stuck {
                     destination.go_to(goal);
                 }
@@ -161,11 +162,15 @@ pub fn wait_if_idle(mut enemies: Query<(&EnemyMind, &mut MoveCommand), With<Enem
     }
 }
 
-/// Show what each enemy is up to: color by mood, `!` on the alert beat.
+/// Show what each enemy is up to: color by mood, `!` on the alert beat, `?`
+/// while it waits for a path to be planned.
 ///
 /// Runs after `direction_tiles`, which rewrites the glyph from facing.
-pub fn show_mood(mut enemies: Query<(&EnemyAct, &mut Glyph)>) {
-    for (act, mut glyph) in enemies.iter_mut() {
+pub fn show_mood(mut enemies: Query<(&EnemyAct, &EnemyMind, &mut Glyph)>) {
+    for (act, mind, mut glyph) in enemies.iter_mut() {
+        let thinking = mind
+            .walk
+            .is_some_and(|walk| walk.status == WalkStatus::Planning);
         let color = match act {
             EnemyAct::Alert => YELLOW,
             EnemyAct::Hunt(_) | EnemyAct::Attack(_) | EnemyAct::Hold => RED,
@@ -177,6 +182,8 @@ pub fn show_mood(mut enemies: Query<(&EnemyAct, &mut Glyph)>) {
         shown.color = color;
         if *act == EnemyAct::Alert {
             shown.ch = '!';
+        } else if thinking {
+            shown.ch = '?';
         }
         glyph.set_if_neq(shown);
     }
