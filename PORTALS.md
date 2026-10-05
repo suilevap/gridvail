@@ -87,9 +87,12 @@ how visible it is. One world cell can appear more than once. Known cells
 `compose_frame` then fills a view-sized frame from that map instead of
 writing each glyph at its world position. Objects get an instance per place
 they are seen, keyed by entity and view instance, placed at the transform of
-their animated position. Wall autotile masks and direction glyphs are
-derived in view space, so walls next to a portal join up and rotated views
-show the right shapes.
+their animated position. Wall and direction glyphs are turned by the
+transform they are seen through (the same lookup the turned view uses), so
+rotated views show the right shapes. Wall shapes keep the masks computed
+from their map neighbours, so a wall next to a portal may not join up with
+what is seen through it; whether that needs fixing is decided once portals
+can be seen (optional step 8).
 
 ## Steps
 
@@ -106,8 +109,9 @@ show the right shapes.
 4. View-indexed player vision and a view-space `compose_frame`; the text
    renderer draws the view frame. Remembered cells dimmer.
 5. The 3D renderer in view space.
-6. 90° rotations: rotated transforms, facing, a view frame that turns with
-   the player, and wall shapes joined across portal edges (autotiling from
-   the neighbours seen in the view, on top of the glyph turning that the
-   whole-view rotation already has).
+6. 90° rotations: rotated transforms, facing, and a view frame that turns
+   with the player.
 7. Optional: light through portals.
+8. Optional, after trying portals on screen: wall shapes joined across
+   portal edges, by autotiling walls from the neighbours seen in the view
+   instead of their map neighbours. Skipped unless the seams look wrong.
