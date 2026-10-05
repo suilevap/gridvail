@@ -14,11 +14,11 @@
 
 #![allow(clippy::type_complexity)]
 
-mod follow;
+mod planner;
 mod plugin;
 
-pub use follow::*;
 pub use gridvail_path as path;
+pub use planner::*;
 pub use plugin::*;
 
 use bevy::prelude::*;

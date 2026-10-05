@@ -5,18 +5,22 @@
 //! in `app`.
 
 mod actors;
+mod ai;
 mod animation;
 mod items;
 mod lighting;
+mod locomotion;
 mod presentation;
 mod spatial;
 mod vision;
 mod world;
 
 pub use actors::*;
+pub use ai::*;
 pub use animation::*;
 pub use items::*;
 pub use lighting::*;
+pub use locomotion::*;
 pub use presentation::*;
 pub use spatial::*;
 pub use vision::*;

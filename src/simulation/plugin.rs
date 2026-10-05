@@ -38,7 +38,6 @@ impl Plugin for SimulationPlugin {
                     turn_tick,
                     recharge_tokens,
                     player_input,
-                    enemy_ai,
                     move_commands,
                     update_direction,
                     movement,
