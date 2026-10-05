@@ -59,6 +59,10 @@ pub(crate) fn place_enemy(app: &mut App, at: IVec2) -> Entity {
     enemy
 }
 
+pub(crate) fn status(app: &App, enemy: Entity) -> WalkStatus {
+    app.world().get::<PathFollow>(enemy).unwrap().status
+}
+
 /// Runs frames until `enemy` stops walking; returns every cell it entered.
 pub(crate) fn walk(app: &mut App, enemy: Entity, frames: usize) -> Vec<IVec2> {
     let mut cells = vec![app.world().get::<Pos>(enemy).unwrap().0];
@@ -68,13 +72,7 @@ pub(crate) fn walk(app: &mut App, enemy: Entity, frames: usize) -> Vec<IVec2> {
         if cells.last() != Some(&pos) {
             cells.push(pos);
         }
-        if app
-            .world()
-            .get::<Destination>(enemy)
-            .unwrap()
-            .goal
-            .is_none()
-        {
+        if status(app, enemy).is_done() {
             break;
         }
     }
@@ -93,6 +91,12 @@ fn an_enemy_walks_its_path_to_the_goal() {
         .go_to(goal);
     let cells = walk(&mut app, enemy, 400);
     assert_eq!(cells.last(), Some(&goal), "walked {cells:?}");
+    assert_eq!(status(&app, enemy), WalkStatus::Arrived);
+    assert_eq!(
+        app.world().get::<Destination>(enemy).unwrap().goal(),
+        Some(goal),
+        "locomotion reports, it does not change the destination"
+    );
     assert!(cells
         .windows(2)
         .all(|step| (step[1] - step[0]).abs().element_sum() == 1));
@@ -116,6 +120,7 @@ fn an_enemy_with_a_key_opens_a_door_on_its_way() {
     let cells = walk(&mut app, enemy, 400);
 
     assert_eq!(cells.last(), Some(&CLOSET_KEY), "walked {cells:?}");
+    assert_eq!(status(&app, enemy), WalkStatus::Arrived);
     assert!(cells.contains(&CLOSET_DOOR));
     let world = app.world();
     assert!(
@@ -128,7 +133,7 @@ fn an_enemy_with_a_key_opens_a_door_on_its_way() {
 }
 
 #[test]
-fn an_unreachable_goal_is_dropped() {
+fn an_unreachable_goal_is_reported() {
     let mut app = boot_walking();
     let enemy = place_enemy(&mut app, IVec2::new(18, 2));
     app.world_mut()
@@ -137,5 +142,55 @@ fn an_unreachable_goal_is_dropped() {
         .go_to(CLOSET_KEY);
     let cells = walk(&mut app, enemy, 50);
     assert_eq!(cells, [IVec2::new(18, 2)], "no key, no way in");
-    assert_eq!(app.world().get::<Destination>(enemy).unwrap().goal, None);
+    assert_eq!(status(&app, enemy), WalkStatus::Unreachable);
+    assert_eq!(
+        app.world().get::<Destination>(enemy).unwrap().goal(),
+        Some(CLOSET_KEY)
+    );
+
+    // Gaining a key changes what doors cost, which means planning again.
+    let key = app.world_mut().spawn((Active, Item, Key)).id();
+    app.world_mut()
+        .get_mut::<Inventory>(enemy)
+        .unwrap()
+        .0
+        .push(key);
+    let cells = walk(&mut app, enemy, 400);
+    assert_eq!(cells.last(), Some(&CLOSET_KEY), "walked {cells:?}");
+    assert_eq!(status(&app, enemy), WalkStatus::Arrived);
+}
+
+#[test]
+fn a_blocked_walk_is_reported_and_can_be_retried() {
+    let mut app = boot_walking();
+    let start = IVec2::new(3, 5);
+    let goal = IVec2::new(3, 1);
+    let enemy = place_enemy(&mut app, start);
+    // Something in the way that the map snapshot does not know about.
+    let in_the_way = IVec2::new(3, 4);
+    let obstacle = app
+        .world_mut()
+        .spawn((Active, Collider, Pos(in_the_way)))
+        .id();
+    app.world_mut()
+        .resource_mut::<MapGrid>()
+        .set(in_the_way, obstacle);
+    app.world_mut()
+        .get_mut::<Destination>(enemy)
+        .unwrap()
+        .go_to(goal);
+    let cells = walk(&mut app, enemy, 200);
+    assert_eq!(cells, [start], "never got past the obstacle");
+    assert_eq!(status(&app, enemy), WalkStatus::Blocked);
+
+    // Once it is gone, asking again for the same goal is a new request.
+    app.world_mut().resource_mut::<MapGrid>().clear(in_the_way);
+    app.world_mut().despawn(obstacle);
+    app.world_mut()
+        .get_mut::<Destination>(enemy)
+        .unwrap()
+        .go_to(goal);
+    let cells = walk(&mut app, enemy, 200);
+    assert_eq!(cells.last(), Some(&goal), "walked {cells:?}");
+    assert_eq!(status(&app, enemy), WalkStatus::Arrived);
 }

@@ -120,6 +120,7 @@ fn construct_map(mut commands: Commands) {
                     (
                         Wander,
                         Destination::default(),
+                        TraversalPrefs::default(),
                         PathFollow::with_capacity(cell_count),
                     ),
                     Tokens::new(1),

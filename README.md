@@ -51,16 +51,16 @@ next to this file.
   is the base rule (walls block; closed doors block or cost extra). Searches
   do not wrap around the map edges.
 - Enemies wander along planned paths (a deviation: the original random-walks
-  them one step at a time). The AI (`ai/`) decides where to go: each enemy
-  picks a random floor cell as its `Destination`, and `DoorPolicy` sets what
-  spending a key on a closed door is worth, more for the last key (one key
-  20 steps of detour, two 10, ten 2) and nothing without a key, when doors
-  block. Locomotion (`locomotion/`) walks there: it plans a path with the
-  navigation planner, takes one step per action, replans when the
-  destination or door price changes, and gives up (clearing the destination)
-  when blocked three times in a row or with no path. Planning memory is
-  sized to the map, so steady turns stay allocation-free. Setting a
-  `Destination` sends any actor somewhere.
+  them one step at a time). Locomotion (`locomotion/`) walks any actor to its
+  `Destination`: it plans with the navigation planner using the actor's
+  `TraversalPrefs` (what a closed door costs it, or that doors block), takes
+  one step per action, and reports the outcome in `PathFollow::status`
+  (walking, arrived, unreachable, or blocked after three failed steps); it
+  never changes the destination. The AI (`ai/`) decides: wanderers pick a
+  random floor cell, and a new one once a walk ends, and `DoorPolicy` prices
+  doors by the keys held, more for the last key (one key 20 steps of detour,
+  two 10, ten 2; no key, doors block). Planning memory is sized to the map,
+  so steady turns stay allocation-free.
 - Player-bound `i` direction marker via relative position + rotation.
 - Wall autotiling from `wall_rule.txt`, direction glyphs from the three
   direction rules (the file's Y-down inversion is inherited verbatim).
@@ -138,7 +138,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 111 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 113 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```

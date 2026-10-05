@@ -1,5 +1,7 @@
 //! Walking actors to their [`Destination`] along planned paths, one step
-//! per action, through their ordinary [`MoveCommand`]s.
+//! per action, through their ordinary [`MoveCommand`]s. Paths are planned
+//! with each actor's [`TraversalPrefs`]; [`PathFollow::status`] reports the
+//! outcome to whoever set the destination.
 
 #![allow(clippy::type_complexity)]
 
@@ -13,59 +15,72 @@ use crate::model::*;
 use crate::navigation::{NavMap, PathPlanner};
 
 /// Steps an actor may fail in a row (another actor in the way) before it
-/// gives up on its destination.
+/// reports [`WalkStatus::Blocked`].
 pub const MAX_BLOCKED_STEPS: u8 = 3;
 
-/// Orders the next step toward each actor's destination, planning the path
-/// first when the destination (or what a door is worth) changed or the
-/// actor left its path. Clears the destination on arrival, when it cannot
-/// be reached, or after [`MAX_BLOCKED_STEPS`] failed steps.
+/// Orders the next step toward each actor's [`Destination`], planning the
+/// path first for a new request, a changed door cost, or when the actor
+/// left its path. Reports how it goes in [`PathFollow::status`] and never
+/// changes the destination: whoever set it decides what to do once walking
+/// is done.
 pub fn follow_paths(
     turn: Res<TurnState>,
     nav: Res<NavMap>,
     mut planner: ResMut<PathPlanner>,
     mut walkers: Query<
-        (&Pos, &mut Destination, &mut PathFollow, &mut MoveCommand),
+        (
+            &Pos,
+            &Destination,
+            Option<&TraversalPrefs>,
+            &mut PathFollow,
+            &mut MoveCommand,
+        ),
         (With<Active>, Without<DestroyRequested>),
     >,
 ) {
     if turn.simulation || nav.grid().is_empty() {
         return;
     }
-    for (pos, mut destination, mut follow, mut command) in &mut walkers {
-        let Some(goal) = destination.goal else {
-            if follow.planned_for.is_some() {
-                follow.clear();
+    for (pos, destination, prefs, mut follow, mut command) in &mut walkers {
+        let pos = pos.0;
+        let door_cost = prefs.and_then(|prefs| prefs.door_cost);
+        let Some(goal) = destination.goal() else {
+            if follow.status != WalkStatus::Idle {
+                follow.finish(WalkStatus::Idle);
+                follow.planned_for = None;
             }
             continue;
         };
         if command.active {
             continue;
         }
-        let pos = pos.0;
+        let wanted = Some((destination.request(), door_cost));
+        let replan = follow.planned_for != wanted;
+        if !replan && follow.status.is_done() {
+            continue;
+        }
         if pos == goal {
-            destination.goal = None;
-            follow.clear();
+            follow.finish(WalkStatus::Arrived);
+            follow.planned_for = wanted;
             continue;
         }
         // Skip cells already reached (the start, or a step just taken).
         while follow.steps.get(follow.next) == Some(&pos) {
             follow.next += 1;
         }
-        let wanted = Some((goal, destination.door_cost));
         let off_path = follow
             .steps
             .get(follow.next)
             .is_none_or(|next| (*next - pos).abs().element_sum() != 1);
-        if follow.planned_for != wanted || off_path {
+        if replan || off_path {
+            follow.planned_for = wanted;
             let PathFollow { steps, .. } = &mut *follow;
-            if !planner.plan(&nav, pos, goal, destination.door_cost, steps) {
-                destination.goal = None;
-                follow.clear();
+            if !planner.plan(&nav, pos, goal, door_cost, steps) {
+                follow.finish(WalkStatus::Unreachable);
                 continue;
             }
+            follow.status = WalkStatus::Walking;
             follow.next = 1;
-            follow.planned_for = wanted;
             follow.ordered_from = None;
             follow.blocked = 0;
         }
@@ -73,8 +88,7 @@ pub fn follow_paths(
         if follow.ordered_from == Some(pos) {
             follow.blocked += 1;
             if follow.blocked >= MAX_BLOCKED_STEPS {
-                destination.goal = None;
-                follow.clear();
+                follow.finish(WalkStatus::Blocked);
                 continue;
             }
         } else {

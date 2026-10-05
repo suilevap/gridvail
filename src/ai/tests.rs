@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use super::DoorPolicy;
-use crate::locomotion::tests::{boot_walking, place_enemy};
+use crate::locomotion::tests::{boot_walking, place_enemy, status};
 use crate::model::*;
 use crate::navigation::{NavCell, NavMap};
 
@@ -22,7 +22,7 @@ fn door_costs_follow_the_keys_held() {
     let mut app = boot_walking();
     let enemy = place_enemy(&mut app, IVec2::new(3, 5));
     app.update();
-    let door_cost = |app: &App| app.world().get::<Destination>(enemy).unwrap().door_cost;
+    let door_cost = |app: &App| app.world().get::<TraversalPrefs>(enemy).unwrap().door_cost;
     assert_eq!(door_cost(&app), None);
     for (keys, expected) in [(1, 20), (2, 10), (4, 5)] {
         let world = app.world_mut();
@@ -48,7 +48,7 @@ fn wandering_enemies_keep_moving_to_new_goals() {
     for _ in 0..300 {
         app.update();
         for (i, (enemy, _)) in enemies.iter().enumerate() {
-            let goal = app.world().get::<Destination>(*enemy).unwrap().goal;
+            let goal = app.world().get::<Destination>(*enemy).unwrap().goal();
             if let Some(goal) = goal {
                 if goals[i].last() != Some(&goal) {
                     goals[i].push(goal);
@@ -62,4 +62,28 @@ fn wandering_enemies_keep_moving_to_new_goals() {
         assert!(goals[i].iter().all(|goal| nav.at(*goal) == NavCell::Floor));
         assert_ne!(app.world().get::<Pos>(*enemy).unwrap().0, *start);
     }
+}
+
+#[test]
+fn a_wanderer_picks_a_new_goal_when_its_walk_ends() {
+    let mut app = boot_walking();
+    let enemy = place_enemy(&mut app, IVec2::new(18, 2));
+    app.world_mut().entity_mut(enemy).insert(Wander);
+    // The closet behind its door: unreachable without a key.
+    let closet = IVec2::new(18, 5);
+    app.world_mut()
+        .get_mut::<Destination>(enemy)
+        .unwrap()
+        .go_to(closet);
+    let mut saw_unreachable = false;
+    for _ in 0..20 {
+        app.update();
+        saw_unreachable |= status(&app, enemy) == WalkStatus::Unreachable;
+        if app.world().get::<Destination>(enemy).unwrap().goal() != Some(closet) {
+            break;
+        }
+    }
+    assert!(saw_unreachable);
+    let goal = app.world().get::<Destination>(enemy).unwrap().goal();
+    assert!(goal.is_some_and(|goal| goal != closet), "new goal {goal:?}");
 }
