@@ -18,7 +18,7 @@ use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
 use pav_ecs_game_bevy_port::app::GamePlugin;
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
-use pav_ecs_game_bevy_port::model::{AnimatedPos, Player, Pos};
+use pav_ecs_game_bevy_port::model::{AnimatedPos, Player, Pos, ViewCamera};
 use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, TextRendererPlugin};
 use pav_ecs_game_bevy_port::schedule::StartupPhase;
 
@@ -85,7 +85,9 @@ fn main() -> AppExit {
             saved: 0,
             dir,
             walk,
-            trace: String::from("frame,cell_x,cell_y,shown_x,shown_y\n"),
+            trace: String::from(
+                "frame,cell_x,cell_y,shown_x,shown_y,camera_x,camera_y,rotation,zoom\n",
+            ),
         })
         .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
             std::time::Duration::from_millis(16),
@@ -253,7 +255,8 @@ struct Recording {
     total: u32,
     saved: u32,
     walk: Vec<char>,
-    /// `frame,cell_x,cell_y,shown_x,shown_y` per recorded frame.
+    /// `frame,cell_x,cell_y,shown_x,shown_y,camera_x,camera_y,rotation,zoom`
+    /// per recorded frame.
     trace: String,
 }
 
@@ -281,6 +284,7 @@ fn record_frame(
     mut recording: ResMut<Recording>,
     target: Res<CaptureTarget>,
     player: Single<(&Pos, &AnimatedPos), With<Player>>,
+    camera: Res<ViewCamera>,
 ) {
     recording.frames += 1;
     let Some(index) = recording.frames.checked_sub(31) else {
@@ -291,8 +295,15 @@ fn record_frame(
     }
     let (cell, shown) = *player;
     let line = format!(
-        "{index},{},{},{:.4},{:.4}\n",
-        cell.0.x, cell.0.y, shown.position.x, shown.position.y
+        "{index},{},{},{:.4},{:.4},{:.4},{:.4},{:.4},{:.4}\n",
+        cell.0.x,
+        cell.0.y,
+        shown.position.x,
+        shown.position.y,
+        camera.position.x,
+        camera.position.y,
+        camera.rotation,
+        camera.zoom,
     );
     recording.trace.push_str(&line);
     let path = format!("{}/frame_{index:05}.png", recording.dir);
