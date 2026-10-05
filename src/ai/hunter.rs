@@ -5,8 +5,14 @@
 //! goal asks for what it needs first with `need`, which pushes a subgoal:
 //!
 //! ```text
-//! FollowOrder ─ unreachable, no key ─> GetKey ─ the nearest key ─> Reach(key)
+//! FollowOrder ─ unreachable, no key ─> GetKey(here) ─ nearest key first ─> Reach(key)
 //! ```
+//!
+//! `GetKey` carries where the hunter got stuck, so getting stuck again
+//! further on (the next door: each door spends a key) is a new goal, while
+//! getting stuck again in the same place, key and all, is not retried. It
+//! tries the keys it knows of nearest first; one it cannot reach fails its
+//! `Reach`, and flatbt remembers that, so the next is tried.
 //!
 //! Walking is locomotion's: the tree asks for a walk (`EnemyAct::GoTo`) and
 //! reads how it goes from the blackboard. Doors need no goal of their own:
@@ -25,8 +31,8 @@ pub enum Goal {
     FollowOrder,
     /// Stand on a cell.
     Reach(bevy::math::IVec2),
-    /// Carry a key.
-    GetKey,
+    /// Carry a key, to get past where the hunter got stuck.
+    GetKey(bevy::math::IVec2),
 }
 
 impl Goal {
@@ -34,9 +40,26 @@ impl Goal {
     fn dest(self) -> Dest {
         match self {
             Goal::Reach(cell) => Dest::Cell(cell),
-            Goal::FollowOrder | Goal::GetKey => Dest::Order,
+            Goal::FollowOrder | Goal::GetKey(_) => Dest::Order,
         }
     }
+}
+
+/// Walk to the `slot`th nearest key; succeed once carrying a key. A key it
+/// cannot reach fails, and the `select` around these moves on to the next.
+macro_rules! fetch_key {
+    ($slot:literal) => {
+        seq((
+            need(|mind: &EnemyMind, _: &Goal| mind.keys[$slot].map(Goal::Reach)),
+            leaf(|mind: &mut EnemyMind| {
+                if mind.has_key {
+                    NodeResult::Success
+                } else {
+                    NodeResult::Failure
+                }
+            }),
+        ))
+    };
 }
 
 /// Attack a player in reach; otherwise work through the goal stack; hold
@@ -50,7 +73,7 @@ pub fn hunter_tree() -> impl BehaviorNode<EnemyMind, EnemyAct> {
                 None => NodeResult::Failure,
             }),
         ),
-        goals::<4, _, _>(
+        goals::<8, _, _>(
             |_: &EnemyMind| Goal::FollowOrder,
             goal_match!(|goal: &Goal| {
                 // No way to the order without opening a door: get a key
@@ -61,21 +84,17 @@ pub fn hunter_tree() -> impl BehaviorNode<EnemyMind, EnemyAct> {
                     force_failure(need(|mind: &EnemyMind, _: &Goal| {
                         let order = mind.order?;
                         let stuck = mind.walk_to(order) == Some(WalkStatus::Unreachable);
-                        (stuck && !mind.has_key && mind.nearest_key.is_some())
-                            .then_some(Goal::GetKey)
+                        (stuck && !mind.has_key && mind.keys[0].is_some())
+                            .then_some(Goal::GetKey(mind.pos))
                     })),
                     with_goal(leaf_with(go_to)),
                 )),
                 Goal::Reach(_) => with_goal(leaf_with(go_to)),
-                Goal::GetKey => seq((
-                    need(|mind: &EnemyMind, _: &Goal| mind.nearest_key.map(Goal::Reach)),
-                    leaf(|mind: &mut EnemyMind| {
-                        if mind.has_key {
-                            NodeResult::Success
-                        } else {
-                            NodeResult::Failure
-                        }
-                    }),
+                Goal::GetKey(_) => select((
+                    fetch_key!(0),
+                    fetch_key!(1),
+                    fetch_key!(2),
+                    fetch_key!(3),
                 )),
             }),
         )
@@ -103,6 +122,6 @@ fn goal_done(mind: &EnemyMind, goal: &Goal) -> bool {
     match *goal {
         Goal::FollowOrder => false,
         Goal::Reach(cell) => mind.pos == cell,
-        Goal::GetKey => mind.has_key,
+        Goal::GetKey(_) => mind.has_key,
     }
 }

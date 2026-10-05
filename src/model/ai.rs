@@ -9,6 +9,9 @@ pub struct Wander;
 /// Cells an enemy can see the player across, given a clear line.
 pub const ENEMY_SIGHT_RADIUS: i32 = 8;
 
+/// How many keys on the map an agent knows of, nearest first.
+pub const KNOWN_KEYS: usize = 4;
+
 /// How far an idle enemy strolls from where it stands.
 pub const STROLL_RADIUS: i32 = 5;
 
@@ -36,8 +39,9 @@ pub struct EnemyMind {
     pub order: Option<IVec2>,
     /// Carries a key.
     pub has_key: bool,
-    /// The closest key lying on the map.
-    pub nearest_key: Option<IVec2>,
+    /// Keys lying on the map, nearest first (as the crow flies, so a near
+    /// one may still be out of reach).
+    pub keys: [Option<IVec2>; KNOWN_KEYS],
 }
 
 /// Where an agent is walking, and how it is going.

@@ -93,10 +93,26 @@ pub fn perceive_objectives(
         mind.has_key =
             inventory.is_some_and(|items| items.0.iter().any(|&item| carried_keys.contains(item)));
         let pos = mind.pos;
-        mind.nearest_key = keys_on_map
-            .iter()
-            .map(|key| key.0)
-            .min_by_key(|&key| (key - pos).abs().element_sum());
+        // Nearest first, kept without sorting a list: few keys, few slots.
+        mind.keys = [None; KNOWN_KEYS];
+        for key in keys_on_map.iter().map(|key| key.0) {
+            let distance = |cell: IVec2| (cell - pos).abs().element_sum();
+            let mut candidate = Some(key);
+            for slot in &mut mind.keys {
+                match (*slot, candidate) {
+                    (_, None) => break,
+                    (None, _) => {
+                        *slot = candidate;
+                        break;
+                    }
+                    (Some(held), Some(new)) if distance(new) < distance(held) => {
+                        *slot = Some(new);
+                        candidate = Some(held);
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
 }
 

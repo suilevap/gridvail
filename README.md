@@ -56,8 +56,9 @@ next to this file.
   spotting the player within 8 cells and a clear line they freeze for a beat
   (a yellow `!`), then hunt and attack, search where it was last seen, and
   give up when it gets away. Hunters (`h` on a map) follow an `Order` (for
-  now, the player's cell) with flatbt's goal stack, fetching the nearest key
-  when a locked door is the only way. The trees only report an `EnemyAct`;
+  now, the player's cell) with flatbt's goal stack, fetching a key when a
+  locked door is the only way: walking away from the goal if that is where
+  the key is, skipping keys it cannot reach, and one key per door. The trees only report an `EnemyAct`;
   `ai::carry_out` turns it into a step or a `Destination`. Locomotion (`locomotion/`) walks any actor to its
   `Destination`: it plans with the navigation planner using the actor's
   `TraversalPrefs` (what a closed door costs it, or that doors block), takes
@@ -162,7 +163,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 137 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 141 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

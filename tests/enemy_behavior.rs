@@ -587,3 +587,112 @@ fn a_hunter_planning_in_the_background_still_gets_there() {
     assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
     assert!(matches!(act, Some(EnemyAct::Attack(_))), "{act:?}");
 }
+
+// --- planning for keys: go the other way, chain doors, skip a sealed key ----
+
+fn keys_left(snap: &Snapshot) -> usize {
+    snap.keys.len()
+}
+
+fn doors_open(snap: &Snapshot) -> usize {
+    snap.doors.iter().filter(|&&(_, open)| open).count()
+}
+
+/// The hunter catches the player: next to it and attacking.
+fn assert_caught(game: &Game) {
+    let last = game.trace.last().unwrap();
+    let (_, pos, act) = last.enemies[0];
+    assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
+    assert!(matches!(act, Some(EnemyAct::Attack(_))), "{act:?}");
+}
+
+/// The key lies behind the hunter, away from the door it opens: it has to
+/// walk away from its goal first.
+#[test]
+fn a_hunter_walks_away_from_its_goal_to_fetch_the_key() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXXX\n\
+         Xk....hX......X\n\
+         X......D...p..X\n\
+         X......X......X\n\
+         XXXXXXXXXXXXXXX\n",
+    );
+    game.turns(36);
+    game.print("hunter: key behind it");
+    let start = game.trace[0].enemies[0].1;
+    let picked = game
+        .trace
+        .iter()
+        .position(|s| keys_left(s) == 0)
+        .expect("never picked up the key");
+    let opened = game
+        .trace
+        .iter()
+        .position(|s| doors_open(s) == 1)
+        .expect("never opened the door");
+    assert!(picked < opened);
+    // It went the other way: left, toward the key, at some point.
+    let westmost = game.trace[..=picked]
+        .iter()
+        .map(|s| s.enemies[0].1.x)
+        .min()
+        .unwrap();
+    assert!(westmost < start.x - 3, "never headed for the key");
+    assert_caught(&game);
+}
+
+/// Each door spends a key, so two doors in a row take two keys.
+#[test]
+fn a_hunter_fetches_a_key_for_each_door() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXXXX\n\
+         Xk..h..X..X....X\n\
+         Xk.....D..D..p.X\n\
+         X......X..X....X\n\
+         XXXXXXXXXXXXXXXX\n",
+    );
+    game.turns(50);
+    game.print("hunter: two doors");
+    let last = game.trace.last().unwrap();
+    assert_eq!(keys_left(last), 0, "left a key behind");
+    assert_eq!(doors_open(last), 2, "a door stayed shut");
+    assert_caught(&game);
+}
+
+/// The closest key is walled in. The hunter gives it up and fetches one
+/// that is farther away but reachable.
+#[test]
+fn a_hunter_skips_a_key_it_cannot_reach() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXXXXXX\n\
+         XXX.........X....X\n\
+         XkX....h....D..p.X\n\
+         XXX.........X....X\n\
+         X.k.........X....X\n\
+         XXXXXXXXXXXXXXXXXX\n",
+    );
+    game.turns(36);
+    game.print("hunter: sealed key");
+    let last = game.trace.last().unwrap();
+    assert_eq!(last.keys, vec![IVec2::new(1, 2)], "took the wrong key");
+    assert_eq!(doors_open(last), 1);
+    assert_caught(&game);
+}
+
+/// Fetching the key with plans made off the frame, as in the game.
+#[test]
+fn a_hunter_planning_in_the_background_fetches_the_key() {
+    let mut game = Game::with_services(
+        "XXXXXXXXXXXXXXX\n\
+         Xk....hX......X\n\
+         X......D...p..X\n\
+         X......X......X\n\
+         XXXXXXXXXXXXXXX\n",
+        ServiceMode::Background,
+    );
+    game.turns(45);
+    let last = game.trace.last().unwrap();
+    assert_eq!(keys_left(last), 0);
+    assert_eq!(doors_open(last), 1);
+    assert_caught(&game);
+}
