@@ -73,8 +73,10 @@ next to this file.
   renderer-neutral `ViewCamera` (centre, rotation, zoom, offset) that a
   camera operator keeps on the player's animated position, so the world
   glides past as they move. Q/E turn the view a quarter turn and Z/X zoom,
-  both eased; arrow keys follow the turned view, and wall shapes and facing
-  markers are drawn turned so they keep matching the map. `PORTALS.md`
+  both eased. While turning, the text view rotates as one picture, glyphs
+  included; at rest it is upright again, with wall shapes and facing markers
+  drawn turned so they keep matching the map. Arrow keys follow the turned
+  view. `PORTALS.md`
   describes the portal view built on it.
 - Renderer-neutral frame composition with depth merge, hex fill, `?` unknown
   borders, and previous-frame diffing. The default `TextRendererPlugin`

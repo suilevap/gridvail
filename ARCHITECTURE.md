@@ -89,9 +89,12 @@ and renderers must not import it.
   `PresentationPlugin` owns those systems and all map-sized frame resources.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
-  at its animated position, each placed where the view camera shows it (its
-  2D camera never moves, so glyphs stay upright when the view turns, and
-  wall and facing glyphs are swapped for their turned versions). Wall
+  at its animated position, each placed where the view camera shows it. Its
+  2D camera never moves: a turning view turns the whole picture, glyphs
+  included, with cell spacing eased between the 12×20 cell's width and
+  height. Glyphs are drawn for the nearest quarter turn (wall and facing
+  glyphs swapped for their turned versions) and tilted by the rest, so at
+  rest they are upright and crisp. Wall
   meshes in the 3D backend follow their objects the same way, and its
   perspective camera orbits and zooms to match the view camera. The optional
   `ExtrudedWallRendererPlugin` adds a perspective camera plus shared wall and

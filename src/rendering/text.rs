@@ -263,7 +263,8 @@ fn spawn_object_sprites(world: &mut World) {
                     ..default()
                 },
                 TextColor(palette_color(object.cell.color)),
-                Transform::from_translation(view_translation(&camera, object.position) + Vec3::Z),
+                Transform::from_translation(view_translation(&camera, object.position) + Vec3::Z)
+                    .with_rotation(glyph_rotation(&camera)),
                 Visibility::Hidden,
             ))
             .id();
@@ -348,12 +349,17 @@ pub(super) fn place_object_sprites(
         if transform.scale != scale {
             transform.scale = scale;
         }
+        let rotation = glyph_rotation(&camera);
+        if transform.rotation != rotation {
+            transform.rotation = rotation;
+        }
     }
 }
 
 /// Places the ground cells where the view camera shows them. The map turns
-/// and zooms around the screen centre; the 2D camera itself never moves, so
-/// glyphs stay upright. The perspective backend projects cells itself.
+/// and zooms around the screen centre as one picture, glyphs included; the
+/// 2D camera itself never moves. The perspective backend projects cells
+/// itself.
 fn place_cells(
     camera: Res<ViewCamera>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
@@ -365,8 +371,10 @@ fn place_cells(
     }
     *placed = Some(*camera);
     let scale = Vec3::splat(camera.zoom);
+    let rotation = glyph_rotation(&camera);
     for (cell, mut transform) in &mut cells {
         transform.translation = view_translation(&camera, cell.0.as_vec2());
+        transform.rotation = rotation;
         transform.scale = scale;
     }
 }
@@ -387,9 +395,33 @@ fn object_translation(sprite: &ObjectSprite, camera: &ViewCamera) -> Vec3 {
 
 /// Where the view camera shows a map point, in 2D world units around the
 /// screen centre.
+///
+/// The map turns as one rigid picture. Cells are taller than wide, so the
+/// spacing along each map axis eases from the cell width to its height as
+/// that axis turns from horizontal to vertical on screen: at every quarter
+/// turn this is the upright grid (`ViewCamera::to_view` in cell units), and
+/// half way the cells are square.
 fn view_translation(camera: &ViewCamera, map: Vec2) -> Vec3 {
-    let view = camera.to_view(map);
-    Vec3::new(view.x * CELL_SIZE.x, -view.y * CELL_SIZE.y, 0.0)
+    let (sin, cos) = camera.rotation.sin_cos();
+    // 1 while map x runs across the screen, 0 while it runs up and down.
+    let across = cos * cos;
+    let spacing = Vec2::new(
+        CELL_SIZE.y.lerp(CELL_SIZE.x, across),
+        CELL_SIZE.x.lerp(CELL_SIZE.y, across),
+    );
+    let d = (map - camera.position) * spacing;
+    // Counter-clockwise on screen, with y down like the map.
+    let turned = Vec2::new(d.x * cos + d.y * sin, -d.x * sin + d.y * cos);
+    let view = (turned + camera.offset * CELL_SIZE) * camera.zoom;
+    Vec3::new(view.x, -view.y, 0.0)
+}
+
+/// Glyphs are drawn for the nearest quarter turn (`TurnedGlyphs`) and tilted
+/// by the rest of the turn, so they lie in the turning picture. Half way,
+/// a glyph tilted +45° and its quarter-turned glyph tilted -45° are the
+/// same shape, so the swap is not seen; at rest glyphs are upright.
+fn glyph_rotation(camera: &ViewCamera) -> Quat {
+    Quat::from_rotation_z(camera.quarter_remainder())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -458,6 +490,7 @@ pub(super) fn grid_to_world_f(position: Vec2, width: i32, height: i32) -> Vec3 {
 
 #[cfg(test)]
 mod tests {
+    use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
     use std::time::Duration;
 
     use bevy::time::TimeUpdateStrategy;
@@ -628,6 +661,81 @@ mod tests {
             assert_eq!(text, expected.to_string(), "glyph {ch}");
         }
         assert!(walls > 0 && markers > 0, "walls {walls}, markers {markers}");
+    }
+
+    #[test]
+    fn layout_rests_on_the_upright_grid_at_every_quarter_turn() {
+        for quarters in -2..=4 {
+            let camera = ViewCamera {
+                position: Vec2::new(3.0, 2.0),
+                rotation: quarters as f32 * FRAC_PI_2,
+                zoom: 1.5,
+                offset: Vec2::new(0.5, 1.0),
+            };
+            for map in [
+                Vec2::new(4.0, 2.0),
+                Vec2::new(3.0, 5.0),
+                Vec2::new(-1.5, 0.25),
+            ] {
+                let view = camera.to_view(map) * CELL_SIZE;
+                let expected = Vec2::new(view.x, -view.y);
+                let placed = view_translation(&camera, map).xy();
+                assert!(
+                    placed.distance(expected) < 1e-3,
+                    "{quarters}: {placed} vs {expected}"
+                );
+            }
+            assert!(camera.quarter_remainder().abs() < 1e-6);
+            assert!(glyph_rotation(&camera).angle_between(Quat::IDENTITY) < 1e-6);
+        }
+    }
+
+    #[test]
+    fn mid_turn_the_picture_turns_rigidly_and_the_glyph_swap_is_seamless() {
+        let at = |rotation: f32| ViewCamera {
+            rotation,
+            ..default()
+        };
+        // Half way the cells are square: east and south are equally far.
+        let half = at(FRAC_PI_4);
+        let east = view_translation(&half, Vec2::X).xy();
+        let south = view_translation(&half, Vec2::Y).xy();
+        assert!((east.length() - south.length()).abs() < 1e-3);
+        assert!(east.dot(south).abs() < 1e-3, "axes stay square");
+
+        // Either side of the half-way swap, cells barely move and the glyph
+        // tilt flips from +45° (old glyph) to -45° (quarter-turned glyph).
+        let (before, after) = (at(FRAC_PI_4 - 1e-4), at(FRAC_PI_4 + 1e-4));
+        for map in [Vec2::X, Vec2::new(-3.0, 2.0)] {
+            let moved = view_translation(&before, map).distance(view_translation(&after, map));
+            assert!(moved < 0.05, "{map}: jumped {moved}");
+        }
+        assert_eq!(before.quarter_turns() + 1, after.quarter_turns());
+        let tilt = |camera: &ViewCamera| glyph_rotation(camera).to_euler(EulerRot::XYZ).2;
+        assert!((tilt(&before) - FRAC_PI_4).abs() < 1e-3);
+        assert!((tilt(&after) + FRAC_PI_4).abs() < 1e-3);
+    }
+
+    #[test]
+    fn glyphs_tilt_with_the_picture_while_the_view_turns() {
+        let mut app = boot(false);
+        app.world_mut()
+            .resource_mut::<CameraOperator>()
+            .turn_by_quarters(1);
+        // Partway into the eased turn.
+        app.update();
+        let camera = *app.world().resource::<ViewCamera>();
+        assert!(camera.rotation > 0.0 && camera.rotation < FRAC_PI_2);
+        let expected = Quat::from_rotation_z(camera.quarter_remainder());
+        assert!(camera.quarter_remainder() != 0.0);
+        let world = app.world_mut();
+        for transform in world
+            .query_filtered::<&Transform, With<MapCell>>()
+            .iter(world)
+        {
+            assert!(transform.rotation.angle_between(expected) < 1e-5);
+        }
+        assert!(player_transform(&mut app).rotation.angle_between(expected) < 1e-5);
     }
 
     #[test]

@@ -51,6 +51,13 @@ impl ViewCamera {
         ((self.rotation / FRAC_PI_2).round() as i32).rem_euclid(4)
     }
 
+    /// How far the rotation is past its nearest quarter turn, in radians,
+    /// within ±π/4. Zero whenever the view rests on a quarter turn.
+    pub fn quarter_remainder(&self) -> f32 {
+        let quarters = (self.rotation / FRAC_PI_2).round();
+        self.rotation - quarters * FRAC_PI_2
+    }
+
     /// The map direction that points `screen` (such as up) on screen, so
     /// controls follow the view however it is turned. Mid-turn, the
     /// nearest quarter turn decides.
