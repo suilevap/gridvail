@@ -45,6 +45,13 @@ fn view_maps_between_map_and_screen() {
     assert!(camera.to_map(camera.to_view(point)).distance(point) < 1e-5);
 
     assert_eq!(camera.quarter_turns(), 1);
+    assert!(camera.quarter_remainder().abs() < 1e-6);
+    let turning = ViewCamera {
+        rotation: 0.6 * FRAC_PI_2,
+        ..default()
+    };
+    assert_eq!(turning.quarter_turns(), 1);
+    assert!((turning.quarter_remainder() + 0.4 * FRAC_PI_2).abs() < 1e-6);
     assert_eq!(camera.map_direction(IVec2::NEG_Y), IVec2::X);
     assert_eq!(camera.map_direction(IVec2::X), IVec2::Y);
     let upright = ViewCamera::default();
