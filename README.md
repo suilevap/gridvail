@@ -196,8 +196,8 @@ cargo run -- --record recordings/walk --walk "LLLLL.......RRRRUU......"
 ```
 
 `--record DIR` saves every frame after warm-up as `DIR/frame_NNNNN.png`
-(fixed 16 ms timestep) plus `DIR/trace.csv` with the player's logical cell
-and drawn position per frame, then exits. Its `--walk` holds each arrow key
+(fixed 16 ms timestep) plus `DIR/trace.csv` with the player's logical cell,
+drawn position, and the view camera's centre, rotation and zoom per frame, then exits. Its `--walk` holds each arrow key
 for 8 frames, like a player holding the key, taps the camera keys `Q`/`E`
 (turn) and `Z`/`X` (zoom) once, and `.` releases; turn into a
 video with, for example,
