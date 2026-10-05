@@ -20,7 +20,7 @@ next to this file.
   `NonBlockingAnimation` never hold turns. Without an animation step
   (headless runs, the agent API without a window, tests) or with the `snap`
   style there is no delay at all. Idle turns advance after 1s. Recharges
-  assign, never add. Keyboard and random-walk commands remain token-gated.
+  assign, never add. Keyboard and enemy commands remain token-gated.
 - Two-phase movement resolution with the original conservative contract:
   swaps blocked, entering a vacated cell blocked in the same pass, one
   winner per cell in stable creation order, collisions recorded (the Lite
@@ -49,7 +49,15 @@ next to this file.
   nothing. `navigation::NavMap` snapshots walls and closed
   doors, rebuilt only when static blockers change, and `navigation::Terrain`
   is the base rule (walls block; closed doors block or cost extra). Searches
-  do not wrap around the map edges. Nothing uses it in play yet.
+  do not wrap around the map edges.
+- Enemies wander along planned paths (a deviation: the original random-walks
+  them one step at a time). Each picks a random floor cell, plans a path with
+  `navigation::follow_paths`, and takes one step per action. Blocked three
+  times in a row by another actor, or with no path, it picks a new goal. An
+  enemy carrying a key may plan through a closed door (at an extra 10 steps'
+  cost), opening it with the key on its way. Planning memory is sized to the
+  map, so steady turns stay allocation-free. `PathFollow::go_to` sends any
+  actor somewhere.
 - Player-bound `i` direction marker via relative position + rotation.
 - Wall autotiling from `wall_rule.txt`, direction glyphs from the three
   direction rules (the file's Y-down inversion is inherited verbatim).
@@ -125,7 +133,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 105 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 109 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```

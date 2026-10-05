@@ -1,6 +1,6 @@
 //! Bevy port of PavEcsLiteGame (the latest, most complete variant).
 //!
-//! Turn-based dungeon demo: token-gated movement, random-walk enemies,
+//! Turn-based dungeon demo: token-gated movement, wandering enemies,
 //! interval-based field of view, CPU lightmaps, autotiled walls, and a
 //! player-bound direction marker. Controls: arrows or WASD; M cycles the
 //! motion style.
