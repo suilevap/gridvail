@@ -14,7 +14,10 @@ use crate::simulation::Rules;
 use super::walls_3d::{billboard_pattern, ExtrudedWalls};
 use crate::animation::MotionStyle;
 
-pub(super) const CELL_SIZE: Vec2 = Vec2::new(12.0, 20.0);
+/// Square cells: Unscii-8 glyphs are as wide as they are tall.
+pub(super) const CELL_SIZE: Vec2 = Vec2::new(16.0, 16.0);
+/// Unscii-8 is an 8 px pixel font, drawn at twice its size.
+const CELL_FONT_SIZE: f32 = 16.0;
 
 #[derive(Component)]
 struct HudText;
@@ -125,11 +128,10 @@ pub(super) fn setup(
     let camera = commands
         .spawn((
             Camera2d,
+            // One world unit per screen pixel keeps the pixel font sharp;
+            // the view follows the player, so the map need not fit.
             Projection::Orthographic(OrthographicProjection {
-                scaling_mode: bevy::camera::ScalingMode::AutoMin {
-                    min_width: (width + 2) as f32 * CELL_SIZE.x,
-                    min_height: (height + 4) as f32 * CELL_SIZE.y,
-                },
+                scaling_mode: bevy::camera::ScalingMode::WindowSize,
                 ..OrthographicProjection::default_2d()
             }),
         ))
@@ -139,7 +141,7 @@ pub(super) fn setup(
     let font = fonts
         .map(|mut fonts| {
             fonts.add(Font::from_bytes(
-                include_bytes!("../../assets/fonts/DejaVuSansMono.ttf").to_vec(),
+                include_bytes!("../../assets/fonts/unscii-8.ttf").to_vec(),
             ))
         })
         .unwrap_or_default();
@@ -157,7 +159,7 @@ pub(super) fn setup(
                 TextLayout::justify(Justify::Center),
                 TextFont {
                     font: font.clone().into(),
-                    font_size: FontSize::Px(20.0),
+                    font_size: FontSize::Px(CELL_FONT_SIZE),
                     ..default()
                 },
                 TextColor(palette_color(GRAY)),
@@ -174,8 +176,9 @@ pub(super) fn setup(
         HudText,
         UiTargetCamera(camera),
         Text::new(String::with_capacity(256)),
+        // Plain ASCII: Bevy's default font is narrower than the square
+        // cell font and keeps the HUD on two lines.
         TextFont {
-            font: font.into(),
             font_size: FontSize::Px(15.0),
             ..default()
         },
@@ -259,7 +262,7 @@ fn spawn_object_sprites(world: &mut World) {
                 TextLayout::justify(Justify::Center),
                 TextFont {
                     font: font.clone().into(),
-                    font_size: FontSize::Px(20.0),
+                    font_size: FontSize::Px(CELL_FONT_SIZE),
                     ..default()
                 },
                 TextColor(palette_color(object.cell.color)),
@@ -396,11 +399,11 @@ fn object_translation(sprite: &ObjectSprite, camera: &ViewCamera) -> Vec3 {
 /// Where the view camera shows a map point, in 2D world units around the
 /// screen centre.
 ///
-/// The map turns as one rigid picture. Cells are taller than wide, so the
-/// spacing along each map axis eases from the cell width to its height as
-/// that axis turns from horizontal to vertical on screen: at every quarter
-/// turn this is the upright grid (`ViewCamera::to_view` in cell units), and
-/// half way the cells are square.
+/// The map turns as one rigid picture. With square cells that is all; if
+/// the cell font were not square, the spacing along each map axis eases
+/// from the cell width to its height as that axis turns from horizontal to
+/// vertical on screen, so every quarter turn is the upright grid
+/// (`ViewCamera::to_view` in cell units) and half way the cells are square.
 fn view_translation(camera: &ViewCamera, map: Vec2) -> Vec3 {
     let turn = camera.turn();
     // 1 while map x runs across the screen, 0 while it runs up and down.

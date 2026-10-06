@@ -134,7 +134,7 @@ tests/reference_parity.rs  independent C# FOV/light/palette fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
 assets/maps/       map1/2/3, map1_test, lightTest
 assets/rules/      wall + three direction rules
-assets/fonts/      DejaVu Sans Mono + redistribution license
+assets/fonts/      Unscii-8 square pixel font (public domain)
 assets/shaders/    world-space procedural 3D surface material
 ```
 
