@@ -37,6 +37,10 @@ pub struct EnemyMind {
     pub walk: Option<Walk>,
     /// Where this agent has been told to go, if anywhere.
     pub order: Option<IVec2>,
+    /// How walking to the order is going. The walk asked for last turn's
+    /// order counts too: an order that moves every turn (a pacing player)
+    /// would otherwise never be the walk's goal by the time it is reported.
+    pub order_walk: Option<WalkStatus>,
     /// Carries a key.
     pub has_key: bool,
     /// Keys lying on the map and where, nearest first (as the crow flies,

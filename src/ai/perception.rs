@@ -89,7 +89,12 @@ pub fn perceive_objectives(
         if !mind.has_turn {
             continue;
         }
+        let previous = mind.order;
         mind.order = order.target;
+        mind.order_walk = mind
+            .walk
+            .filter(|walk| Some(walk.goal) == mind.order || Some(walk.goal) == previous)
+            .map(|walk| walk.status);
         mind.has_key =
             inventory.is_some_and(|items| items.0.iter().any(|&item| carried_keys.contains(item)));
         let pos = mind.pos;

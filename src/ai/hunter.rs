@@ -82,8 +82,7 @@ pub fn hunter_tree() -> impl BehaviorNode<EnemyMind, EnemyAct> {
                 // waits for a way to open up.
                 Goal::FollowOrder => select((
                     force_failure(need(|mind: &EnemyMind, _: &Goal| {
-                        let order = mind.order?;
-                        let stuck = mind.walk_to(order) == Some(WalkStatus::Unreachable);
+                        let stuck = mind.order_walk == Some(WalkStatus::Unreachable);
                         (stuck && !mind.has_key && mind.keys[0].is_some())
                             .then_some(Goal::Unlock(mind.pos))
                     })),

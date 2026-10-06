@@ -732,6 +732,41 @@ fn a_hunter_with_no_key_in_reach_holds() {
     assert_eq!(last.enemies[0].2, Some(EnemyAct::GoTo(Dest::Order)));
 }
 
+/// The demo map (`--map assets/maps/hunter_keys.txt`): the nearest keys are
+/// walled in or behind the first door, so the hunter walks away for the far
+/// one, opens the first door, then fetches the key it could not reach before
+/// for the second.
+#[test]
+fn a_hunter_works_through_the_demo_map() {
+    let mut game = Game::new(include_str!("../assets/maps/hunter_keys.txt"));
+    game.turns(70);
+    game.print("hunter: demo map");
+    let last = game.trace.last().unwrap();
+    assert_eq!(last.keys, vec![IVec2::new(9, 1)], "took the wrong keys");
+    assert_eq!(doors_open(last), 2);
+    assert_caught(&game);
+}
+
+/// The same with the player pacing, so the order moves every turn: the
+/// hunter still sees there is no way to it and goes for the keys.
+#[test]
+fn a_hunter_fetches_keys_while_the_player_paces() {
+    let mut game = Game::new(include_str!("../assets/maps/hunter_keys.txt"));
+    for turn in 0..70 {
+        let key = if turn % 2 == 0 {
+            KeyCode::ArrowLeft
+        } else {
+            KeyCode::ArrowRight
+        };
+        game.turn(Some(key));
+    }
+    game.print("hunter: demo map, pacing player");
+    let last = game.trace.last().unwrap();
+    assert_eq!(last.keys, vec![IVec2::new(9, 1)], "took the wrong keys");
+    assert_eq!(doors_open(last), 2);
+    assert_caught(&game);
+}
+
 /// Fetching the key with plans made off the frame, as in the game.
 #[test]
 fn a_hunter_planning_in_the_background_fetches_the_key() {

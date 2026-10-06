@@ -165,7 +165,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 143 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 160 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
@@ -228,6 +228,18 @@ for 8 frames, like a player holding the key, taps the camera keys `Q`/`E`
 (turn) and `Z`/`X` (zoom) once, and `.` releases; turn into a
 video with, for example,
 `ffmpeg -framerate 60 -i DIR/frame_%05d.png -pix_fmt yuv420p walk.mp4`.
+
+`--map FILE` plays another map instead of the bundled one, and `--reveal`
+shows the whole map rather than what the player sees, for recording what
+enemies do out of sight. The hunter demo (`media/hunter-keys.mp4`):
+
+```sh
+cargo run --release -- --map assets/maps/hunter_keys.txt --reveal \
+  --record recordings/hunter --walk "$(printf 'LR%.0s' $(seq 40))"
+```
+
+Without a GPU, run it under `xvfb-run` with Mesa's software Vulkan
+(`mesa-vulkan-drivers`, `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`).
 
 Screenshot mode uses deterministic 16ms frames, optionally replays `UDLR`
 (and the camera keys `QEZX`) through the real keyboard system, saves a PNG, then exits. It requires GPU
