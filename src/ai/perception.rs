@@ -81,7 +81,7 @@ pub fn order_hunters(
 /// What goal-driven agents read on top of `perceive`: their order and keys.
 pub fn perceive_objectives(
     carried_keys: Query<(), With<Key>>,
-    keys_on_map: Query<&Pos, (With<Key>, With<Item>)>,
+    keys_on_map: Query<(Entity, &Pos), (With<Key>, With<Item>)>,
     mut agents: Query<(&Order, Option<&Inventory>, &mut EnemyMind)>,
 ) {
     for (order, inventory, mut mind) in agents.iter_mut() {
@@ -95,8 +95,8 @@ pub fn perceive_objectives(
         let pos = mind.pos;
         // Nearest first, kept without sorting a list: few keys, few slots.
         mind.keys = [None; KNOWN_KEYS];
-        for key in keys_on_map.iter().map(|key| key.0) {
-            let distance = |cell: IVec2| (cell - pos).abs().element_sum();
+        for key in keys_on_map.iter().map(|(entity, cell)| (entity, cell.0)) {
+            let distance = |(_, cell): (Entity, IVec2)| (cell - pos).abs().element_sum();
             let mut candidate = Some(key);
             for slot in &mut mind.keys {
                 match (*slot, candidate) {

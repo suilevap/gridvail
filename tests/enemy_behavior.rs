@@ -679,6 +679,59 @@ fn a_hunter_skips_a_key_it_cannot_reach() {
     assert_caught(&game);
 }
 
+/// `GetKey` asks for the keys one by one, nearest first: two walled-in keys
+/// fail in turn before the farthest, reachable one is fetched.
+#[test]
+fn a_hunter_tries_every_key_before_giving_up() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXXXXXX\n\
+         XkX..........X...X\n\
+         XXX.....h....D.p.X\n\
+         XkX..........X...X\n\
+         XXX..........X...X\n\
+         X.k..........X...X\n\
+         XXXXXXXXXXXXXXXXXX\n",
+    );
+    game.turns(45);
+    game.print("hunter: third key");
+    let last = game.trace.last().unwrap();
+    assert_eq!(
+        last.keys,
+        vec![IVec2::new(1, 1), IVec2::new(1, 3)],
+        "took the wrong key"
+    );
+    assert_eq!(doors_open(last), 1);
+    assert_caught(&game);
+}
+
+/// When every key fails, so does `GetKey`: the hunter holds at the door
+/// instead of trying the same keys again.
+#[test]
+fn a_hunter_with_no_key_in_reach_holds() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXX\n\
+         XkX......X...X\n\
+         XXX..h...D.p.X\n\
+         XkX......X...X\n\
+         XXX......X...X\n\
+         XXXXXXXXXXXXXX\n",
+    );
+    game.turns(20);
+    game.print("hunter: no key in reach");
+    let last = game.trace.last().unwrap();
+    assert_eq!(keys_left(last), 2);
+    assert!(!door_open(last));
+    let settled: Vec<IVec2> = game.trace[game.trace.len() - 6..]
+        .iter()
+        .map(|snap| snap.enemies[0].1)
+        .collect();
+    assert!(
+        settled.windows(2).all(|pair| pair[0] == pair[1]),
+        "still pacing: {settled:?}"
+    );
+    assert_eq!(last.enemies[0].2, Some(EnemyAct::GoTo(Dest::Order)));
+}
+
 /// Fetching the key with plans made off the frame, as in the game.
 #[test]
 fn a_hunter_planning_in_the_background_fetches_the_key() {

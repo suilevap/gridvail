@@ -39,9 +39,9 @@ pub struct EnemyMind {
     pub order: Option<IVec2>,
     /// Carries a key.
     pub has_key: bool,
-    /// Keys lying on the map, nearest first (as the crow flies, so a near
-    /// one may still be out of reach).
-    pub keys: [Option<IVec2>; KNOWN_KEYS],
+    /// Keys lying on the map and where, nearest first (as the crow flies,
+    /// so a near one may still be out of reach).
+    pub keys: [Option<(Entity, IVec2)>; KNOWN_KEYS],
 }
 
 /// Where an agent is walking, and how it is going.
@@ -92,6 +92,15 @@ impl EnemyMind {
         self.walk
             .filter(|walk| walk.goal == goal)
             .map(|walk| walk.status)
+    }
+
+    /// Where the key `key` lies, if it is still on the map.
+    pub fn key_at(&self, key: Entity) -> Option<IVec2> {
+        self.keys
+            .iter()
+            .flatten()
+            .find(|(known, _)| *known == key)
+            .map(|&(_, cell)| cell)
     }
 
     /// Whether the walk to `goal` has ended without getting there.
