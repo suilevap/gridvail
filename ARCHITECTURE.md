@@ -93,8 +93,10 @@ and renderers must not import it.
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
   at its animated position, each placed where the view camera shows it. Its
   2D camera never moves: a turning view turns the whole picture, glyphs
-  included, with cell spacing eased between the 12×20 cell's width and
-  height. Glyphs are drawn for the nearest quarter turn (wall and facing
+  included. Cells are square (the Unscii-8 pixel font, drawn at 16 px with
+  one world unit per screen pixel), so the turn is rigid; for a non-square
+  cell font the spacing would ease between cell width and height. Glyphs
+  are drawn for the nearest quarter turn (wall and facing
   glyphs swapped for their turned versions) and tilted by the rest, so at
   rest they are upright and crisp. Wall
   meshes in the 3D backend follow their objects the same way, and its
