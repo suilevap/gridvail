@@ -1,0 +1,14 @@
+Unscii by Viznut (https://github.com/viznut/unscii, http://viznut.fi/unscii/)
+
+unscii-8.ttf is taken unmodified from the fontfiles/ directory of the
+upstream repository at commit 257b4dfeb50651510fe8b9cf4f151a148a4490e4.
+
+The upstream README states:
+
+  Licensing: You can consider it Public Domain (or CC-0) except for the
+  files derived from or containing parts of Roman Czyborra's Unifont
+  project (unifont.hex, hex2bdf.pl, unscii-16-full.*) which fall under
+  GPL.
+
+unscii-8.ttf is not one of the Unifont-derived files, so it is Public
+Domain / CC0-1.0.
