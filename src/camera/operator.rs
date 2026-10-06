@@ -2,7 +2,7 @@ use std::f32::consts::FRAC_PI_2;
 
 use bevy::prelude::*;
 
-use crate::animation::{Easing, MotionState, MotionStyle, Tween};
+use crate::animation::{MotionState, MotionStyle, Tween};
 use crate::model::*;
 
 /// The smallest and largest zoom the operator allows.
@@ -38,7 +38,7 @@ pub struct CameraOperator {
     pub follow: CameraFollow,
     /// Seconds a change of target, rotation, zoom or offset takes.
     pub transition: f32,
-    pub easing: Easing,
+    pub easing: EaseFunction,
     target: CameraTarget,
     rotation: Tween<f32>,
     zoom: Tween<f32>,
@@ -62,7 +62,7 @@ impl CameraOperator {
         Self {
             follow: CameraFollow::Locked,
             transition: 0.3,
-            easing: Easing::EaseInOut,
+            easing: EaseFunction::SmoothStep,
             target,
             rotation: Tween::at(0.0),
             zoom: Tween::at(1.0),

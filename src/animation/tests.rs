@@ -94,7 +94,7 @@ fn locomotion_with_step(seconds: f32) -> MotionStyle {
 fn tween(seconds: f32) -> MotionStyle {
     MotionStyle::Tween {
         duration: seconds,
-        easing: Easing::EaseOut,
+        easing: EaseFunction::QuadraticOut,
     }
 }
 

@@ -402,16 +402,14 @@ fn object_translation(sprite: &ObjectSprite, camera: &ViewCamera) -> Vec3 {
 /// turn this is the upright grid (`ViewCamera::to_view` in cell units), and
 /// half way the cells are square.
 fn view_translation(camera: &ViewCamera, map: Vec2) -> Vec3 {
-    let (sin, cos) = camera.rotation.sin_cos();
+    let turn = camera.turn();
     // 1 while map x runs across the screen, 0 while it runs up and down.
-    let across = cos * cos;
+    let across = turn.cos * turn.cos;
     let spacing = Vec2::new(
         CELL_SIZE.y.lerp(CELL_SIZE.x, across),
         CELL_SIZE.x.lerp(CELL_SIZE.y, across),
     );
-    let d = (map - camera.position) * spacing;
-    // Counter-clockwise on screen, with y down like the map.
-    let turned = Vec2::new(d.x * cos + d.y * sin, -d.x * sin + d.y * cos);
+    let turned = turn * ((map - camera.position) * spacing);
     let view = (turned + camera.offset * CELL_SIZE) * camera.zoom;
     Vec3::new(view.x, -view.y, 0.0)
 }

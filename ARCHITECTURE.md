@@ -83,7 +83,9 @@ and renderers must not import it.
   between map and view cells). `CameraOperator` follows a target (the
   player by default), either locked on its animated position or trailing
   it with its own moves, and eases every change of rotation, zoom, offset
-  or target with a `Tween`. Q/E turn the view a quarter turn and Z/X zoom;
+  or target with a `Tween` (a retargetable value on Bevy's `EasingCurve`;
+  all easing uses Bevy's `EaseFunction`). Q/E turn the view a quarter turn
+  and Z/X zoom;
   movement keys are read as screen directions. Renderers only read the
   camera. `PORTALS.md` builds the portal view on it.
   `PresentationPlugin` owns those systems and all map-sized frame resources.

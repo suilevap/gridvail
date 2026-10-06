@@ -29,35 +29,6 @@ const RUN_GAP: f32 = 1.6;
 /// How far toward what blocked it a bumping object pushes, in cells.
 const BUMP_CELLS: f32 = 0.2;
 
-/// Shape of a tween from 0 to 1.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Easing {
-    Linear,
-    /// Fast start, gentle arrival.
-    EaseOut,
-    /// Gentle start and arrival.
-    EaseInOut,
-    /// Passes the cell and settles back; `overshoot` 1.70158 is ~10%.
-    Back {
-        overshoot: f32,
-    },
-}
-
-impl Easing {
-    pub fn apply(self, t: f32) -> f32 {
-        let t = t.clamp(0.0, 1.0);
-        match self {
-            Self::Linear => t,
-            Self::EaseOut => t * (2.0 - t),
-            Self::EaseInOut => t * t * (3.0 - 2.0 * t),
-            Self::Back { overshoot } => {
-                let u = t - 1.0;
-                1.0 + (overshoot + 1.0) * u * u * u + overshoot * u * u
-            }
-        }
-    }
-}
-
 /// How objects move between cells.
 ///
 /// The resource is the style for every object: insert one before adding
@@ -68,7 +39,7 @@ pub enum MotionStyle {
     /// Jump straight to the new cell.
     Snap,
     /// Interpolation from the displayed position, `duration` per cell.
-    Tween { duration: f32, easing: Easing },
+    Tween { duration: f32, easing: EaseFunction },
     /// Momentum-driven steps that read as walking and running.
     ///
     /// Each move lasts `step` seconds per cell and ends at `momentum` times
@@ -125,28 +96,28 @@ impl MotionStyle {
             "ease-out",
             Self::Tween {
                 duration: 0.1,
-                easing: Easing::EaseOut,
+                easing: EaseFunction::QuadraticOut,
             },
         ),
         (
             "linear",
             Self::Tween {
                 duration: 0.1,
-                easing: Easing::Linear,
+                easing: EaseFunction::Linear,
             },
         ),
         (
             "ease-in-out",
             Self::Tween {
                 duration: 0.12,
-                easing: Easing::EaseInOut,
+                easing: EaseFunction::SmoothStep,
             },
         ),
         (
             "overshoot",
             Self::Tween {
                 duration: 0.18,
-                easing: Easing::Back { overshoot: 1.70158 },
+                easing: EaseFunction::BackOut,
             },
         ),
         ("snap", Self::Snap),
@@ -182,18 +153,18 @@ impl MotionStyle {
         match self {
             Self::Locomotion { step, .. } => Self::Tween {
                 duration: step,
-                easing: Easing::EaseInOut,
+                easing: EaseFunction::SmoothStep,
             },
             other => other,
         }
     }
 
     /// Duration and easing of a one-cell move in this style.
-    fn timing(&self) -> (f32, Easing) {
+    fn timing(&self) -> (f32, EaseFunction) {
         match *self {
-            Self::Snap => (0.0, Easing::Linear),
+            Self::Snap => (0.0, EaseFunction::Linear),
             Self::Tween { duration, easing } => (duration, easing),
-            Self::Locomotion { step, .. } => (step, Easing::Linear),
+            Self::Locomotion { step, .. } => (step, EaseFunction::Linear),
         }
     }
 }
@@ -292,7 +263,7 @@ pub struct Move {
     pub to: Vec2,
     pub path: Path,
     pub duration: f32,
-    pub easing: Easing,
+    pub easing: EaseFunction,
     pub secondary: Secondary,
     /// Whether leftover speed coasts on after the move (locomotion).
     pub coast: Option<Coast>,
@@ -333,7 +304,7 @@ impl MotionState {
                 to: cell,
                 path: Path::Straight,
                 duration: 0.0,
-                easing: Easing::Linear,
+                easing: EaseFunction::Linear,
                 secondary: Secondary::default(),
                 coast: None,
             },
@@ -483,7 +454,7 @@ impl MotionState {
         if self.elapsed < duration {
             self.elapsed += dt;
             let s = (self.elapsed / duration).min(1.0);
-            let next = path.sample(from, to, easing.apply(s));
+            let next = path.sample(from, to, easing.sample_clamped(s));
             if dt > 0.0 {
                 self.velocity = (next - self.position) / dt;
             }
@@ -789,7 +760,7 @@ mod tests {
             locomotion().steady(),
             MotionStyle::Tween {
                 duration: STEP,
-                easing: Easing::EaseInOut
+                easing: EaseFunction::SmoothStep
             }
         );
         assert_eq!(ease_out().steady(), ease_out());
@@ -916,7 +887,7 @@ mod tests {
         assert_eq!(
             MotionStyle::Tween {
                 duration: 0.5,
-                easing: Easing::Linear
+                easing: EaseFunction::Linear
             }
             .name(),
             "custom"
