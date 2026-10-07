@@ -21,6 +21,7 @@ use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{AnimatedPos, Player, Pos, ViewCamera, Vis, VisibilityMap};
 use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, TextRendererPlugin};
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
+use pav_ecs_game_bevy_port::service::ServiceMode;
 
 const CAPTURE_STEP_FRAMES: u32 = 8;
 /// Frames recorded after the walk, so the last move can settle on camera.
@@ -46,12 +47,23 @@ fn main() -> AppExit {
             ..default()
         })
         .set(ImagePlugin::default_nearest());
+    // Tasks (path plans) run off the frame in play, so a slow plan costs that
+    // enemy a turn at most and never a frame. Captures replay scripted input
+    // and stay deterministic.
+    let services = if let Some(polls) = options.plan_delay {
+        ServiceMode::Deferred(polls)
+    } else if capture.is_some() || record.is_some() {
+        ServiceMode::Inline
+    } else {
+        ServiceMode::Background
+    };
     let mut app = App::new();
     if let Some(path) = options.map {
         let text = std::fs::read_to_string(&path).expect("read the --map file");
         app.insert_resource(MapText(text.leak()));
     }
     app.insert_resource(ClearColor(Color::BLACK))
+        .insert_resource(services)
         .insert_resource(options.motion)
         .add_plugins(plugins)
         .add_plugins(GamePlugin)
@@ -126,6 +138,10 @@ struct Options {
     /// Show the whole map, not only what the player sees: for recordings of
     /// what happens out of sight.
     reveal: bool,
+    /// Every task (path plans) lands only after this many polls: to see
+    /// thinking that takes longer than a turn. An enemy polls each frame it
+    /// keeps its turn open, a few per turn.
+    plan_delay: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -145,6 +161,7 @@ impl Options {
         let mut motion = None;
         let mut map = None;
         let mut reveal = false;
+        let mut plan_delay = None;
         let mut args = std::env::args().skip(1);
         while let Some(argument) = args.next() {
             match argument.as_str() {
@@ -164,6 +181,10 @@ impl Options {
                     map = Some(args.next().expect("--map requires a map file"));
                 }
                 "--reveal" => reveal = true,
+                "--plan-delay" if plan_delay.is_none() => {
+                    let polls = args.next().expect("--plan-delay requires a poll count");
+                    plan_delay = Some(polls.parse().expect("--plan-delay must be a poll count"));
+                }
                 "--walk" if walk.is_none() => {
                     walk = Some(args.next().expect("--walk requires UDLRQEZX steps"));
                 }
@@ -188,7 +209,7 @@ impl Options {
                     }));
                 }
                 _ => panic!(
-                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--motion STYLE] [--map FILE] [--reveal] [--remote | --remote-port PORT] [--screenshot OUTPUT.png | --record DIR] [--walk UDLRQEZX.]"
+                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--motion STYLE] [--map FILE] [--reveal] [--plan-delay POLLS] [--remote | --remote-port PORT] [--screenshot OUTPUT.png | --record DIR] [--walk UDLRQEZX.]"
                 ),
             }
         }
@@ -210,6 +231,7 @@ impl Options {
             motion: motion.unwrap_or_default(),
             map,
             reveal,
+            plan_delay,
         }
     }
 }

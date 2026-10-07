@@ -14,10 +14,12 @@
 
 #![allow(clippy::type_complexity)]
 
+mod paths;
 mod planner;
 mod plugin;
 
 pub use gridvail_path as path;
+pub use paths::*;
 pub use planner::*;
 pub use plugin::*;
 
@@ -49,7 +51,7 @@ pub enum NavCell {
 }
 
 /// Walkability of every map cell.
-#[derive(Resource, Debug)]
+#[derive(Resource, Clone, Debug)]
 pub struct NavMap {
     grid: Grid,
     cells: Vec<NavCell>,
@@ -111,6 +113,11 @@ impl NavMap {
         if let Some(index) = self.grid.index(cell_of(p)) {
             self.cells[index] = cell;
         }
+    }
+
+    /// `MapGrid::blocker_revision` the cells were built from.
+    pub fn revision(&self) -> Option<u64> {
+        self.revision
     }
 
     /// Whether the snapshot is older than the map's static blockers.
@@ -182,6 +189,45 @@ pub trait Occupancy {
 impl Occupancy for MapGrid {
     fn occupied(&self, p: IVec2) -> bool {
         self.get(p).is_some()
+    }
+}
+
+/// Occupied cells copied from the [`MapGrid`], for planning away from it
+/// (on another thread). Refreshed in place while nothing else holds it.
+#[derive(Clone, Debug, Default)]
+pub struct OccupancyMap {
+    width: i32,
+    height: i32,
+    cells: Vec<bool>,
+    /// `MapGrid::revision` the cells were copied at.
+    revision: Option<u64>,
+}
+
+impl OccupancyMap {
+    /// Copies `grid`'s occupancy unless it is already current.
+    pub fn refresh(&mut self, grid: &MapGrid) {
+        if self.revision == Some(grid.revision) {
+            return;
+        }
+        self.width = grid.width;
+        self.height = grid.height;
+        self.cells.clear();
+        self.cells.extend(
+            (0..grid.height)
+                .flat_map(|y| (0..grid.width).map(move |x| IVec2::new(x, y)))
+                .map(|p| grid.get(p).is_some()),
+        );
+        self.revision = Some(grid.revision);
+    }
+}
+
+impl Occupancy for OccupancyMap {
+    fn occupied(&self, p: IVec2) -> bool {
+        p.x >= 0
+            && p.y >= 0
+            && p.x < self.width
+            && p.y < self.height
+            && self.cells[(p.y * self.width + p.x) as usize]
     }
 }
 

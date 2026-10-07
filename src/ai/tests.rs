@@ -36,7 +36,7 @@ fn door_costs_follow_the_keys_held() {
 }
 
 #[test]
-fn wandering_enemies_keep_moving_to_new_goals() {
+fn idle_enemies_keep_strolling_to_new_cells() {
     let mut app = boot_walking();
     let world = app.world_mut();
     let enemies: Vec<(Entity, IVec2)> = world
@@ -48,7 +48,10 @@ fn wandering_enemies_keep_moving_to_new_goals() {
     for _ in 0..300 {
         app.update();
         for (i, (enemy, _)) in enemies.iter().enumerate() {
-            let goal = app.world().get::<Destination>(*enemy).unwrap().goal();
+            let goal = match app.world().get::<EnemyAct>(*enemy) {
+                Some(EnemyAct::Move(_, path)) => path.end(),
+                _ => None,
+            };
             if let Some(goal) = goal {
                 if goals[i].last() != Some(&goal) {
                     goals[i].push(goal);
@@ -97,8 +100,9 @@ mod trees {
 
     use crate::ai::{enemy_tree, AiPlugin};
     use crate::model::*;
-    use crate::navigation::NavMap;
+    use crate::navigation::NavigationPlugin;
     use crate::schedule::GamePhase;
+    use crate::service::ServiceMode;
     use crate::vision::VisionPlugin;
 
     const ENEMY: IVec2 = IVec2::new(1, 1);
@@ -106,12 +110,14 @@ mod trees {
 
     fn headless() -> App {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, AiPlugin, VisionPlugin))
-            // Sight from this frame's field of view, as a turn sees it in
-            // the game, where the view was computed frames earlier.
-            .configure_sets(Update, GamePhase::FieldOfView.before(GamePhase::Simulation))
+        app.add_plugins((MinimalPlugins, AiPlugin, VisionPlugin, NavigationPlugin))
+            // Sight and the nav map from this frame, as a turn sees them in
+            // the game, where they were computed frames earlier.
+            .configure_sets(
+                Update,
+                (GamePhase::FieldOfView, GamePhase::Navigation).before(GamePhase::Simulation),
+            )
             .insert_resource(MapGrid::new(8, 8))
-            .init_resource::<NavMap>()
             .init_resource::<TurnState>()
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(42)));
         app.world_mut().spawn((Active, Player(0), Pos(PLAYER)));
@@ -154,15 +160,22 @@ mod trees {
     }
 
     fn act_of(app: &App, enemy: Entity) -> Option<EnemyAct> {
-        app.world().get::<EnemyAct>(enemy).copied()
+        app.world().get::<EnemyAct>(enemy).cloned()
     }
 
-    fn goal_of(app: &App, enemy: Entity) -> Option<IVec2> {
-        app.world().get::<Destination>(enemy).unwrap().goal()
+    /// A walk in `mood`, and where its path leads.
+    fn walking(act: Option<EnemyAct>) -> Option<(Mood, Option<IVec2>)> {
+        match act {
+            Some(EnemyAct::Move(mood, path)) => Some((mood, path.end())),
+            _ => None,
+        }
     }
 
     fn is_idle(act: Option<EnemyAct>) -> bool {
-        matches!(act, Some(EnemyAct::Patrol(_) | EnemyAct::Rest))
+        matches!(
+            act,
+            Some(EnemyAct::Rest | EnemyAct::Move(Mood::Patrol, _) | EnemyAct::Think(Mood::Patrol))
+        )
     }
 
     // Nothing spends tokens in this app, so every update is another turn.
@@ -175,11 +188,16 @@ mod trees {
         assert_eq!(act_of(&app, enemy), Some(EnemyAct::Alert));
         let command = app.world().get::<MoveCommand>(enemy).unwrap();
         assert!(command.active && command.target == IVec2::ZERO);
-        assert_eq!(goal_of(&app, enemy), None);
 
         app.update();
-        assert_eq!(act_of(&app, enemy), Some(EnemyAct::Hunt(PLAYER)));
-        assert_eq!(goal_of(&app, enemy), Some(PLAYER), "a walk for locomotion");
+        // Planned inline: the path lands in the same tick, and the first
+        // step along it is ordered.
+        assert_eq!(
+            walking(act_of(&app, enemy)),
+            Some((Mood::Hunt, Some(PLAYER)))
+        );
+        let command = app.world().get::<MoveCommand>(enemy).unwrap();
+        assert!(command.active && command.target == IVec2::X);
     }
 
     #[test]
@@ -201,24 +219,51 @@ mod trees {
         app.update();
         wall_at(&mut app, IVec2::new(3, 1));
         app.update();
-        assert_eq!(act_of(&app, enemy), Some(EnemyAct::Search(PLAYER)));
-        assert_eq!(goal_of(&app, enemy), Some(PLAYER));
+        assert_eq!(
+            walking(act_of(&app, enemy)),
+            Some((Mood::Search, Some(PLAYER)))
+        );
     }
 
     #[test]
-    fn a_search_locomotion_cannot_finish_is_given_up() {
+    fn a_search_with_no_way_there_is_given_up() {
         let mut app = headless();
         let enemy = spawn_enemy(&mut app, 1);
         app.update();
         app.update();
-        wall_at(&mut app, IVec2::new(3, 1));
+        // Walled in where it was last seen: out of sight, and no way there.
+        for wall in [(4, 1), (6, 1), (5, 0), (5, 2)] {
+            wall_at(&mut app, IVec2::from(wall));
+        }
         app.update();
-        // Locomotion reports there is no way to the last sighting.
-        app.world_mut().get_mut::<PathFollow>(enemy).unwrap().status = WalkStatus::Unreachable;
         app.update();
         assert!(is_idle(act_of(&app, enemy)), "{:?}", act_of(&app, enemy));
         assert_eq!(app.world().get::<EnemyMind>(enemy).unwrap().last_seen, None);
-        assert_eq!(goal_of(&app, enemy), None, "the walk was called off");
+    }
+
+    /// The tree only waits: where the plan runs is the service's business.
+    #[test]
+    fn a_slow_path_is_thought_about_without_spending_the_turn() {
+        let mut app = headless();
+        app.insert_resource(ServiceMode::Deferred(3));
+        let enemy = spawn_enemy(&mut app, 1);
+        app.update();
+        assert_eq!(act_of(&app, enemy), Some(EnemyAct::Alert));
+        // Nothing carries commands out here; clear the alert's wait.
+        app.world_mut()
+            .get_mut::<MoveCommand>(enemy)
+            .unwrap()
+            .active = false;
+        for _ in 0..3 {
+            app.update();
+            assert_eq!(act_of(&app, enemy), Some(EnemyAct::Think(Mood::Hunt)));
+            assert!(!app.world().get::<MoveCommand>(enemy).unwrap().active);
+        }
+        app.update();
+        assert_eq!(
+            walking(act_of(&app, enemy)),
+            Some((Mood::Hunt, Some(PLAYER)))
+        );
     }
 
     #[test]

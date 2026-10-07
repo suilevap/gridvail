@@ -3,17 +3,22 @@ use bevy::prelude::*;
 use crate::model::*;
 use crate::schedule::GamePhase;
 
-use super::{NavMap, PathPlanner};
+use super::{share_paths, NavMap, PathPlanner, PathService};
+use crate::service::ServiceMode;
 
 /// Keeps [`NavMap`] in step with the map's walls and doors, and provides the
-/// shared [`PathPlanner`].
+/// shared [`PathPlanner`] and the [`PathService`] (paths as tasks, run as
+/// [`ServiceMode`] says).
 pub struct NavigationPlugin;
 
 impl Plugin for NavigationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<NavMap>()
             .init_resource::<PathPlanner>()
-            .add_systems(Update, update_nav_map.in_set(GamePhase::Navigation));
+            .init_resource::<ServiceMode>()
+            .init_resource::<PathService>()
+            .add_systems(Update, update_nav_map.in_set(GamePhase::Navigation))
+            .add_systems(Update, share_paths.in_set(GamePhase::Simulation));
     }
 }
 

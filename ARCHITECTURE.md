@@ -36,6 +36,12 @@ and renderers must not import it.
   lighting, world resources, and presentation buffers. It contains no systems.
 - `schedule.rs` defines startup and update phase sets. It contains no systems
   and lets plugins declare ordering without depending on `app`.
+- `service.rs` runs work that may take longer than a frame as a `Task<T>`,
+  a promise its asker keeps and polls on later frames; dropping it cancels
+  the work. `ServiceMode` runs tasks inline (default, deterministic: tests
+  and captures), in the background on the async compute pool (the game),
+  or inline but handed over a fixed number of polls later (tests,
+  `--plan-delay`). It knows nothing of what the work is.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
@@ -46,7 +52,10 @@ and renderers must not import it.
   rebuilt when its static blockers change, and the game's base `Terrain`
   rules for the `gridvail-path` crate. New pathfinding rules (enemy sight,
   door limits, places to avoid) are `Rules` combined with `Terrain`;
-  `PathPlanner` plans on the map with reused memory.
+  `PathPlanner` plans on the map with reused memory. `PathService` plans
+  paths as tasks over its own copies of the map (kept current by
+  `share_paths`), into pooled buffers: a `Path` is a cheap shared handle,
+  and its buffer goes back to the pool when the last handle drops.
 - `locomotion/` walks actors to their `Destination` (its input, which
   anything may write): it plans with the navigation planner using the
   actor's `TraversalPrefs`, keeps progress and the outcome in `PathFollow`,
@@ -59,11 +68,16 @@ and renderers must not import it.
   `TraversalPrefs`). It writes intentions, never moves anything itself.
   Enemies decide with FlatBT behavior trees: `perceive` fills the
   `EnemyMind` blackboard (sight through the enemy's own `VisualSensor`
-  field of view, last sighting, locomotion's report on the
-  current walk), the tree reports an `EnemyAct`, and `carry_out` turns it
-  into a single step or a `Destination`. A walk is requested again only when
-  its goal changes or a step of it failed, so locomotion replans around
-  whoever is in the way. Out-of-turn enemies are skipped with `Tick::Skip`.
+  field of view, last sighting, a stroll cell) and lends it the
+  `PathService` for the tick. A walk is a `scope!`: `await_task` (generic:
+  any `Task`, held in the node's state, so leaving the branch cancels it)
+  plans into a path local, then `Follow` reports `EnemyAct::Move(mood,
+  path)` a turn at a time until it arrives, the goal moves away, or a step
+  fails (someone in the way), after which the tree plans again.
+  `carry_out` turns each act into a single step. A thinking enemy
+  (`EnemyAct::Think`) keeps its turn open for a few frames for its path,
+  then waits the turn out. Out-of-turn enemies are skipped with
+  `Tick::Skip`.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for
