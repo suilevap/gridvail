@@ -98,7 +98,9 @@ and renderers must not import it.
   cell font the spacing would ease between cell width and height. Glyphs
   are drawn for the nearest quarter turn (wall and facing
   glyphs swapped for their turned versions) and tilted by the rest, so at
-  rest they are upright and crisp. Wall
+  rest they are upright and crisp. Glyphs sample nearest (pixel-exact)
+  at rest and linearly while tilted, which smooths their edges mid-turn.
+  Wall
   meshes in the 3D backend follow their objects the same way, and its
   perspective camera orbits and zooms to match the view camera. The optional
   `ExtrudedWallRendererPlugin` adds a perspective camera plus shared wall and
