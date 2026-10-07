@@ -16,6 +16,7 @@ pub fn headless() -> App {
         .init_resource::<TurnPacing>()
         .init_resource::<CollisionBuffer>()
         .init_resource::<CommitBuffer>()
+        .init_resource::<PortalCrossings>()
         .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(42)))
         .add_systems(
             Update,

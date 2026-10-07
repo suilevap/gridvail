@@ -116,6 +116,7 @@ pub fn bump_blocked_movers(
     grid: Res<MapGrid>,
     collisions: Res<CollisionBuffer>,
     positions: Query<&Pos>,
+    facings: Query<&Facing>,
     mut objects: Query<(Option<&ObjectMotion>, &mut ObjectAnimation)>,
 ) {
     for collision in &collisions.0 {
@@ -129,8 +130,13 @@ pub fn bump_blocked_movers(
             continue;
         };
         let motion = style_of(own_style, *style);
-        let toward = wrapped_delta(source.0, target.0, &grid).as_vec2();
-        animation.state.bump(toward, motion);
+        let mut toward = wrapped_delta(source.0, target.0, &grid);
+        // Blocked at a portal's exit, what blocked it is far away: bump
+        // the way it was stepping.
+        if toward.length_squared() != 1 {
+            toward = facing_of(collision.source, &facings);
+        }
+        animation.state.bump(toward.as_vec2(), motion);
     }
 }
 
@@ -146,10 +152,12 @@ pub fn animate_objects(
     time: Res<Time>,
     style: Res<MotionStyle>,
     grid: Res<MapGrid>,
+    crossings: Option<Res<PortalCrossings>>,
     mut pacing: ResMut<TurnPacing>,
     // Children are placed relative to their parent by `animate_children`.
     mut objects: Query<
         (
+            Entity,
             &Pos,
             Option<&ObjectMotion>,
             Option<&MovePath>,
@@ -162,7 +170,15 @@ pub fn animate_objects(
 ) {
     let dt = time.delta_secs();
     let mut blocking = 0.0_f32;
-    for (pos, own_style, path, non_blocking, mut animation, mut shown) in &mut objects {
+    for (entity, pos, own_style, path, non_blocking, mut animation, mut shown) in &mut objects {
+        // A step through a portal carries on from the exit: the motion so
+        // far is moved there first, so the step starts at the exit face.
+        if let Some(through) = crossings
+            .as_ref()
+            .and_then(|crossings| crossings.arrived(entity, pos.0))
+        {
+            animation.state.carry(&through);
+        }
         follow(
             &mut animation.state,
             pos.0.as_vec2(),

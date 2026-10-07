@@ -166,6 +166,7 @@ impl CameraOperator {
 pub fn operate_camera(
     time: Res<Time>,
     grid: Res<MapGrid>,
+    crossings: Option<Res<PortalCrossings>>,
     players: Query<Entity, With<Player>>,
     objects: Query<(&Pos, Option<&AnimatedPos>)>,
     mut operator: ResMut<CameraOperator>,
@@ -189,6 +190,15 @@ pub fn operate_camera(
         // it is.
         (_, None) => (camera.position, camera.position),
     };
+    // A target that stepped through a portal carries a trailing camera's
+    // own motion with it, like its animation.
+    if let (Some(entity), Some(crossings)) = (entity, crossings.as_ref()) {
+        if let Some(through) = crossings.arrived(entity, cell.as_ivec2()) {
+            if let Some(trail) = operator.trail.as_mut() {
+                trail.carry(&through);
+            }
+        }
+    }
     let on_target = operator.follow_target(shown, cell, &grid, dt);
     let blend = operator.handover.value();
     let position = operator.handover_from.lerp(on_target, blend);
