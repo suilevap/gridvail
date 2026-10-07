@@ -1,23 +1,52 @@
 use bevy::prelude::*;
+use flatbt_bevy::prelude::*;
 
-use super::{price_doors, random_walk, wander_goals, DoorPolicy};
+use super::*;
 use crate::locomotion::follow_paths;
 use crate::schedule::GamePhase;
-use crate::simulation::{move_commands, player_input};
+use crate::simulation::{direction_tiles, move_commands, player_input};
 
-/// Enemy decisions: random steps, wandering goals, and what doors are worth.
+/// Enemy decisions: behavior trees, wandering goals, random steps, and what
+/// doors are worth.
+///
+/// Every turn, between the player's input and the moves: door prices and
+/// perception, the trees' tick, then `carry_out` hands acts to locomotion
+/// (or orders a step directly), and `wait_if_idle` spends the token of an
+/// enemy whose walk took no step.
+///
+/// An enemy runs a tree with `EnemyMind` and a `Behavior` for `enemy_tree`
+/// (watch, hunt, wander).
 pub struct AiPlugin;
 
 impl Plugin for AiPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<DoorPolicy>().add_systems(
-            Update,
-            (random_walk, wander_goals, price_doors)
-                .chain()
-                .in_set(GamePhase::Simulation)
-                .after(player_input)
-                .before(follow_paths)
-                .before(move_commands),
-        );
+        app.init_resource::<DoorPolicy>()
+            .add_plugins(BehaviorPlugin::for_tree(enemy_tree).tick_mode(enemy_tick))
+            .configure_sets(
+                Update,
+                BehaviorSystems
+                    .in_set(GamePhase::Simulation)
+                    .after(player_input)
+                    .before(follow_paths),
+            )
+            .add_systems(
+                Update,
+                (
+                    (random_walk, wander_goals, price_doors, perceive)
+                        .chain()
+                        .before(BehaviorSystems),
+                    carry_out.after(BehaviorSystems).before(follow_paths),
+                    wait_if_idle.after(follow_paths),
+                )
+                    .in_set(GamePhase::Simulation)
+                    .after(player_input)
+                    .before(move_commands),
+            )
+            .add_systems(
+                Update,
+                show_mood
+                    .after(direction_tiles)
+                    .in_set(GamePhase::Simulation),
+            );
     }
 }

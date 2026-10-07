@@ -2558,6 +2558,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 
 [[package]]
+name = "flatbt"
+version = "0.1.0"
+source = "git+https://github.com/suilevap/flatbt?branch=main#811f8fab117caf5b40c156ba2eb7d4ef7905ba0f"
+
+[[package]]
+name = "flatbt-bevy"
+version = "0.1.0"
+source = "git+https://github.com/suilevap/flatbt?branch=main#811f8fab117caf5b40c156ba2eb7d4ef7905ba0f"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_time",
+ "bevy_utils",
+ "flatbt",
+]
+
+[[package]]
 name = "flate2"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4252,6 +4269,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "bitflags 2.13.2",
+ "flatbt-bevy",
  "gridvail-path",
  "rand",
  "serde",
