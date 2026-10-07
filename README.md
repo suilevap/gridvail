@@ -50,8 +50,14 @@ next to this file.
   doors, rebuilt only when static blockers change, and `navigation::Terrain`
   is the base rule (walls block; closed doors block or cost extra). Searches
   do not wrap around the map edges.
-- Enemies wander along planned paths (a deviation: the original random-walks
-  them one step at a time). Locomotion (`locomotion/`) walks any actor to its
+- Enemies decide with [FlatBT](https://github.com/suilevap/flatbt) behavior
+  trees and walk along planned paths (a deviation: the original random-walks
+  them one step at a time). Unaware, they stroll to nearby cells and rest. On
+  spotting the player in their own field of view (the player's FOV, radius
+  8) they freeze for a beat (a yellow `!`), then hunt and attack, search
+  where it was last seen, and give up when it gets away. The trees only
+  report an `EnemyAct`; `ai::carry_out` turns it into a step or a
+  `Destination`. Locomotion (`locomotion/`) walks any actor to its
   `Destination`: it plans with the navigation planner using the actor's
   `TraversalPrefs` (what a closed door costs it, or that doors block), takes
   one step per action, and reports the outcome in `PathFollow::status`
@@ -59,8 +65,8 @@ next to this file.
   never changes the destination. The AI (`ai/`) decides: wanderers pick a
   random floor cell, and a new one once a walk ends, and `DoorPolicy` prices
   doors by the keys held, more for the last key (one key 20 steps of detour,
-  two 10, ten 2; no key, doors block). Planning memory is sized to the map,
-  so steady turns stay allocation-free.
+  two 10, ten 2; no key, doors block). Planning memory is sized to the
+  map, so steady turns stay allocation-free.
 - Player-bound `i` direction marker via relative position + rotation.
 - Wall autotiling from `wall_rule.txt`, direction glyphs from the three
   direction rules (the file's Y-down inversion is inherited verbatim).
@@ -121,7 +127,7 @@ src/model/                 ECS data split by gameplay domain
 src/simulation/            simulation plugin; control, motion, resolution, tiles
 src/vision/                vision plugin; FOV cache and player visibility
 src/navigation/            nav map snapshot, game rules and planner for pathfinding
-src/ai/                    enemy decisions: random steps, wander goals, door prices
+src/ai/                    enemy decisions: behavior trees (FlatBT), wander goals, door prices
 src/locomotion/            walking actors to their destination along planned paths
 crates/gridvail-path/      grid pathfinding crate (A*, per-state paths, no deps)
 src/lighting/              light math and palettes
@@ -129,6 +135,7 @@ src/presentation/          renderer-neutral lighting and frame composition
 src/rendering/             swappable Text2d and extruded-wall output plugins
 tests/full_map.rs  headless map1 boot + settle integration test
 tests/gameplay.rs  timed input, movement, collision, and vision regressions
+tests/enemy_behavior.rs  enemy behavior-tree scenarios on small ASCII maps
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
 tests/reference_parity.rs  independent C# FOV/light/palette fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
@@ -147,10 +154,14 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 113 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 139 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
+ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
 ```
+
+The last command prints each enemy scenario turn by turn: `!` alert, `H`
+hunting, `A` attacking, `S` searching, `p` patrolling, `z` resting, `k` a key, `+`/`'` a closed/open door.
 
 Every object glides when it moves (`animation::ObjectAnimationPlugin`,
 independent of the renderer): actors, and equally walls or decor that a
@@ -204,6 +215,18 @@ for 8 frames, like a player holding the key, taps the camera keys `Q`/`E`
 (turn) and `Z`/`X` (zoom) once, and `.` releases; turn into a
 video with, for example,
 `ffmpeg -framerate 60 -i DIR/frame_%05d.png -pix_fmt yuv420p walk.mp4`.
+
+`--map FILE` plays another map instead of the bundled one, and `--reveal`
+shows the whole map rather than what the player sees, for recording what
+enemies do out of sight:
+
+```sh
+cargo run --release -- --map my_map.txt --reveal \
+  --record recordings/enemies --walk "$(printf 'LR%.0s' $(seq 40))"
+```
+
+Without a GPU, run it under `xvfb-run` with Mesa's software Vulkan
+(`mesa-vulkan-drivers`, `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`).
 
 Screenshot mode uses deterministic 16ms frames, optionally replays `UDLR`
 (and the camera keys `QEZX`) through the real keyboard system, saves a PNG, then exits. It requires GPU

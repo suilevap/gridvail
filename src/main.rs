@@ -16,11 +16,11 @@ use bevy::{
 };
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
-use pav_ecs_game_bevy_port::app::GamePlugin;
+use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
-use pav_ecs_game_bevy_port::model::{AnimatedPos, Player, Pos, ViewCamera};
+use pav_ecs_game_bevy_port::model::{AnimatedPos, Player, Pos, ViewCamera, Vis, VisibilityMap};
 use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, TextRendererPlugin};
-use pav_ecs_game_bevy_port::schedule::StartupPhase;
+use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
 
 const CAPTURE_STEP_FRAMES: u32 = 8;
 /// Frames recorded after the walk, so the last move can settle on camera.
@@ -47,6 +47,10 @@ fn main() -> AppExit {
         })
         .set(ImagePlugin::default_nearest());
     let mut app = App::new();
+    if let Some(path) = options.map {
+        let text = std::fs::read_to_string(&path).expect("read the --map file");
+        app.insert_resource(MapText(text.leak()));
+    }
     app.insert_resource(ClearColor(Color::BLACK))
         .insert_resource(options.motion)
         .add_plugins(plugins)
@@ -56,6 +60,14 @@ fn main() -> AppExit {
         app.add_plugins(ExtrudedWallRendererPlugin);
     }
     app.add_plugins(DebugPerformancePlugin);
+    if options.reveal {
+        app.add_systems(
+            Update,
+            reveal_map
+                .after(GamePhase::Visibility)
+                .before(GamePhase::Presentation),
+        );
+    }
     if let Some(port) = options.remote_port {
         println!("Bevy Remote agent API: http://127.0.0.1:{port}");
         app.add_plugins(AgentApiPlugin::new(port));
@@ -109,6 +121,11 @@ struct Options {
     remote_port: Option<u16>,
     renderer: Renderer,
     motion: MotionStyle,
+    /// A map file to play instead of the bundled map.
+    map: Option<String>,
+    /// Show the whole map, not only what the player sees: for recordings of
+    /// what happens out of sight.
+    reveal: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -126,6 +143,8 @@ impl Options {
         let mut remote_port = None;
         let mut renderer = None;
         let mut motion = None;
+        let mut map = None;
+        let mut reveal = false;
         let mut args = std::env::args().skip(1);
         while let Some(argument) = args.next() {
             match argument.as_str() {
@@ -141,6 +160,10 @@ impl Options {
                             .expect("--record requires an output directory"),
                     );
                 }
+                "--map" if map.is_none() => {
+                    map = Some(args.next().expect("--map requires a map file"));
+                }
+                "--reveal" => reveal = true,
                 "--walk" if walk.is_none() => {
                     walk = Some(args.next().expect("--walk requires UDLRQEZX steps"));
                 }
@@ -165,7 +188,7 @@ impl Options {
                     }));
                 }
                 _ => panic!(
-                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--motion STYLE] [--remote | --remote-port PORT] [--screenshot OUTPUT.png | --record DIR] [--walk UDLRQEZX.]"
+                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--motion STYLE] [--map FILE] [--reveal] [--remote | --remote-port PORT] [--screenshot OUTPUT.png | --record DIR] [--walk UDLRQEZX.]"
                 ),
             }
         }
@@ -185,6 +208,8 @@ impl Options {
             remote_port,
             renderer: renderer.unwrap_or_default(),
             motion: motion.unwrap_or_default(),
+            map,
+            reveal,
         }
     }
 }
@@ -244,6 +269,13 @@ fn walk_key(step: char) -> Option<KeyCode> {
         'Z' => Some(KeyCode::KeyZ),
         'X' => Some(KeyCode::KeyX),
         _ => None,
+    }
+}
+
+/// Everything is in sight, for `--reveal`.
+fn reveal_map(mut players: Query<&mut VisibilityMap, With<Player>>) {
+    for mut visibility in &mut players {
+        visibility.data.fill(Vis::VISIBLE | Vis::KNOWN);
     }
 }
 
