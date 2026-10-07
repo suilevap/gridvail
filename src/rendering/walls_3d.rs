@@ -383,6 +383,7 @@ fn sync_floors(
 #[allow(clippy::type_complexity)]
 fn project_text_cells(
     grid: Res<MapGrid>,
+    buffers: Res<RenderBuffers>,
     camera_3d: Single<(&Camera, &Transform), With<WallCamera>>,
     camera_2d: Single<(&Camera, &Transform), (With<Camera2d>, Without<WallCamera>)>,
     mut cells: Query<
@@ -407,7 +408,7 @@ fn project_text_cells(
 
     for (cell, object, text, mut transform, mut visibility) in &mut cells {
         let (position, lift) = match (cell, object) {
-            (Some(cell), _) => (cell.0.as_vec2(), 0.0),
+            (Some(cell), _) => (buffers.pos_of(cell.0).as_vec2(), 0.0),
             // Hidden objects keep the visibility set by the text renderer.
             (None, Some(object)) if object.shown => (object.position(), object.lift()),
             _ => continue,

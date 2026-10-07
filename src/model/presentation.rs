@@ -56,12 +56,31 @@ pub struct SeenCell {
     pub transform: CellTransform,
 }
 
-/// Composed frame.
+/// How many cells the composed frame has, independent of the map: the
+/// frame is a window that follows the player. The default covers a
+/// 1100x700 window of 16 px cells at zoom 1, turned any way.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FrameSize(pub IVec2);
+
+impl Default for FrameSize {
+    fn default() -> Self {
+        Self(IVec2::new(80, 80))
+    }
+}
+
+/// Composed frame: a window of frame cells onto the map, of its own size.
 ///
-/// Frame cells are laid out in the player's map coordinates, so renderers
-/// place them like map cells. A frame cell the player sees shows the map
-/// cell it looks onto (`seen`), which differs from its own position behind
-/// a portal; one it does not see shows the map there as remembered.
+/// Frame cells are map positions (in the player's map coordinates), so
+/// renderers place them like map cells. The window covers
+/// `origin .. origin + (width, height)` and, when it follows the player,
+/// is recentred on them every frame. Each position has a fixed slot (its
+/// coordinates modulo the window size), so a step only changes the slots of
+/// the row or column scrolling in; `idx` and `pos_of` convert.
+///
+/// A frame cell the player sees shows the map cell it looks onto (`seen`),
+/// which differs from its own position behind a portal; one it does not see
+/// shows the map there as remembered. Positions off the map are allowed:
+/// what is seen through a portal can lie past the map's edge.
 ///
 /// `current` is the flat cell view with every visible glyph. Renderers draw
 /// it as two layers instead: `ground` holds only what belongs to cells (the
@@ -71,6 +90,10 @@ pub struct SeenCell {
 pub struct RenderBuffers {
     pub width: i32,
     pub height: i32,
+    /// The map position of the window's top-left frame cell.
+    pub origin: IVec2,
+    /// Whether the window is recentred on the player every frame.
+    pub follows_player: bool,
     pub current: Vec<RenderCell>,
     pub previous: Vec<RenderCell>,
     pub ground: Vec<RenderCell>,
@@ -78,13 +101,15 @@ pub struct RenderBuffers {
     pub objects: Vec<ObjectCell>,
     /// What each frame cell shows while seen; `None` when not seen now.
     pub seen: Vec<Option<SeenCell>>,
-    /// For each map cell, the first frame cell seen showing it, then
-    /// `seen_next` links the others (`NO_CELL` ends a list).
+    /// For each map cell (indexed like the map), the first frame cell seen
+    /// showing it, then `seen_next` links the others (`NO_CELL` ends a
+    /// list).
     pub seen_first: Vec<u32>,
     pub seen_next: Vec<u32>,
 }
 
 impl RenderBuffers {
+    /// A fixed window at the map origin, as large as `width` x `height`.
     pub fn new(width: i32, height: i32) -> Self {
         let width = width.max(1);
         let height = height.max(1);
@@ -92,6 +117,8 @@ impl RenderBuffers {
         Self {
             width,
             height,
+            origin: IVec2::ZERO,
+            follows_player: false,
             current: vec![RenderCell::default(); n],
             previous: vec![RenderCell::default(); n],
             ground: vec![RenderCell::default(); n],
@@ -103,17 +130,36 @@ impl RenderBuffers {
         }
     }
 
+    /// A `size` window that follows the player over a map of `map_cells`
+    /// cells.
+    pub fn following(size: IVec2, map_cells: usize) -> Self {
+        let mut buffers = Self::new(size.x, size.y);
+        buffers.follows_player = true;
+        buffers.seen_first = vec![Self::NO_CELL; map_cells];
+        buffers
+    }
+
     /// Ends a `seen_first` / `seen_next` list.
     pub const NO_CELL: u32 = u32::MAX;
 
-    /// The frame cell at `index`.
-    pub fn pos_of(&self, index: usize) -> IVec2 {
-        IVec2::new(index as i32 % self.width, index as i32 / self.width)
+    /// Centres the window on `centre`.
+    pub fn centre_on(&mut self, centre: IVec2) {
+        self.origin = centre - IVec2::new(self.width, self.height) / 2;
     }
 
+    /// The slot of map position `p`, if the window covers it.
     pub fn idx(&self, p: IVec2) -> Option<usize> {
-        (p.x >= 0 && p.y >= 0 && p.x < self.width && p.y < self.height)
-            .then_some((p.y * self.width + p.x) as usize)
+        let local = p - self.origin;
+        (local.x >= 0 && local.y >= 0 && local.x < self.width && local.y < self.height).then(|| {
+            (p.y.rem_euclid(self.height) * self.width + p.x.rem_euclid(self.width)) as usize
+        })
+    }
+
+    /// The map position in slot `index`.
+    pub fn pos_of(&self, index: usize) -> IVec2 {
+        let slot = IVec2::new(index as i32 % self.width, index as i32 / self.width);
+        let size = IVec2::new(self.width, self.height);
+        self.origin + (slot - self.origin).rem_euclid(size)
     }
 
     pub fn swap(&mut self) {

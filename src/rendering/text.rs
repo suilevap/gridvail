@@ -23,8 +23,10 @@ const CELL_FONT_SIZE: f32 = 16.0;
 #[derive(Component)]
 struct HudText;
 
+/// The text entity drawing one frame slot (see `RenderBuffers`): the map
+/// position it shows changes as the frame follows the player.
 #[derive(Component, Clone, Copy)]
-pub(super) struct MapCell(pub(super) IVec2);
+pub(super) struct MapCell(pub(super) usize);
 
 /// Text entity drawing one object at its animated position.
 #[derive(Component, Clone, Copy)]
@@ -123,11 +125,10 @@ impl Plugin for TextRendererPlugin {
 
 pub(super) fn setup(
     mut commands: Commands,
-    grid: Res<MapGrid>,
+    buffers: Res<RenderBuffers>,
     rules: Option<Res<Rules>>,
     fonts: Option<ResMut<Assets<Font>>>,
 ) {
-    let (width, height) = (grid.width, grid.height);
     let camera = commands
         .spawn((
             Camera2d,
@@ -149,26 +150,25 @@ pub(super) fn setup(
         })
         .unwrap_or_default();
 
-    for y in 0..height {
-        for x in 0..width {
-            let position = IVec2::new(x, y);
-            // The perspective backend reuses this allocation for small
-            // multiline ASCII billboards.
-            let mut cell_text = String::with_capacity(32);
-            cell_text.push(' ');
-            commands.spawn((
-                MapCell(position),
-                Text2d::new(cell_text),
-                TextLayout::justify(Justify::Center),
-                TextFont {
-                    font: font.clone().into(),
-                    font_size: FontSize::Px(CELL_FONT_SIZE),
-                    ..default()
-                },
-                TextColor(palette_color(GRAY)),
-                Transform::from_translation(grid_to_world(position, width, height)),
-            ));
-        }
+    // One text entity per frame slot; `place_cells` puts each where the
+    // map position it shows is on screen.
+    for index in 0..buffers.current.len() {
+        // The perspective backend reuses this allocation for small
+        // multiline ASCII billboards.
+        let mut cell_text = String::with_capacity(32);
+        cell_text.push(' ');
+        commands.spawn((
+            MapCell(index),
+            Text2d::new(cell_text),
+            TextLayout::justify(Justify::Center),
+            TextFont {
+                font: font.clone().into(),
+                font_size: FontSize::Px(CELL_FONT_SIZE),
+                ..default()
+            },
+            TextColor(palette_color(GRAY)),
+            Transform::default(),
+        ));
     }
 
     commands.insert_resource(CellFont(font.clone()));
@@ -203,9 +203,7 @@ fn flush_cells(
 ) {
     stats.changed_cells = 0;
     for (cell, mut text, mut color) in cells.iter_mut() {
-        let Some(index) = buffers.idx(cell.0) else {
-            continue;
-        };
+        let index = cell.0;
         if buffers.ground[index] != buffers.previous_ground[index] {
             stats.changed_cells += 1;
             let cell = buffers.ground[index];
@@ -368,18 +366,21 @@ pub(super) fn place_object_sprites(
 /// itself.
 fn place_cells(
     camera: Res<ViewCamera>,
+    buffers: Res<RenderBuffers>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
-    mut placed: Local<Option<ViewCamera>>,
+    mut placed: Local<Option<(ViewCamera, IVec2)>>,
     mut cells: Query<(&MapCell, &mut Transform)>,
 ) {
-    if extruded_walls.is_some() || *placed == Some(*camera) {
+    let placement = (*camera, buffers.origin);
+    if extruded_walls.is_some() || *placed == Some(placement) {
         return;
     }
-    *placed = Some(*camera);
+    *placed = Some(placement);
     let scale = Vec3::splat(camera.zoom);
     let rotation = glyph_rotation(&camera);
     for (cell, mut transform) in &mut cells {
-        transform.translation = view_translation(&camera, cell.0.as_vec2());
+        let position = buffers.pos_of(cell.0);
+        transform.translation = view_translation(&camera, position.as_vec2());
         transform.rotation = rotation;
         transform.scale = scale;
     }
@@ -653,10 +654,14 @@ mod tests {
         // A quarter turn counter-clockwise shows the cell east of the
         // player above them, one cell height up the screen.
         let world = app.world_mut();
+        let slot = world
+            .resource::<RenderBuffers>()
+            .idx(cell + IVec2::X)
+            .expect("east of the player is in the frame");
         let east = world
             .query::<(&MapCell, &Transform)>()
             .iter(world)
-            .find(|(map_cell, _)| map_cell.0 == cell + IVec2::X)
+            .find(|(map_cell, _)| map_cell.0 == slot)
             .map(|(_, transform)| *transform)
             .expect("ground cell east of the player");
         assert!(east.translation.xy().distance(Vec2::new(0.0, CELL_SIZE.y)) < 1e-3);

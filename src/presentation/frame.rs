@@ -7,15 +7,21 @@ use crate::model::*;
 
 /// Composes the frame the player sees.
 ///
-/// Frame cells the player sees (`PlayerView`) show the map cell they look
-/// onto, which behind a portal is somewhere else on the map; objects there
+/// The frame is a window of its own size onto the map (`RenderBuffers`),
+/// recentred on the player when it follows them. Frame cells the player
+/// sees (`PlayerView`) show the map cell they look onto, which behind a
+/// portal is somewhere else on the map, even past its edge; objects there
 /// are drawn once per frame cell showing their cell. Frame cells not seen
 /// now show the map as remembered at their own position, in dimmer colours.
+///
+/// Two indexes are kept apart: map data (visibility, light) is indexed by
+/// `MapGrid::idx`, frame data by `RenderBuffers::idx`.
 #[allow(clippy::type_complexity)]
 pub fn compose_frame(
+    grid: Res<MapGrid>,
     dynamic: Res<DynamicLight>,
     reveal: Option<Res<RevealAll>>,
-    viewers: Query<(&VisibilityMap, Option<&PlayerView>), With<Player>>,
+    viewers: Query<(&Pos, &VisibilityMap, Option<&PlayerView>), With<Player>>,
     glyphs: Query<(
         Entity,
         &Pos,
@@ -27,16 +33,24 @@ pub fn compose_frame(
     children: Query<(Entity, &Pos, &Glyph, Option<&AnimatedPos>, &BoundTo)>,
     mut buffers: ResMut<RenderBuffers>,
 ) {
-    let Ok((visibility, view)) = viewers.single() else {
+    let Ok((player, visibility, view)) = viewers.single() else {
         return;
     };
+    let known = |p: IVec2| {
+        grid.idx(p)
+            .and_then(|i| visibility.data.get(i))
+            .is_some_and(|v| v.contains(Vis::KNOWN))
+    };
+    if buffers.follows_player {
+        buffers.centre_on(player.0);
+    }
     buffers.swap();
     buffers.current.fill(RenderCell::default());
     buffers.objects.clear();
-    mark_seen(&mut buffers, visibility, view, reveal.is_some());
+    mark_seen(&mut buffers, &grid, visibility, view, reveal.is_some());
 
     for (entity, pos, glyph, speed, shown, bound) in glyphs.iter() {
-        let Some(world) = buffers.idx(pos.0) else {
+        let Some(world) = grid.idx(pos.0) else {
             continue;
         };
         if bound {
@@ -68,23 +82,22 @@ pub fn compose_frame(
             instance += 1;
             frame = buffers.seen_next[index];
         }
-        // Static objects stay where they were last seen.
-        let remembered = speed.is_none()
-            && visibility
-                .data
-                .get(world)
-                .is_some_and(|v| v.contains(Vis::KNOWN))
-            && buffers.seen[world].is_none();
-        if instance == 0 && remembered {
-            draw(
-                &mut buffers,
-                world,
-                entity,
-                0,
-                shown.position,
-                shown.lift,
-                drawn,
-            );
+        // Static objects stay where they were last seen, where the frame
+        // shows their own cell as remembered.
+        if instance == 0 && speed.is_none() && known(pos.0) {
+            if let Some(index) = buffers.idx(pos.0) {
+                if buffers.seen[index].is_none() {
+                    draw(
+                        &mut buffers,
+                        index,
+                        entity,
+                        0,
+                        shown.position,
+                        shown.lift,
+                        drawn,
+                    );
+                }
+            }
         }
     }
 
@@ -127,25 +140,23 @@ pub fn compose_frame(
     for index in 0..buffers.current.len() {
         let position = buffers.pos_of(index);
         let occupied = !matches!(buffers.current[index].ch, ' ' | '\0');
-        if let Some(seen) = buffers.seen[index] {
-            let light = buffers
-                .idx(seen.world)
-                .and_then(|world| dynamic.data.get(world))
+        let light_at = |p: IVec2| {
+            grid.idx(p)
+                .and_then(|i| dynamic.data.get(i))
                 .copied()
-                .unwrap_or_default();
+                .unwrap_or_default()
+        };
+        if let Some(seen) = buffers.seen[index] {
+            let light = light_at(seen.world);
             shade(&mut buffers.current[index], true, light_to_palette(&light));
-        } else if visibility
-            .data
-            .get(index)
-            .is_some_and(|v| v.contains(Vis::KNOWN))
-        {
-            let light = dynamic.data.get(index).copied().unwrap_or_default();
+        } else if known(position) {
+            let light = light_at(position);
             shade(
                 &mut buffers.current[index],
                 is_hex_pos(position),
                 dimmed(light_to_palette(&light)),
             );
-        } else if borders_known_background(&buffers, visibility, position) {
+        } else if borders_known_background(&buffers, &known, position) {
             buffers.current[index] = RenderCell {
                 ch: '?',
                 color: DARK_RED,
@@ -161,18 +172,18 @@ pub fn compose_frame(
     }
 
     // Keep only objects that won their cell, and give them its lit color.
-    let RenderBuffers {
-        width,
-        current,
-        objects,
-        ..
-    } = &mut *buffers;
+    let buffers = &mut *buffers;
+    let mut objects = std::mem::take(&mut buffers.objects);
     objects.retain_mut(|object| {
-        let cell = current[(object.pos.y * *width + object.pos.x) as usize];
+        let Some(index) = buffers.idx(object.pos) else {
+            return false;
+        };
+        let cell = buffers.current[index];
         let shown = cell.ch == object.cell.ch && cell.depth == object.cell.depth;
         object.cell.color = cell.color;
         shown
     });
+    buffers.objects = objects;
 }
 
 /// Fills `seen` and the lists of frame cells showing each map cell, from
@@ -181,19 +192,28 @@ pub fn compose_frame(
 /// other cell is seen directly too.
 fn mark_seen(
     buffers: &mut RenderBuffers,
+    grid: &MapGrid,
     visibility: &VisibilityMap,
     view: Option<&PlayerView>,
     reveal: bool,
 ) {
+    let map_cells = (grid.width * grid.height) as usize;
+    if buffers.seen_first.len() != map_cells {
+        buffers.seen_first.resize(map_cells, RenderBuffers::NO_CELL);
+    }
     buffers.seen.fill(None);
     buffers.seen_first.fill(RenderBuffers::NO_CELL);
     let mark = |buffers: &mut RenderBuffers, frame: IVec2, seen: SeenCell| {
-        let (Some(index), Some(world)) = (buffers.idx(frame), buffers.idx(seen.world)) else {
+        let (Some(index), Some(world)) = (buffers.idx(frame), grid.idx(seen.world)) else {
             return;
         };
         buffers.seen[index] = Some(seen);
         buffers.seen_next[index] = buffers.seen_first[world];
         buffers.seen_first[world] = index as u32;
+    };
+    let directly = |p: IVec2| SeenCell {
+        world: p,
+        transform: CellTransform::IDENTITY,
     };
     match view {
         Some(view) => {
@@ -209,17 +229,13 @@ fn mark_seen(
         }
         None => {
             for index in 0..buffers.seen.len() {
-                if visibility
-                    .data
-                    .get(index)
-                    .is_some_and(|v| v.contains(Vis::VISIBLE))
-                {
-                    let world = buffers.pos_of(index);
-                    let seen = SeenCell {
-                        world,
-                        transform: CellTransform::IDENTITY,
-                    };
-                    mark(buffers, world, seen);
+                let p = buffers.pos_of(index);
+                let visible = grid
+                    .idx(p)
+                    .and_then(|i| visibility.data.get(i))
+                    .is_some_and(|v| v.contains(Vis::VISIBLE));
+                if visible {
+                    mark(buffers, p, directly(p));
                 }
             }
         }
@@ -227,12 +243,8 @@ fn mark_seen(
     if reveal {
         for index in 0..buffers.seen.len() {
             if buffers.seen[index].is_none() {
-                let world = buffers.pos_of(index);
-                let seen = SeenCell {
-                    world,
-                    transform: CellTransform::IDENTITY,
-                };
-                mark(buffers, world, seen);
+                let p = buffers.pos_of(index);
+                mark(buffers, p, directly(p));
             }
         }
     }
@@ -276,20 +288,16 @@ fn shade(cell: &mut RenderCell, floor: bool, color: u8) {
 /// frame cell seen now counts as known.
 fn borders_known_background(
     buffers: &RenderBuffers,
-    visibility: &VisibilityMap,
+    known: &impl Fn(IVec2) -> bool,
     at: IVec2,
 ) -> bool {
     [IVec2::NEG_Y, IVec2::NEG_X, IVec2::X, IVec2::Y]
         .into_iter()
         .any(|delta| {
-            let Some(index) = buffers.idx(at + delta) else {
+            let neighbour = at + delta;
+            let Some(index) = buffers.idx(neighbour) else {
                 return false;
             };
-            let known = buffers.seen[index].is_some()
-                || visibility
-                    .data
-                    .get(index)
-                    .is_some_and(|v| v.contains(Vis::KNOWN));
-            known && buffers.current[index].depth == 0
+            (buffers.seen[index].is_some() || known(neighbour)) && buffers.current[index].depth == 0
         })
 }
