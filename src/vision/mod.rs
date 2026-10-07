@@ -180,9 +180,10 @@ pub fn compute_fov(
 }
 
 /// Mirrors `PlayerFieldOfViewSystem`: the visibility layer persists across
-/// recomputes. A map cell seen (directly or through a portal) above 0.1 is
-/// marked Visible+Known; every other cell only loses Visible, so explored
-/// cells stay Known.
+/// recomputes. A map cell seen directly above 0.1 is marked Visible+Known;
+/// one seen only through a portal is Visible while in sight but not
+/// remembered. Every other cell only loses Visible, so explored cells stay
+/// Known.
 pub fn player_visibility(
     grid: Res<MapGrid>,
     mut players: Query<(&PlayerView, &mut VisibilityMap), With<Player>>,
@@ -203,7 +204,11 @@ pub fn player_visibility(
                 continue;
             }
             if let Some(i) = grid.idx(sample.world) {
-                visibility.data[i] |= Vis::VISIBLE | Vis::KNOWN;
+                visibility.data[i] |= if sample.transform.is_identity() {
+                    Vis::VISIBLE | Vis::KNOWN
+                } else {
+                    Vis::VISIBLE
+                };
             }
         }
         visibility.revision = view.revision;
@@ -274,6 +279,49 @@ mod tests {
         let vis2 = app.world().get::<VisibilityMap>(p).expect("visibility2");
         assert!(!vis2.data[seen].contains(Vis::VISIBLE));
         assert!(vis2.data[seen].contains(Vis::KNOWN));
+    }
+
+    #[test]
+    fn cells_seen_through_a_portal_are_visible_but_not_remembered() {
+        use crate::foundation::portal::{CellTransform, PortalFace};
+
+        let mut app = test_app::headless();
+        app.init_resource::<FovShared>();
+        // A wall at (3, 1) open to the west, leading out of a wall at
+        // (4, 6) open to the east: (3, 1) shows (5, 6).
+        let wall = app
+            .world_mut()
+            .spawn((Active, Collider, Pos(IVec2::new(3, 1))))
+            .id();
+        {
+            let mut grid = app.world_mut().resource_mut::<MapGrid>();
+            grid.set(IVec2::new(3, 1), wall);
+            grid.set_portal(
+                IVec2::new(3, 1),
+                Some(PortalFace {
+                    side: IVec2::NEG_X,
+                    through: CellTransform::between_faces(
+                        IVec2::new(3, 1),
+                        IVec2::NEG_X,
+                        IVec2::new(4, 6),
+                        IVec2::X,
+                    ),
+                }),
+            );
+        }
+        let p = spawn_player(&mut app, IVec2::new(1, 1));
+        app.update();
+        let vis = app.world().get::<VisibilityMap>(p).expect("visibility");
+        let at = |x: i32, y: i32| vis.data[(y * 8 + x) as usize];
+        assert_eq!(at(2, 1), Vis::VISIBLE | Vis::KNOWN, "seen directly");
+        assert_eq!(at(5, 6), Vis::VISIBLE, "seen through the portal only");
+
+        // Once out of sight, it is forgotten; the direct view is not.
+        app.world_mut().get_mut::<Pos>(p).unwrap().0 = IVec2::new(1, 5);
+        app.update();
+        let vis = app.world().get::<VisibilityMap>(p).expect("visibility");
+        assert!(!vis.data[6 * 8 + 5].contains(Vis::KNOWN));
+        assert!(vis.data[8 + 2].contains(Vis::KNOWN));
     }
 
     #[test]
