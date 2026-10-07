@@ -12,7 +12,7 @@ pub use plugin::*;
 use bevy::prelude::*;
 
 use crate::model::*;
-use crate::navigation::{NavMap, PathPlanner};
+use crate::navigation::{cell_of, Crowd, NavMap, PathPlanner, Terrain};
 
 /// Steps an actor may fail in a row (another actor in the way) before it
 /// reports [`WalkStatus::Blocked`].
@@ -26,6 +26,7 @@ pub const MAX_BLOCKED_STEPS: u8 = 3;
 pub fn follow_paths(
     turn: Res<TurnState>,
     nav: Res<NavMap>,
+    grid: Res<MapGrid>,
     mut planner: ResMut<PathPlanner>,
     mut walkers: Query<
         (
@@ -44,6 +45,7 @@ pub fn follow_paths(
     for (pos, destination, prefs, mut follow, mut command) in &mut walkers {
         let pos = pos.0;
         let door_cost = prefs.and_then(|prefs| prefs.door_cost);
+        let crowd_cost = prefs.and_then(|prefs| prefs.crowd_cost);
         let Some(goal) = destination.goal() else {
             if follow.status != WalkStatus::Idle {
                 follow.finish(WalkStatus::Idle);
@@ -75,7 +77,23 @@ pub fn follow_paths(
         if replan || off_path {
             follow.planned_for = wanted;
             let PathFollow { steps, .. } = &mut *follow;
-            if !planner.plan(&nav, pos, goal, door_cost, steps) {
+            let terrain = Terrain {
+                nav: &nav,
+                door_cost,
+            };
+            let found = match crowd_cost {
+                None => planner.plan_with(&nav, &terrain, pos, goal, steps),
+                Some(cost) => {
+                    let crowd = Crowd {
+                        terrain,
+                        occupied: &*grid,
+                        goal: cell_of(goal),
+                        cost,
+                    };
+                    planner.plan_with(&nav, &crowd, pos, goal, steps)
+                }
+            };
+            if !found {
                 follow.finish(WalkStatus::Unreachable);
                 continue;
             }

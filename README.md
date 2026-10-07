@@ -65,7 +65,9 @@ next to this file.
   never changes the destination. The AI (`ai/`) decides: wanderers pick a
   random floor cell, and a new one once a walk ends, and `DoorPolicy` prices
   doors by the keys held, more for the last key (one key 20 steps of detour,
-  two 10, ten 2; no key, doors block). Planning memory is sized to the
+  two 10, ten 2; no key, doors block). Enemies also pay a small
+  `TraversalPrefs::crowd_cost` for cells other actors stand on, so they route
+  around each other instead of queueing. Planning memory is sized to the
   map, so steady turns stay allocation-free.
 - Player-bound `i` direction marker via relative position + rotation.
 - Wall autotiling from `wall_rule.txt`, direction glyphs from the three
@@ -154,7 +156,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 139 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 142 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
@@ -224,6 +226,9 @@ enemies do out of sight:
 cargo run --release -- --map my_map.txt --reveal \
   --record recordings/enemies --walk "$(printf 'LR%.0s' $(seq 40))"
 ```
+
+`cargo run -- --map assets/maps/chasers.txt` plays three enemies chasing
+the player, stepping around each other on the way.
 
 Without a GPU, run it under `xvfb-run` with Mesa's software Vulkan
 (`mesa-vulkan-drivers`, `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`).

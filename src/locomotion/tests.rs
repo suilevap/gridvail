@@ -58,11 +58,13 @@ pub(crate) fn place_enemy(app: &mut App, at: IVec2) -> Entity {
     grid.set_with_blocking(at, enemy, false);
     world.get_mut::<Pos>(enemy).unwrap().0 = at;
     world.get_mut::<PrevPos>(enemy).unwrap().0 = at;
-    // Under test control: no wandering, no tree setting destinations.
+    // Under test control: no wandering, no tree setting destinations, and
+    // paths that ignore actors, as locomotion does by default.
     world
         .entity_mut(enemy)
         .remove::<Wander>()
         .stop_behavior(enemy_tree);
+    world.get_mut::<TraversalPrefs>(enemy).unwrap().crowd_cost = None;
     enemy
 }
 

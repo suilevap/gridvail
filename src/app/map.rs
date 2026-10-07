@@ -203,6 +203,9 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
     });
 }
 
+/// Steps of detour an enemy takes rather than queue behind another actor.
+const ENEMY_CROWD_COST: u32 = 4;
+
 /// What every kind of enemy is made of: a walking, carrying, token-taking
 /// body. Its role adds a mind and a tree.
 fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
@@ -218,7 +221,10 @@ fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
         Inventory::default(),
         (
             Destination::default(),
-            TraversalPrefs::default(),
+            TraversalPrefs {
+                door_cost: None,
+                crowd_cost: Some(ENEMY_CROWD_COST),
+            },
             PathFollow::with_capacity(cell_count),
         ),
         (
