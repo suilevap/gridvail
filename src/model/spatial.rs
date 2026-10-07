@@ -24,6 +24,16 @@ pub struct PrevPos(pub IVec2);
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Facing(pub IVec2);
 
+/// Makes the open face of a wall cell a portal: seen from its open side,
+/// it shows what lies beyond the face of the `exit` portal wall, and
+/// walking into it comes out there. Pairs point at each other.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Portal {
+    /// From the wall towards the floor a viewer stands on.
+    pub side: IVec2,
+    pub exit: Entity,
+}
+
 #[derive(Component, Clone, Copy, Debug)]
 pub struct BoundTo {
     pub parent: Entity,

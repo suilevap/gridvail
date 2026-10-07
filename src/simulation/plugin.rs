@@ -35,6 +35,7 @@ impl Plugin for SimulationPlugin {
             .add_systems(
                 Update,
                 (
+                    sync_portals,
                     turn_tick,
                     recharge_tokens,
                     player_input,
