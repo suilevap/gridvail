@@ -3,8 +3,10 @@
 use std::fmt::Write;
 
 use bevy::ecs::entity::EntityHashMap;
+use bevy::image::{ImageFilterMode, ImageSampler};
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
+use bevy::text::FontAtlasSet;
 
 use crate::lighting::{palette_color, GRAY};
 use crate::model::*;
@@ -107,6 +109,7 @@ impl Plugin for TextRendererPlugin {
                 (
                     cycle_motion,
                     place_cells,
+                    smooth_turning_glyphs,
                     flush_cells,
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
@@ -394,6 +397,43 @@ fn cycle_motion(keys: Option<Res<ButtonInput<KeyCode>>>, motion: Option<ResMut<M
 /// Objects draw above the ground cells, deeper glyphs on top.
 fn object_translation(sprite: &ObjectSprite, camera: &ViewCamera) -> Vec3 {
     view_translation(camera, sprite.position) + Vec3::Z * (1.0 + sprite.depth as f32 * 0.1)
+}
+
+/// Glyphs are pixel art sampled nearest (`ImagePlugin::default_nearest`),
+/// which keeps them sharp upright but stair-steps their edges when tilted.
+/// While the view is between quarter turns the font atlases sample linearly,
+/// smoothing tilted edges; at rest they return to the pixel-exact default.
+/// The sampler changes only when a turn starts or ends.
+fn smooth_turning_glyphs(
+    camera: Res<ViewCamera>,
+    extruded_walls: Option<Res<ExtrudedWalls>>,
+    atlases: Option<Res<FontAtlasSet>>,
+    images: Option<ResMut<Assets<Image>>>,
+) {
+    let (Some(atlases), Some(mut images)) = (atlases, images) else {
+        return;
+    };
+    // The perspective backend keeps its text upright.
+    let tilted = extruded_walls.is_none() && camera.quarter_remainder() != 0.0;
+    for atlas in atlases.values().flatten() {
+        let Some(image) = images.get(&atlas.texture) else {
+            continue;
+        };
+        let linear = matches!(
+            &image.sampler,
+            ImageSampler::Descriptor(sampler) if sampler.mag_filter == ImageFilterMode::Linear
+        );
+        if linear == tilted {
+            continue;
+        }
+        if let Some(mut image) = images.get_mut(&atlas.texture) {
+            image.sampler = if tilted {
+                ImageSampler::linear()
+            } else {
+                ImageSampler::Default
+            };
+        }
+    }
 }
 
 /// Where the view camera shows a map point, in 2D world units around the
@@ -737,6 +777,56 @@ mod tests {
             assert!(transform.rotation.angle_between(expected) < 1e-5);
         }
         assert!(player_transform(&mut app).rotation.angle_between(expected) < 1e-5);
+    }
+
+    #[test]
+    fn font_atlases_sample_smoothly_only_while_the_view_turns() {
+        use bevy::ecs::system::RunSystemOnce;
+        use bevy::text::{FontAtlas, FontAtlasKey, FontHinting, FontSmoothing};
+
+        let mut app = App::new();
+        let mut images = Assets::<Image>::default();
+        let atlas = FontAtlas::new(&mut images, UVec2::splat(64), FontSmoothing::AntiAliased);
+        let texture = atlas.texture.clone();
+        let mut atlases = FontAtlasSet::default();
+        let key = FontAtlasKey {
+            id: 0,
+            index: 0,
+            font_size_bits: 16.0_f32.to_bits(),
+            variations_hash: 0,
+            hinting: FontHinting::Disabled,
+            font_smoothing: FontSmoothing::AntiAliased,
+        };
+        atlases.insert(key, vec![atlas]);
+        app.insert_resource(images).insert_resource(atlases);
+        let linear = |app: &App| {
+            let image = app
+                .world()
+                .resource::<Assets<Image>>()
+                .get(&texture)
+                .unwrap();
+            matches!(
+                &image.sampler,
+                ImageSampler::Descriptor(sampler) if sampler.mag_filter == ImageFilterMode::Linear
+            )
+        };
+
+        for (rotation, smooth) in [
+            (0.0, false),
+            (0.3, true),
+            (FRAC_PI_4 + 0.1, true),
+            (FRAC_PI_2, false),
+            (-FRAC_PI_2, false),
+        ] {
+            app.insert_resource(ViewCamera {
+                rotation,
+                ..default()
+            });
+            app.world_mut()
+                .run_system_once(smooth_turning_glyphs)
+                .unwrap();
+            assert_eq!(linear(&app), smooth, "rotation {rotation}");
+        }
     }
 
     #[test]
