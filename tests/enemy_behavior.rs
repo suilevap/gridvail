@@ -372,6 +372,26 @@ fn a_player_who_gets_away_is_given_up_on() {
 }
 
 #[test]
+fn chasers_step_around_each_other() {
+    let mut game = Game::new(
+        "XXXXXXXXXXX\n\
+         X....e....X\n\
+         X.p.......X\n\
+         X....e....X\n\
+         X.....e...X\n\
+         XXXXXXXXXXX\n",
+    );
+    game.turns(14);
+    game.print("three chasers");
+    let last = game.trace.last().unwrap();
+    // Nobody queues behind an ally: each steps around and ends up attacking.
+    for &(_, pos, act) in &last.enemies {
+        assert!(matches!(act, Some(EnemyAct::Attack(_))), "{act:?}");
+        assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
+    }
+}
+
+#[test]
 fn the_bundled_map_plays_consistently() {
     let mut game = Game::new(include_str!("../assets/maps/map1.txt"));
     let walk = [KeyCode::ArrowRight, KeyCode::ArrowDown, KeyCode::ArrowRight];

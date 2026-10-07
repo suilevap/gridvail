@@ -174,5 +174,56 @@ impl Rules for Terrain<'_> {
     }
 }
 
+/// Which map positions something stands on.
+pub trait Occupancy {
+    fn occupied(&self, p: IVec2) -> bool;
+}
+
+impl Occupancy for MapGrid {
+    fn occupied(&self, p: IVec2) -> bool {
+        self.get(p).is_some()
+    }
+}
+
+/// [`Terrain`] that also charges `cost` extra for entering a floor cell
+/// another actor occupies, except the goal: walking into it is how a bump or
+/// an attack happens. Actors move, so this steers around who is in the way
+/// now rather than forbidding their cells.
+#[derive(Clone, Copy, Debug)]
+pub struct Crowd<'a, Occupied: ?Sized = MapGrid> {
+    pub terrain: Terrain<'a>,
+    pub occupied: &'a Occupied,
+    pub goal: Cell,
+    pub cost: u32,
+}
+
+impl<Occupied: Occupancy + ?Sized> Rules for Crowd<'_, Occupied> {
+    type Node = Cell;
+    type Cost = u32;
+    type State = ();
+
+    fn state_count(&self) -> usize {
+        1
+    }
+
+    fn state_index(&self, _state: &()) -> usize {
+        0
+    }
+
+    fn start_state(&self, _start: Cell) {}
+
+    fn step(&self, from: Cell, to: Cell, state: &()) -> Option<(u32, ())> {
+        let (cost, ()) = self.terrain.step(from, to, state)?;
+        let crowded = to != self.goal
+            && self.terrain.nav.cell(to) == NavCell::Floor
+            && self.occupied.occupied(pos_of(to));
+        Some((cost + if crowded { self.cost } else { 0 }, ()))
+    }
+
+    fn min_step_cost(&self) -> u32 {
+        1
+    }
+}
+
 #[cfg(test)]
 mod tests;

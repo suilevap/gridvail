@@ -40,6 +40,10 @@ pub struct TraversalPrefs {
     /// Extra cost, in steps, of a path through a closed door (which spends
     /// a key); `None` keeps paths away from closed doors.
     pub door_cost: Option<u32>,
+    /// Extra cost, in steps, of a path through a cell another actor stands
+    /// on when it is planned, so walkers route around each other; `None`
+    /// ignores actors, who will likely have moved by then.
+    pub crowd_cost: Option<u32>,
 }
 
 /// How walking to the current [`Destination`] is going.
