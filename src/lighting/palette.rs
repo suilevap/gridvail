@@ -57,6 +57,17 @@ pub fn light_to_palette(cell: &LightCell) -> u8 {
     }
 }
 
+/// The darker colour a remembered (not currently seen) cell is drawn in:
+/// each bright colour's dark twin, and dark grey for the dark ones.
+pub fn dimmed(index: u8) -> u8 {
+    match index {
+        BLUE..=YELLOW => index - 8,
+        WHITE => GRAY,
+        BLACK => BLACK,
+        _ => DARK_GRAY,
+    }
+}
+
 pub fn palette_color(index: u8) -> bevy::prelude::Color {
     use bevy::prelude::Color;
     match index {

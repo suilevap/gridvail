@@ -2,7 +2,6 @@
 
 use std::fmt::Write;
 
-use bevy::ecs::entity::EntityHashMap;
 use bevy::image::{ImageFilterMode, ImageSampler};
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
@@ -48,9 +47,10 @@ impl ObjectSprite {
     }
 }
 
-/// The sprite drawing each object, by the object's entity.
+/// The sprite drawing each object instance, by the object's entity and
+/// instance (one object may be seen in several places through portals).
 #[derive(Resource, Default)]
-pub(super) struct ObjectSprites(EntityHashMap<Entity>);
+pub(super) struct ObjectSprites(HashMap<(Entity, u16), Entity>);
 
 #[derive(Resource, Clone)]
 pub(super) struct CellFont(Handle<Font>);
@@ -233,7 +233,7 @@ fn object_sprites_missing(buffers: Res<RenderBuffers>, sprites: Res<ObjectSprite
     buffers
         .objects
         .iter()
-        .any(|object| !sprites.0.contains_key(&object.entity))
+        .any(|object| !sprites.0.contains_key(&(object.entity, object.instance)))
 }
 
 /// Spawns sprites for newly seen objects. It is exclusive and runs only when
@@ -245,7 +245,7 @@ fn spawn_object_sprites(world: &mut World) {
             .resource::<RenderBuffers>()
             .objects
             .iter()
-            .filter(|object| !sprites.0.contains_key(&object.entity))
+            .filter(|object| !sprites.0.contains_key(&(object.entity, object.instance)))
             .copied()
             .collect()
     };
@@ -277,7 +277,7 @@ fn spawn_object_sprites(world: &mut World) {
         world
             .resource_mut::<ObjectSprites>()
             .0
-            .insert(object.entity, sprite);
+            .insert((object.entity, object.instance), sprite);
     }
 }
 
@@ -310,7 +310,7 @@ pub(super) fn place_object_sprites(
         {
             continue;
         }
-        let Some(&entity) = index.0.get(&object.entity) else {
+        let Some(&entity) = index.0.get(&(object.entity, object.instance)) else {
             continue;
         };
         let Ok((mut sprite, mut text, mut color, ..)) = sprites.get_mut(entity) else {
@@ -549,7 +549,7 @@ mod tests {
             .single(world)
             .unwrap();
         let pos = pos.0;
-        let sprite = world.resource::<ObjectSprites>().0[&player];
+        let sprite = world.resource::<ObjectSprites>().0[&(player, 0)];
         let sprite = world.get::<ObjectSprite>(sprite).expect("player sprite");
         (pos, sprite.position())
     }
@@ -560,7 +560,7 @@ mod tests {
             .query_filtered::<Entity, With<Player>>()
             .single(world)
             .unwrap();
-        let sprite = world.resource::<ObjectSprites>().0[&player];
+        let sprite = world.resource::<ObjectSprites>().0[&(player, 0)];
         *world.get::<Transform>(sprite).expect("player sprite")
     }
 
@@ -570,7 +570,7 @@ mod tests {
             .query_filtered::<Entity, With<Player>>()
             .single(world)
             .unwrap();
-        let sprite = world.resource::<ObjectSprites>().0[&player];
+        let sprite = world.resource::<ObjectSprites>().0[&(player, 0)];
         world
             .get::<ObjectSprite>(sprite)
             .expect("player sprite")
@@ -679,7 +679,7 @@ mod tests {
             let mut texts = world.query::<(&ObjectSprite, &Text2d)>();
             sprites
                 .iter()
-                .filter_map(|(object, sprite)| {
+                .filter_map(|((object, _), sprite)| {
                     let glyph = glyphs.get(world, *object).ok()?;
                     let (sprite, text) = texts.get(world, *sprite).ok()?;
                     sprite.shown.then(|| (glyph.ch, text.0.clone()))

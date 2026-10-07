@@ -88,6 +88,7 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
                         Facing::default(),
                         DirectionBasedOnSpeed,
                         VisualSensor { radius: 16 },
+                        PlayerView::with_radius(16),
                         LightSource {
                             radius: 16,
                             kind: LightKind::None,

@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use super::LightCell;
+use crate::foundation::portal::CellTransform;
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Glyph {
@@ -24,19 +25,43 @@ pub struct RenderCell {
 
 /// A visible glyph entity (wall, lamp, actor...), drawn by renderers on its
 /// own, above the ground, where the animation step shows it.
+///
+/// Through portals one entity can be seen in several places; each is its
+/// own instance, numbered from 0, and `(entity, instance)` identifies it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ObjectCell {
     pub entity: Entity,
-    /// Logical cell.
+    pub instance: u16,
+    /// Frame cell it is drawn in (its logical cell as seen by the player).
     pub pos: IVec2,
-    /// Shown position in fractional cells; `pos` when nothing animates it.
+    /// Shown position in fractional frame cells; `pos` when nothing
+    /// animates it.
     pub position: Vec2,
     /// Height above the ground in cells.
     pub lift: f32,
     pub cell: RenderCell,
 }
 
+/// When present, every frame cell the player does not see is drawn as seen
+/// directly, so the whole map is in sight: for recordings of what happens
+/// out of sight (`--reveal`).
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct RevealAll;
+
+/// What a frame cell shows while the player sees it: a map cell, seen
+/// through `transform` (the identity when seen directly).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SeenCell {
+    pub world: IVec2,
+    pub transform: CellTransform,
+}
+
 /// Composed frame.
+///
+/// Frame cells are laid out in the player's map coordinates, so renderers
+/// place them like map cells. A frame cell the player sees shows the map
+/// cell it looks onto (`seen`), which differs from its own position behind
+/// a portal; one it does not see shows the map there as remembered.
 ///
 /// `current` is the flat cell view with every visible glyph. Renderers draw
 /// it as two layers instead: `ground` holds only what belongs to cells (the
@@ -51,6 +76,12 @@ pub struct RenderBuffers {
     pub ground: Vec<RenderCell>,
     pub previous_ground: Vec<RenderCell>,
     pub objects: Vec<ObjectCell>,
+    /// What each frame cell shows while seen; `None` when not seen now.
+    pub seen: Vec<Option<SeenCell>>,
+    /// For each map cell, the first frame cell seen showing it, then
+    /// `seen_next` links the others (`NO_CELL` ends a list).
+    pub seen_first: Vec<u32>,
+    pub seen_next: Vec<u32>,
 }
 
 impl RenderBuffers {
@@ -66,7 +97,18 @@ impl RenderBuffers {
             ground: vec![RenderCell::default(); n],
             previous_ground: vec![RenderCell::default(); n],
             objects: Vec::with_capacity(n),
+            seen: vec![None; n],
+            seen_first: vec![Self::NO_CELL; n],
+            seen_next: vec![Self::NO_CELL; n],
         }
+    }
+
+    /// Ends a `seen_first` / `seen_next` list.
+    pub const NO_CELL: u32 = u32::MAX;
+
+    /// The frame cell at `index`.
+    pub fn pos_of(&self, index: usize) -> IVec2 {
+        IVec2::new(index as i32 % self.width, index as i32 / self.width)
     }
 
     pub fn idx(&self, p: IVec2) -> Option<usize> {
