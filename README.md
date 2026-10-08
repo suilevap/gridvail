@@ -79,9 +79,10 @@ next to this file.
   brighter-kind-wins, and the original fire/electricity/acid/gray palettes.
 - Portals (an addition, in progress, see `PORTALS.md`): digits `1`-`9` in
   a map are portal walls, and the two walls with the same digit are paired.
-  The portal-aware field of view (`PortalFovComputer`) sees through them;
-  the game does not draw or walk through them yet, so for now they are
-  plain walls.
+  Seen from the floor in front of it, a portal wall shows what lies beyond
+  the other one, through any number of portals; cells seen through a
+  portal are not remembered. Walking through them comes next, so for now
+  they block like walls. The 3D renderer does not show portals yet.
 - A view camera (an addition): both renderers draw through a
   renderer-neutral `ViewCamera` (centre, rotation, zoom, offset) that a
   camera operator keeps on the player's animated position, so the world
@@ -163,7 +164,7 @@ cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
-cargo test --workspace   # 156 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 162 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

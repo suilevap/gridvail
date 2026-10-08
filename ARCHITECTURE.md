@@ -43,7 +43,10 @@ and renderers must not import it.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
 - `vision/` converts sensors and blocker state into cached FOV and visibility
-  components. `VisionPlugin` owns their resources and phase registration; the
+  components. Lights use the plain field of view; the player's
+  `PlayerView` sees through portals, and Visible/Known come from it (only
+  cells seen directly become Known). `VisionPlugin` owns their resources
+  and phase registration; the
   underlying algorithm remains in `foundation/`.
 - `navigation/` keeps `NavMap`, a walls/closed-doors snapshot of the map
   rebuilt when its static blockers change, and the game's base `Terrain`
@@ -85,6 +88,10 @@ and renderers must not import it.
   finished. It needs no renderer; without it the simulation runs with no
   delay.
 - `presentation/` builds light maps and renderer-neutral composed cell frames.
+  Frame cells are in the player's map coordinates; a cell the player sees
+  shows the map cell it looks onto (`RenderBuffers::seen`), which behind a
+  portal is elsewhere on the map, and objects get one instance per place
+  they are seen. Cells not seen show the map as remembered, dimmed.
   Renderers draw each frame as two layers: `ground` (per-cell floor and fog,
   blank under objects) and `objects` (every visible glyph entity, at its
   animated position), so any object can move.
