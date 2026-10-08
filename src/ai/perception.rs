@@ -90,11 +90,22 @@ pub fn carry_out(mut enemies: Query<(&EnemyAct, &EnemyMind, &mut MoveCommand)>) 
     }
 }
 
-/// An enemy that decided on no step this turn (a thinking one included)
-/// waits, spending its token, so turns never stall on it.
-pub fn wait_if_idle(mut enemies: Query<(&EnemyMind, &mut MoveCommand), With<EnemyAct>>) {
-    for (mind, mut command) in enemies.iter_mut() {
-        if mind.has_turn && !command.active {
+/// An enemy that decided on no step this turn waits, spending its token, so
+/// turns never stall on it. A thinking enemy keeps its token for a few frames
+/// ([`THINK_FRAMES`]), to act this turn if its path lands by then; after
+/// that it waits out the turn too, and goes on thinking on its next one.
+pub fn wait_if_idle(mut enemies: Query<(&EnemyAct, &mut EnemyMind, &mut MoveCommand)>) {
+    for (act, mut mind, mut command) in enemies.iter_mut() {
+        let mind = mind.bypass_change_detection();
+        if !mind.has_turn {
+            mind.think_frames = 0;
+            continue;
+        }
+        if matches!(act, EnemyAct::Think(_)) && mind.think_frames < THINK_FRAMES {
+            mind.think_frames += 1;
+            continue;
+        }
+        if !command.active {
             command.target = IVec2::ZERO;
             command.relative = true;
             command.active = true;

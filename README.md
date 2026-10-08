@@ -62,7 +62,8 @@ next to this file.
   then reports `EnemyAct::Move(mood, path)`, which `ai::carry_out` turns
   into a step a turn. While the path is on its way the enemy thinks (`?`).
   How the service runs its work is its own business, not the tree's: paths
-  are planned inline for now, so a path lands on the tick that asked. Locomotion (`locomotion/`) walks any actor to its
+  are planned on the async compute pool, so a slow plan never costs a
+  frame, and tests run them inline (deterministic). Locomotion (`locomotion/`) walks any actor to its
   `Destination`: it plans with the navigation planner using the actor's
   `TraversalPrefs` (what a closed door costs it, or that doors block), takes
   one step per action, and reports the outcome in `PathFollow::status`
@@ -173,7 +174,7 @@ cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
-cargo test --workspace   # 180 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 183 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

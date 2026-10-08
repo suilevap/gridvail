@@ -101,8 +101,9 @@ mod trees {
     use crate::ai::{enemy_tree, AiPlugin};
     use crate::model::*;
     use crate::navigation::NavigationPlugin;
+    use crate::navigation::PathService;
     use crate::schedule::GamePhase;
-    use crate::service::{Services, ServicesPlugin};
+    use crate::service::{Runner, ServiceSet, Services, ServicesPlugin};
     use crate::vision::VisionPlugin;
 
     const ENEMY: IVec2 = IVec2::new(1, 1);
@@ -129,6 +130,12 @@ mod trees {
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(42)));
         app.world_mut().spawn((Active, Player(0), Pos(PLAYER)));
         app
+    }
+
+    fn services(runner: Runner) -> Services {
+        Services::new(ServiceSet {
+            paths: PathService::with_runner(runner),
+        })
     }
 
     fn spawn_enemy(app: &mut App, tokens: i32) -> Entity {
@@ -246,6 +253,31 @@ mod trees {
         app.update();
         assert!(is_idle(act_of(&app, enemy)), "{:?}", act_of(&app, enemy));
         assert_eq!(app.world().get::<EnemyMind>(enemy).unwrap().last_seen, None);
+    }
+
+    /// The tree only waits: where the plan runs is the service's business.
+    #[test]
+    fn a_slow_path_is_thought_about_without_spending_the_turn() {
+        let mut app = headless();
+        app.insert_resource(services(Runner::Deferred(3)));
+        let enemy = spawn_enemy(&mut app, 1);
+        app.update();
+        assert_eq!(act_of(&app, enemy), Some(EnemyAct::Alert));
+        // Nothing carries commands out here; clear the alert's wait.
+        app.world_mut()
+            .get_mut::<MoveCommand>(enemy)
+            .unwrap()
+            .active = false;
+        for _ in 0..3 {
+            app.update();
+            assert_eq!(act_of(&app, enemy), Some(EnemyAct::Think(Mood::Hunt)));
+            assert!(!app.world().get::<MoveCommand>(enemy).unwrap().active);
+        }
+        app.update();
+        assert_eq!(
+            walking(act_of(&app, enemy)),
+            Some((Mood::Hunt, Some(PLAYER)))
+        );
     }
 
     #[test]

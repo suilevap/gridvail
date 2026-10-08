@@ -159,7 +159,8 @@ fn player_near_end(mind: &EnemyMind, path: &Path) -> bool {
 /// Enter the tree only on a turn the enemy can act in.
 ///
 /// Out of turn it is skipped, so its standing act is kept rather than
-/// re-decided on frames that cannot spend it.
+/// re-decided on frames that cannot spend it. A thinking enemy still has its
+/// turn, so it is entered again each frame until its path lands.
 pub fn enemy_tick(mind: &EnemyMind, _: TickAt) -> Tick {
     if mind.has_turn {
         Tick::Evaluate
