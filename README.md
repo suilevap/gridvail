@@ -84,7 +84,9 @@ next to this file.
   portal are not remembered. Walking into it comes out of the other one,
   with the step animated straight through. The `portals.txt` map has two
   rooms joined only by portals and a portal that leads from a room back
-  into itself. The 3D renderer does not show portals yet.
+  into itself. The drawn frame is a window of its own size that follows
+  the player (`FrameSize`), independent of the map's size. The 3D renderer
+  does not show portals yet.
 - A view camera (an addition): both renderers draw through a
   renderer-neutral `ViewCamera` (centre, rotation, zoom, offset) that a
   camera operator keeps on the player's animated position, so the world
@@ -166,7 +168,7 @@ cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
-cargo test --workspace   # 168 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 170 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
