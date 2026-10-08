@@ -3,6 +3,7 @@ use flatbt_bevy::prelude::*;
 
 use super::*;
 use crate::locomotion::follow_paths;
+use crate::navigation::share_paths;
 use crate::schedule::GamePhase;
 use crate::simulation::{direction_tiles, move_commands, player_input};
 
@@ -10,9 +11,9 @@ use crate::simulation::{direction_tiles, move_commands, player_input};
 /// doors are worth.
 ///
 /// Every turn, between the player's input and the moves: door prices and
-/// perception, the trees' tick, then `carry_out` hands acts to locomotion
-/// (or orders a step directly), and `wait_if_idle` spends the token of an
-/// enemy whose walk took no step.
+/// perception, the trees' tick, then `carry_out` orders each act's step, and
+/// `wait_if_idle` spends the token of an enemy that took none (a thinking
+/// one after a few frames).
 ///
 /// An enemy runs a tree with `EnemyMind` and a `Behavior` for `enemy_tree`
 /// (watch, hunt, wander).
@@ -34,6 +35,7 @@ impl Plugin for AiPlugin {
                 (
                     (random_walk, wander_goals, price_doors, perceive)
                         .chain()
+                        .after(share_paths)
                         .before(BehaviorSystems),
                     carry_out.after(BehaviorSystems).before(follow_paths),
                     wait_if_idle.after(follow_paths),

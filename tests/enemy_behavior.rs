@@ -13,12 +13,44 @@ use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::lighting::YELLOW;
 use pav_ecs_game_bevy_port::model::*;
+use pav_ecs_game_bevy_port::navigation::PathService;
+use pav_ecs_game_bevy_port::service::{Runner, ServiceSet, Services};
 use std::time::Duration;
+
+/// An enemy's act as the scenarios check it: a walk by its mood and where
+/// its path leads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Act {
+    Alert,
+    Attack(IVec2),
+    Hold,
+    Rest,
+    /// Waiting for a path.
+    Think(Mood),
+    Hunt(Option<IVec2>),
+    Search(Option<IVec2>),
+    Patrol(Option<IVec2>),
+}
+
+impl From<&EnemyAct> for Act {
+    fn from(act: &EnemyAct) -> Self {
+        match act {
+            EnemyAct::Alert => Act::Alert,
+            EnemyAct::Attack(step) => Act::Attack(*step),
+            EnemyAct::Hold => Act::Hold,
+            EnemyAct::Rest => Act::Rest,
+            EnemyAct::Think(mood) => Act::Think(*mood),
+            EnemyAct::Move(Mood::Hunt, path) => Act::Hunt(path.end()),
+            EnemyAct::Move(Mood::Search, path) => Act::Search(path.end()),
+            EnemyAct::Move(Mood::Patrol, path) => Act::Patrol(path.end()),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 struct Snapshot {
     player: IVec2,
-    enemies: Vec<(Entity, IVec2, Option<EnemyAct>)>,
+    enemies: Vec<(Entity, IVec2, Option<Act>)>,
     doors: Vec<(IVec2, bool)>,
     keys: Vec<IVec2>,
 }
@@ -31,8 +63,16 @@ struct Game {
 
 impl Game {
     fn new(map: &'static str) -> Self {
+        Self::with_paths(map, Runner::Inline)
+    }
+
+    /// A game whose paths are planned as `runner` says.
+    fn with_paths(map: &'static str, runner: Runner) -> Self {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
+            .insert_resource(Services::new(ServiceSet {
+                paths: PathService::with_runner(runner),
+            }))
             .init_resource::<ButtonInput<KeyCode>>()
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
                 16,
@@ -107,7 +147,7 @@ impl Game {
         let mut enemies: Vec<_> = world
             .query_filtered::<(Entity, &Pos, Option<&EnemyAct>), With<Enemy>>()
             .iter(world)
-            .map(|(e, p, act)| (e, p.0, act.copied()))
+            .map(|(e, p, act)| (e, p.0, act.map(Act::from)))
             .collect();
         enemies.sort_by_key(|(e, ..)| *e);
         let doors = world
@@ -130,7 +170,7 @@ impl Game {
     }
 
     /// Holds on every turn of every scenario.
-    fn check_invariants(&self, enemies: &[(Entity, IVec2, Option<EnemyAct>)]) {
+    fn check_invariants(&self, enemies: &[(Entity, IVec2, Option<Act>)]) {
         let grid = self.app.world().resource::<MapGrid>();
         for &(enemy, pos, _) in enemies {
             assert_eq!(grid.get(pos), Some(enemy), "enemy off the occupancy grid");
@@ -144,7 +184,7 @@ impl Game {
         }
     }
 
-    fn enemy(&self, turn: usize) -> (IVec2, Option<EnemyAct>) {
+    fn enemy(&self, turn: usize) -> (IVec2, Option<Act>) {
         let (_, pos, act) = self.trace[turn].enemies[0];
         (pos, act)
     }
@@ -189,13 +229,14 @@ impl Game {
             let mut acts = Vec::new();
             for &(_, pos, act) in &snap.enemies {
                 let glyph = match act {
-                    Some(EnemyAct::Alert) => '!',
-                    Some(EnemyAct::Hunt(_)) => 'H',
-                    Some(EnemyAct::Attack(_)) => 'A',
-                    Some(EnemyAct::Hold) => '-',
-                    Some(EnemyAct::Search(_)) => 'S',
-                    Some(EnemyAct::Patrol(_)) => 'p',
-                    Some(EnemyAct::Rest) => 'z',
+                    Some(Act::Alert) => '!',
+                    Some(Act::Hunt(_)) => 'H',
+                    Some(Act::Attack(_)) => 'A',
+                    Some(Act::Hold) => '-',
+                    Some(Act::Search(_)) => 'S',
+                    Some(Act::Patrol(_)) => 'p',
+                    Some(Act::Rest) => 'z',
+                    Some(Act::Think(_)) => '?',
                     None => 'e',
                 };
                 put(pos, glyph);
@@ -213,11 +254,11 @@ fn manhattan(a: IVec2, b: IVec2) -> i32 {
     (a - b).abs().element_sum()
 }
 
-fn is_idle(act: Option<EnemyAct>) -> bool {
-    matches!(act, Some(EnemyAct::Patrol(_) | EnemyAct::Rest))
+fn is_idle(act: Option<Act>) -> bool {
+    matches!(act, Some(Act::Patrol(_) | Act::Rest))
 }
 
-fn acts(game: &Game) -> Vec<Option<EnemyAct>> {
+fn acts(game: &Game) -> Vec<Option<Act>> {
     game.trace.iter().map(|s| s.enemies[0].2).collect()
 }
 
@@ -231,7 +272,7 @@ fn a_sighting_freezes_the_enemy_then_it_chases_and_attacks() {
     // Turn 0 is the startup frame: the enemy has no field of view yet, so
     // it notices the player on its first look, on turn 1 at the latest.
     let player = game.trace[0].player;
-    while game.enemy(game.trace.len() - 1).1 != Some(EnemyAct::Alert) {
+    while game.enemy(game.trace.len() - 1).1 != Some(Act::Alert) {
         assert!(game.trace.len() < 2, "never alerted");
         game.turn(None);
     }
@@ -254,9 +295,9 @@ fn a_sighting_freezes_the_enemy_then_it_chases_and_attacks() {
         let (pos, act) = game.enemy(turn);
         let before = manhattan(game.trace[turn - 1].enemies[0].1, player);
         let expected = if before == 1 {
-            EnemyAct::Attack(IVec2::NEG_X)
+            Act::Attack(IVec2::NEG_X)
         } else {
-            EnemyAct::Hunt(player)
+            Act::Hunt(Some(player))
         };
         assert_eq!(act, Some(expected), "turn {turn}");
         assert_eq!(manhattan(pos, player), (before - 1).max(1), "turn {turn}");
@@ -283,15 +324,12 @@ fn an_unaware_enemy_patrols_and_rests() {
     // several turns, and the enemy gets around.
     let held = acts
         .windows(3)
-        .filter(|w| matches!(w[0], Some(EnemyAct::Patrol(_))) && w[0] == w[1] && w[1] == w[2])
+        .filter(|w| matches!(w[0], Some(Act::Patrol(_))) && w[0] == w[1] && w[1] == w[2])
         .count();
     assert!(held > 0, "no stroll held its goal: {acts:?}");
     let cells: std::collections::HashSet<_> = game.trace.iter().map(|s| s.enemies[0].1).collect();
     assert!(cells.len() >= 4, "barely moved: {cells:?}");
-    assert!(
-        acts.contains(&Some(EnemyAct::Rest)),
-        "never rested: {acts:?}"
-    );
+    assert!(acts.contains(&Some(Act::Rest)), "never rested: {acts:?}");
 }
 
 #[test]
@@ -324,22 +362,22 @@ fn a_player_ducking_out_of_sight_is_searched_for_then_found() {
 
     let acts = acts(&game);
     // Noticed on its first look (turn 0 is startup, before any).
-    assert!(acts[..2].contains(&Some(EnemyAct::Alert)), "{acts:?}");
+    assert!(acts[..2].contains(&Some(Act::Alert)), "{acts:?}");
     let searched = acts
         .iter()
-        .position(|a| matches!(a, Some(EnemyAct::Search(_))))
+        .position(|a| matches!(a, Some(Act::Search(_))))
         .expect("never searched");
     // Heading for where the player was last seen, not where it is.
-    let Some(EnemyAct::Search(seen)) = acts[searched] else {
+    let Some(Act::Search(Some(seen))) = acts[searched] else {
         unreachable!()
     };
     assert_ne!(seen, game.trace[searched].player);
     let found = acts[searched..]
         .iter()
-        .any(|a| matches!(a, Some(EnemyAct::Hunt(_) | EnemyAct::Attack(_))));
+        .any(|a| matches!(a, Some(Act::Hunt(_) | Act::Attack(_))));
     assert!(found, "never found the player again: {acts:?}");
     // One pursuit, one alert: re-sighting mid-chase does not freeze it again.
-    let alerts = acts.iter().filter(|&&a| a == Some(EnemyAct::Alert)).count();
+    let alerts = acts.iter().filter(|&&a| a == Some(Act::Alert)).count();
     assert_eq!(alerts, 1, "{acts:?}");
 }
 
@@ -363,7 +401,7 @@ fn a_player_who_gets_away_is_given_up_on() {
     let acts = acts(&game);
     let searched = acts
         .iter()
-        .position(|a| matches!(a, Some(EnemyAct::Search(_))))
+        .position(|a| matches!(a, Some(Act::Search(_))))
         .expect("never searched");
     assert!(
         acts[searched..].iter().any(|&a| is_idle(a)),
@@ -386,7 +424,7 @@ fn chasers_step_around_each_other() {
     let last = game.trace.last().unwrap();
     // Nobody queues behind an ally: each steps around and ends up attacking.
     for &(_, pos, act) in &last.enemies {
-        assert!(matches!(act, Some(EnemyAct::Attack(_))), "{act:?}");
+        assert!(matches!(act, Some(Act::Attack(_))), "{act:?}");
         assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
     }
 }

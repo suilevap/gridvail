@@ -7,12 +7,11 @@
 //!
 //! Enemies decide with FlatBT behavior trees, in three steps around the tick:
 //!
-//! 1. `perceive` fills each enemy's `EnemyMind` blackboard, including
-//!    locomotion's report on its current walk;
+//! 1. `perceive` fills each enemy's `EnemyMind` blackboard (and hands it the
+//!    `Services` handle once);
 //! 2. the tree (`enemy_tree`) writes what the enemy is doing into
-//!    `EnemyAct`;
-//! 3. `carry_out` turns that act into a single step (a [`MoveCommand`]) or a
-//!    walk (a [`Destination`]), which locomotion then follows.
+//!    `EnemyAct`: walks are paths it asked a service for ([`await_future`]);
+//! 3. `carry_out` turns that act into a single step (a [`MoveCommand`]).
 //!
 //! The tree never touches the world, so enemies share the player's tokens,
 //! movement, and collision rules.
