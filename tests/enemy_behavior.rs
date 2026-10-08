@@ -30,6 +30,8 @@ enum Act {
     Hunt(Option<IVec2>),
     Search(Option<IVec2>),
     Patrol(Option<IVec2>),
+    Order(Option<IVec2>),
+    Fetch(Option<IVec2>),
 }
 
 impl From<&EnemyAct> for Act {
@@ -43,6 +45,8 @@ impl From<&EnemyAct> for Act {
             EnemyAct::Move(Mood::Hunt, path) => Act::Hunt(path.end()),
             EnemyAct::Move(Mood::Search, path) => Act::Search(path.end()),
             EnemyAct::Move(Mood::Patrol, path) => Act::Patrol(path.end()),
+            EnemyAct::Move(Mood::Order, path) => Act::Order(path.end()),
+            EnemyAct::Move(Mood::Fetch, path) => Act::Fetch(path.end()),
         }
     }
 }
@@ -244,6 +248,8 @@ impl Game {
                     Some(Act::Patrol(_)) => 'p',
                     Some(Act::Rest) => 'z',
                     Some(Act::Think(_)) => '?',
+                    Some(Act::Order(_)) => 'g',
+                    Some(Act::Fetch(_)) => 'f',
                     None => 'e',
                 };
                 put(pos, glyph);
@@ -509,4 +515,296 @@ fn an_enemy_planning_in_the_background_still_gets_there() {
     let (_, pos, act) = last.enemies[0];
     assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
     assert!(matches!(act, Some(Act::Attack(_))), "{act:?}");
+}
+
+// --- hunters: follow the order (the player), opening doors on the way ------
+
+fn door_open(snap: &Snapshot) -> bool {
+    snap.doors.iter().all(|&(_, open)| open)
+}
+
+#[test]
+fn a_hunter_fetches_a_key_to_open_the_door_in_its_way() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXX\n\
+         X.k...X......X\n\
+         X.....X......X\n\
+         Xh....D....p.X\n\
+         X.....X......X\n\
+         XXXXXXXXXXXXXX\n",
+    );
+    game.turns(30);
+    game.print("hunter: key, door, player");
+    let picked = game
+        .trace
+        .iter()
+        .position(|s| s.keys.is_empty())
+        .expect("never picked up the key");
+    let opened = game
+        .trace
+        .iter()
+        .position(door_open)
+        .expect("never opened the door");
+    assert!(picked < opened, "opened before it had the key");
+    // Walking to the order, which locomotion routed through the door.
+    let opener = game.enemy(opened).1;
+    assert!(matches!(opener, Some(Act::Order(_))), "{opener:?}");
+    let last = game.trace.last().unwrap();
+    let (_, pos, act) = last.enemies[0];
+    assert_eq!(manhattan(pos, last.player), 1);
+    assert!(matches!(act, Some(Act::Attack(_))), "{act:?}");
+}
+
+#[test]
+fn a_hunter_walks_around_a_wall() {
+    let mut game = Game::new(
+        "XXXXXXXXXXX\n\
+         X.........X\n\
+         X....X....X\n\
+         Xh...X..p.X\n\
+         X....X....X\n\
+         XXXXXXXXXXX\n",
+    );
+    game.turns(16);
+    game.print("hunter: around a wall");
+    let last = game.trace.last().unwrap();
+    let (_, pos, act) = last.enemies[0];
+    assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
+    assert!(matches!(act, Some(Act::Attack(_))), "{act:?}");
+}
+
+#[test]
+fn a_hunter_takes_an_open_detour_rather_than_spend_a_key() {
+    let mut game = Game::new(
+        "XXXXXXXXXXX\n\
+         X.........X\n\
+         X.k..X....X\n\
+         Xh...D..p.X\n\
+         X....X....X\n\
+         XXXXXXXXXXX\n",
+    );
+    game.turns(16);
+    game.print("hunter: detour over door");
+    let last = game.trace.last().unwrap();
+    assert!(!door_open(last), "opened the door");
+    assert_eq!(last.keys.len(), 1, "fetched the key");
+    let (_, pos, _) = last.enemies[0];
+    assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
+}
+
+/// With no key anywhere, there is no way to the order: the hunter keeps
+/// asking for it and holds where it is, ready to go once a way opens.
+#[test]
+fn a_hunter_without_a_key_holds_behind_a_locked_door() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXX\n\
+         X....X.....X\n\
+         Xh...D...p.X\n\
+         X....X.....X\n\
+         XXXXXXXXXXXX\n",
+    );
+    game.turns(12);
+    game.print("hunter: no key");
+    let last = game.trace.last().unwrap();
+    assert!(!door_open(last));
+    let (_, pos, act) = last.enemies[0];
+    assert_eq!(pos, IVec2::new(1, 2), "wandered off");
+    assert_eq!(act, Some(Act::Hold));
+}
+
+// --- planning for keys: go the other way, chain doors, skip a sealed key ----
+
+fn keys_left(snap: &Snapshot) -> usize {
+    snap.keys.len()
+}
+
+fn doors_open(snap: &Snapshot) -> usize {
+    snap.doors.iter().filter(|&&(_, open)| open).count()
+}
+
+/// The hunter catches the player: next to it and attacking.
+fn assert_caught(game: &Game) {
+    let last = game.trace.last().unwrap();
+    let (_, pos, act) = last.enemies[0];
+    assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
+    assert!(matches!(act, Some(Act::Attack(_))), "{act:?}");
+}
+
+/// The key lies behind the hunter, away from the door it opens: it has to
+/// walk away from its goal first.
+#[test]
+fn a_hunter_walks_away_from_its_goal_to_fetch_the_key() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXXX\n\
+         Xk....hX......X\n\
+         X......D...p..X\n\
+         X......X......X\n\
+         XXXXXXXXXXXXXXX\n",
+    );
+    game.turns(36);
+    game.print("hunter: key behind it");
+    let start = game.trace[0].enemies[0].1;
+    let picked = game
+        .trace
+        .iter()
+        .position(|s| keys_left(s) == 0)
+        .expect("never picked up the key");
+    let opened = game
+        .trace
+        .iter()
+        .position(|s| doors_open(s) == 1)
+        .expect("never opened the door");
+    assert!(picked < opened);
+    // It went the other way: left, toward the key, at some point.
+    let westmost = game.trace[..=picked]
+        .iter()
+        .map(|s| s.enemies[0].1.x)
+        .min()
+        .unwrap();
+    assert!(westmost < start.x - 3, "never headed for the key");
+    assert_caught(&game);
+}
+
+/// Each door spends a key, so two doors in a row take two keys.
+#[test]
+fn a_hunter_fetches_a_key_for_each_door() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXXXX\n\
+         Xk..h..X..X....X\n\
+         Xk.....D..D..p.X\n\
+         X......X..X....X\n\
+         XXXXXXXXXXXXXXXX\n",
+    );
+    game.turns(50);
+    game.print("hunter: two doors");
+    let last = game.trace.last().unwrap();
+    assert_eq!(keys_left(last), 0, "left a key behind");
+    assert_eq!(doors_open(last), 2, "a door stayed shut");
+    assert_caught(&game);
+}
+
+/// The closest key is walled in. The hunter gives it up and fetches one
+/// that is farther away but reachable.
+#[test]
+fn a_hunter_skips_a_key_it_cannot_reach() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXXXXXX\n\
+         XXX.........X....X\n\
+         XkX....h....D..p.X\n\
+         XXX.........X....X\n\
+         X.k.........X....X\n\
+         XXXXXXXXXXXXXXXXXX\n",
+    );
+    game.turns(36);
+    game.print("hunter: sealed key");
+    let last = game.trace.last().unwrap();
+    assert_eq!(last.keys, vec![IVec2::new(1, 2)], "took the wrong key");
+    assert_eq!(doors_open(last), 1);
+    assert_caught(&game);
+}
+
+/// `GetKey` asks for the keys one by one, nearest first: two walled-in keys
+/// fail in turn before the farthest, reachable one is fetched.
+#[test]
+fn a_hunter_tries_every_key_before_giving_up() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXXXXXX\n\
+         XkX..........X...X\n\
+         XXX.....h....D.p.X\n\
+         XkX..........X...X\n\
+         XXX..........X...X\n\
+         X.k..........X...X\n\
+         XXXXXXXXXXXXXXXXXX\n",
+    );
+    game.turns(45);
+    game.print("hunter: third key");
+    let last = game.trace.last().unwrap();
+    assert_eq!(
+        last.keys,
+        vec![IVec2::new(1, 1), IVec2::new(1, 3)],
+        "took the wrong key"
+    );
+    assert_eq!(doors_open(last), 1);
+    assert_caught(&game);
+}
+
+/// When every key fails, so does `GetKey`: the hunter holds at the door
+/// instead of trying the same keys again.
+#[test]
+fn a_hunter_with_no_key_in_reach_holds() {
+    let mut game = Game::new(
+        "XXXXXXXXXXXXXX\n\
+         XkX......X...X\n\
+         XXX..h...D.p.X\n\
+         XkX......X...X\n\
+         XXX......X...X\n\
+         XXXXXXXXXXXXXX\n",
+    );
+    game.turns(20);
+    game.print("hunter: no key in reach");
+    let last = game.trace.last().unwrap();
+    assert_eq!(keys_left(last), 2);
+    assert!(!door_open(last));
+    let settled: Vec<IVec2> = game.trace[game.trace.len() - 6..]
+        .iter()
+        .map(|snap| snap.enemies[0].1)
+        .collect();
+    assert!(
+        settled.windows(2).all(|pair| pair[0] == pair[1]),
+        "still pacing: {settled:?}"
+    );
+    assert_eq!(last.enemies[0].2, Some(Act::Hold));
+}
+
+/// The demo map (`--map assets/maps/hunter_keys.txt`): the nearest keys are
+/// walled in or behind the first door, so the hunter walks away for the far
+/// one, opens the first door, then fetches the key it could not reach before
+/// for the second.
+#[test]
+fn a_hunter_works_through_the_demo_map() {
+    let mut game = Game::new(include_str!("../assets/maps/hunter_keys.txt"));
+    game.turns(70);
+    game.print("hunter: demo map");
+    let last = game.trace.last().unwrap();
+    assert_eq!(last.keys, vec![IVec2::new(9, 1)], "took the wrong keys");
+    assert_eq!(doors_open(last), 2);
+    assert_caught(&game);
+}
+
+/// The same with the player pacing, so the order moves every turn: the
+/// hunter still sees there is no way to it and goes for the keys.
+#[test]
+fn a_hunter_fetches_keys_while_the_player_paces() {
+    let mut game = Game::new(include_str!("../assets/maps/hunter_keys.txt"));
+    for turn in 0..70 {
+        let key = if turn % 2 == 0 {
+            KeyCode::ArrowLeft
+        } else {
+            KeyCode::ArrowRight
+        };
+        game.turn(Some(key));
+    }
+    game.print("hunter: demo map, pacing player");
+    let last = game.trace.last().unwrap();
+    assert_eq!(last.keys, vec![IVec2::new(9, 1)], "took the wrong keys");
+    assert_eq!(doors_open(last), 2);
+    assert_caught(&game);
+}
+
+/// Fetching the key with plans made off the frame, as in the game.
+#[test]
+fn a_hunter_planning_in_the_background_fetches_the_key() {
+    let mut game = Game::with_paths(
+        "XXXXXXXXXXXXXXX\n\
+         Xk....hX......X\n\
+         X......D...p..X\n\
+         X......X......X\n\
+         XXXXXXXXXXXXXXX\n",
+        Runner::Background,
+    );
+    game.turns(45);
+    let last = game.trace.last().unwrap();
+    assert_eq!(keys_left(last), 0);
+    assert_eq!(doors_open(last), 1);
+    assert_caught(&game);
 }

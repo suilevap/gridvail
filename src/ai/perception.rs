@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use rand::RngExt;
 
-use crate::lighting::{DARK_RED, DARK_YELLOW, RED, YELLOW};
+use crate::lighting::{DARK_RED, DARK_YELLOW, MAGENTA, RED, YELLOW};
 use crate::model::*;
 use crate::navigation::{NavCell, NavMap};
 use crate::service::Services;
@@ -73,6 +73,56 @@ pub fn perceive(
     }
 }
 
+/// Hunters are ordered to the player's cell. The one source of orders for
+/// now; anything else that commands an agent writes its `Order` the same way.
+pub fn order_hunters(
+    players: Query<&Pos, (With<Player>, With<Active>, Without<DestroyRequested>)>,
+    mut hunters: Query<&mut Order, With<Hunter>>,
+) {
+    let target = players.iter().next().map(|pos| pos.0);
+    for mut order in hunters.iter_mut() {
+        order.set_if_neq(Order { target });
+    }
+}
+
+/// What goal-driven agents read on top of `perceive`: their order and keys.
+pub fn perceive_objectives(
+    carried_keys: Query<(), With<Key>>,
+    keys_on_map: Query<(Entity, &Pos), (With<Key>, With<Item>)>,
+    mut agents: Query<(&Order, Option<&Inventory>, &mut EnemyMind)>,
+) {
+    for (order, inventory, mut mind) in agents.iter_mut() {
+        let mind = mind.bypass_change_detection();
+        if !mind.has_turn {
+            continue;
+        }
+        mind.order = order.target;
+        mind.has_key =
+            inventory.is_some_and(|items| items.0.iter().any(|&item| carried_keys.contains(item)));
+        let pos = mind.pos;
+        // Nearest first, kept without sorting a list: few keys, few slots.
+        mind.keys = [None; KNOWN_KEYS];
+        for key in keys_on_map.iter().map(|(entity, cell)| (entity, cell.0)) {
+            let distance = |(_, cell): (Entity, IVec2)| (cell - pos).abs().element_sum();
+            let mut candidate = Some(key);
+            for slot in &mut mind.keys {
+                match (*slot, candidate) {
+                    (_, None) => break,
+                    (None, _) => {
+                        *slot = candidate;
+                        break;
+                    }
+                    (Some(held), Some(new)) if distance(new) < distance(held) => {
+                        *slot = Some(new);
+                        candidate = Some(held);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
 /// Turn each enemy's act into this turn's step.
 ///
 /// A thinking enemy takes no step yet: it keeps its turn while its path is on
@@ -127,6 +177,7 @@ pub fn show_mood(mut enemies: Query<(&EnemyAct, &mut Glyph)>) {
                 Mood::Hunt => RED,
                 Mood::Search => DARK_YELLOW,
                 Mood::Patrol => DARK_RED,
+                Mood::Order | Mood::Fetch => MAGENTA,
             },
         };
         let mut shown = *glyph;

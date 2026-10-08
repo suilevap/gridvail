@@ -7,10 +7,12 @@
 //!
 //! Enemies decide with FlatBT behavior trees, in three steps around the tick:
 //!
-//! 1. `perceive` fills each enemy's `EnemyMind` blackboard (and hands it the
-//!    `Services` handle once);
-//! 2. the tree (`enemy_tree`) writes what the enemy is doing into
-//!    `EnemyAct`: walks are paths it asked a service for ([`await_future`]);
+//! 1. `perceive` (and `perceive_objectives` for agents with orders) fills
+//!    each enemy's `EnemyMind` blackboard (and hands it the `Services`
+//!    handle once);
+//! 2. the tree (`enemy_tree`, or `hunter_tree` for hunters) writes what the
+//!    enemy is doing into `EnemyAct`: walks are paths it asked a service for
+//!    ([`await_future`]);
 //! 3. `carry_out` turns that act into a single step (a [`MoveCommand`]).
 //!
 //! The tree never touches the world, so enemies share the player's tokens,
@@ -19,11 +21,13 @@
 #![allow(clippy::type_complexity)]
 
 mod await_future;
+mod hunter;
 mod perception;
 mod plugin;
 mod tree;
 
 pub use await_future::*;
+pub use hunter::*;
 pub use perception::*;
 pub use plugin::*;
 pub use tree::*;
