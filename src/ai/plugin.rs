@@ -15,14 +15,18 @@ use crate::simulation::{direction_tiles, move_commands, player_input};
 /// `wait_if_idle` spends the token of an enemy that took none (a thinking
 /// one after a few frames).
 ///
-/// An enemy runs a tree with `EnemyMind` and a `Behavior` for `enemy_tree`
-/// (watch, hunt, wander).
+/// An enemy runs a tree with `EnemyMind` and a `Behavior` for one of them:
+/// `enemy_tree` (watch, hunt, wander) or `hunter_tree` (follow the `Order`,
+/// fetching keys; needs `Order` too).
 pub struct AiPlugin;
 
 impl Plugin for AiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DoorPolicy>()
-            .add_plugins(BehaviorPlugin::for_tree(enemy_tree).tick_mode(enemy_tick))
+            .add_plugins((
+                BehaviorPlugin::for_tree(enemy_tree).tick_mode(enemy_tick),
+                BehaviorPlugin::for_tree(hunter_tree).tick_mode(enemy_tick),
+            ))
             .configure_sets(
                 Update,
                 BehaviorSystems
@@ -33,7 +37,14 @@ impl Plugin for AiPlugin {
             .add_systems(
                 Update,
                 (
-                    (random_walk, wander_goals, price_doors, perceive)
+                    (
+                        random_walk,
+                        wander_goals,
+                        price_doors,
+                        order_hunters,
+                        perceive,
+                        perceive_objectives,
+                    )
                         .chain()
                         .after(share_paths)
                         .before(BehaviorSystems),

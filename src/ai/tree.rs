@@ -42,7 +42,7 @@ pub fn enemy_tree() -> impl BehaviorNode<EnemyMind, EnemyAct> {
                                 // A fresh path whenever the player strays from
                                 // where the last one leads.
                                 repeat_while(EnemyMind::sees_player, hunt()),
-                                leaf(|_: &mut EnemyMind| NodeResult::Running(EnemyAct::Hold)),
+                                leaf(hold),
                             )),
                         ),
                     ),
@@ -145,7 +145,34 @@ pub(super) fn follow(
     keep: fn(&EnemyMind, &Path) -> bool,
     turns: u8,
 ) -> ActionNode<Follow> {
-    action(Follow { mood, keep, turns })
+    action(Follow {
+        mood,
+        keep,
+        turns,
+        blocked_fails: true,
+    })
+}
+
+/// Walk to the target `pick` chooses, however long it takes: whenever a walk
+/// ends short of it (the target moved, a step was blocked) pick and plan
+/// again at once. Fails only when there is no target, or no way there.
+pub(super) fn pursue(
+    mood: Mood,
+    pick: fn(&EnemyMind) -> Option<IVec2>,
+    keep: fn(&EnemyMind, &Path) -> bool,
+) -> impl BehaviorNode<EnemyMind, EnemyAct> {
+    repeat_while(
+        |_: &EnemyMind| true,
+        scope! {
+            let target: IVec2;
+            let path: Path;
+            sequence {
+                perceived(pick).with(out target);
+                plan_path(mood).with(target, out path);
+                action(Follow { mood, keep, turns: u8::MAX, blocked_fails: false }).with(path);
+            }
+        },
+    )
 }
 
 /// Still worth walking toward the player: it stands near the path's end.
@@ -170,11 +197,16 @@ pub fn enemy_tick(mind: &EnemyMind, _: TickAt) -> Tick {
 }
 
 /// Bump into the adjacent player.
-fn attack(mind: &mut EnemyMind) -> NodeResult<EnemyAct> {
+pub(super) fn attack(mind: &mut EnemyMind) -> NodeResult<EnemyAct> {
     match mind.player {
         Some(player) => NodeResult::Running(EnemyAct::Attack(player - mind.pos)),
         None => NodeResult::Failure,
     }
+}
+
+/// Nothing to do this turn.
+pub(super) fn hold(_: &mut EnemyMind) -> NodeResult<EnemyAct> {
+    NodeResult::Running(EnemyAct::Hold)
 }
 
 /// Forget the last sighting; fails, so the pursuit ends.
@@ -211,6 +243,8 @@ pub(super) struct Follow {
     mood: Mood,
     keep: fn(&EnemyMind, &Path) -> bool,
     turns: u8,
+    /// A blocked step fails the walk; otherwise it just ends it.
+    blocked_fails: bool,
 }
 
 /// Where the last step was ordered from, and turns left.
@@ -242,8 +276,10 @@ impl<'a> BtAction<EnemyMind, EnemyAct, &'a Path> for Follow {
         EnemyAct::Move(self.mood, path.clone())
     }
 
-    /// Done well unless the last step failed or left the path.
+    /// Done well unless the last step failed or left the path (and that
+    /// counts as failing).
     fn complete(&self, following: &mut Following, mind: &mut EnemyMind, path: &'a Path) -> bool {
-        following.from != Some(mind.pos) && path.contains(mind.pos)
+        let stepped = following.from != Some(mind.pos) && path.contains(mind.pos);
+        stepped || !self.blocked_fails
     }
 }

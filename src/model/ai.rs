@@ -21,6 +21,9 @@ pub const ENEMY_SIGHT_THRESHOLD: f32 = super::VISIBILITY_THRESHOLD;
 /// never holds the player's next turn back for long.
 pub const THINK_FRAMES: u8 = 6;
 
+/// How many keys on the map an agent knows of, nearest first.
+pub const KNOWN_KEYS: usize = 4;
+
 /// How far an idle enemy strolls from where it stands.
 pub const STROLL_RADIUS: i32 = 5;
 
@@ -49,6 +52,15 @@ pub struct EnemyMind {
     pub services: Option<Services>,
     /// Frames this turn spent thinking (see [`THINK_FRAMES`]).
     pub think_frames: u8,
+    /// Where this agent has been told to go, if anywhere.
+    pub order: Option<IVec2>,
+    /// Carries a key.
+    pub has_key: bool,
+    /// Keys lying on the map and where, nearest first (as the crow flies,
+    /// so a near one may still be out of reach).
+    pub keys: [Option<(Entity, IVec2)>; KNOWN_KEYS],
+    /// Where the goal being worked on leads, for a walk to it.
+    pub target: Option<IVec2>,
 }
 
 impl EnemyMind {
@@ -78,7 +90,28 @@ impl EnemyMind {
         self.seed = x;
         x
     }
+
+    /// Where the key `key` lies, if it is still on the map.
+    pub fn key_at(&self, key: Entity) -> Option<IVec2> {
+        self.keys
+            .iter()
+            .flatten()
+            .find(|(known, _)| *known == key)
+            .map(|&(_, cell)| cell)
+    }
 }
+
+/// Where an agent has been told to go. Whoever gives orders writes it; the
+/// agent's tree decides how to get there.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Order {
+    pub target: Option<IVec2>,
+}
+
+/// An enemy that follows its `Order`, fetching a key when a door is in the
+/// way.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Hunter;
 
 /// What an enemy is doing this turn, and why.
 ///
@@ -111,6 +144,10 @@ pub enum Mood {
     Search,
     /// Idle: to a nearby cell.
     Patrol,
+    /// To where it has been ordered.
+    Order,
+    /// To a key, to carry it.
+    Fetch,
 }
 
 impl EnemyAct {

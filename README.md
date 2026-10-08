@@ -55,7 +55,12 @@ next to this file.
   them one step at a time). Unaware, they stroll to nearby cells and rest. On
   spotting the player in their own field of view (the player's FOV, radius
   8) they freeze for a beat (a yellow `!`), then hunt and attack, search
-  where it was last seen, and give up when it gets away. A tree picks a
+  where it was last seen, and give up when it gets away. Hunters (`h` on a
+  map) follow an `Order` (for now, the player's cell) with flatbt's goal
+  stack, fetching a key when a locked door is the only way: walking away
+  from the goal if that is where the key is, and one key per door. `GetKey`
+  (any key) tries `FetchKey` (one key) for each key it knows of, nearest
+  first, and fails only when all have. A tree picks a
   target into a `scope!` local, asks the path service for a path to it (a
   `service::Promise`, a plain future, waited on with the generic
   `ai::await_future` node, which writes the answer into another local),
@@ -181,14 +186,16 @@ cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
-cargo test --workspace   # 197 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 209 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
 ```
 
 The last command prints each enemy scenario turn by turn: `!` alert, `H`
-hunting, `A` attacking, `S` searching, `p` patrolling, `z` resting, `k` a key, `+`/`'` a closed/open door.
+hunting, `A` attacking, `S` searching, `p` patrolling, `z` resting, `g`
+going to an order, `f` fetching a key, `?` waiting for a path, `k` a key,
+`+`/`'` a closed/open door.
 
 Every object glides when it moves (`animation::ObjectAnimationPlugin`,
 independent of the renderer): actors, and equally walls or decor that a
@@ -245,11 +252,13 @@ video with, for example,
 
 `--map FILE` plays another map instead of the bundled one, and `--reveal`
 shows the whole map rather than what the player sees, for recording what
-enemies do out of sight:
+enemies do out of sight. The hunter demo, a hunter fetching keys for two
+doors:
 
 ```sh
-cargo run --release -- --map my_map.txt --reveal \
-  --record recordings/enemies --walk "$(printf 'LR%.0s' $(seq 40))"
+cargo run -- --map assets/maps/hunter_keys.txt --reveal
+cargo run --release -- --map assets/maps/hunter_keys.txt --reveal \
+  --record recordings/hunter --walk "$(printf 'LR%.0s' $(seq 40))"
 ```
 
 `cargo run -- --map assets/maps/chasers.txt` plays three enemies chasing

@@ -88,6 +88,11 @@ and renderers must not import it.
   (`EnemyAct::Think`) keeps its turn open for a few frames for its path,
   then waits the turn out. Out-of-turn enemies are skipped with
   `Tick::Skip`.
+  Hunters (`hunter_tree`) follow an `Order` with flatbt's goal stack: with
+  no way to it (a path task that lands no path) and no key, `Unlock(here)`
+  needs `GetKey`, which needs `FetchKey(key)` for each known key in turn
+  and fails only when every one has; with a key, door pricing lets the next
+  plan through the door.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for
