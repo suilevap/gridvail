@@ -77,6 +77,11 @@ next to this file.
 - CPU lightmaps: static layer with dirty-flag rebuild + dynamic layer,
   `(1 - sqD/radiusSq)` falloff, 255 saturation, same-kind sum,
   brighter-kind-wins, and the original fire/electricity/acid/gray palettes.
+- Portals (an addition, in progress, see `PORTALS.md`): digits `1`-`9` in
+  a map are portal walls, and the two walls with the same digit are paired.
+  The portal-aware field of view (`PortalFovComputer`) sees through them;
+  the game does not draw or walk through them yet, so for now they are
+  plain walls.
 - A view camera (an addition): both renderers draw through a
   renderer-neutral `ViewCamera` (centre, rotation, zoom, offset) that a
   camera operator keeps on the player's animated position, so the world
@@ -122,7 +127,8 @@ src/agent_api/             optional Bevy Remote control and state API
 src/app/mod.rs             game plugin composition and phase ordering
 src/app/map.rs             selected map, rules, and initial entity bundles
 src/schedule.rs            shared startup and update phase contract
-src/foundation/fov.rs      engine-independent interval FOV algorithm
+src/foundation/fov.rs      engine-independent interval FOV, also through portals
+src/foundation/portal.rs   rigid grid transforms and portal faces
 src/content/               map and symbol-rule parsers
 src/debug_ui.rs             optional FPS and runtime performance panel
 src/model/                 ECS data split by gameplay domain
@@ -156,7 +162,8 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 142 tests, including allocation and independent C# comparisons
+cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
+cargo test --workspace   # 156 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

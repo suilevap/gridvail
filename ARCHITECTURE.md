@@ -26,7 +26,10 @@ and renderers must not import it.
 ## Layers
 
 - `foundation/` contains engine-independent algorithms. The fractional FOV
-  implementation and its ring/range scratch storage live here. Grid
+  implementation and its ring/range scratch storage live here, with its
+  portal-aware variant (`PortalFovComputer`: windows through portal faces,
+  nested to any depth) and the rigid grid transforms portals are made of
+  (`portal::CellTransform`). Grid
   pathfinding is one level lower still, in its own workspace crate,
   `crates/gridvail-path`, with no dependencies: its core searches any graph
   (`Space`), and its `grid` feature adds the grid the game uses.
