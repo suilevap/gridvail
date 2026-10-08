@@ -45,7 +45,9 @@ and renderers must not import it.
   is its own `Runner`: inline (deterministic), in the background on the
   async compute pool, or handed over a fixed number of polls later (tests).
   Behavior trees wait on any future with `ai::await_future`, which writes
-  the answer into a `scope!` local.
+  the answer into a `scope!` local. `Services` is the one shared handle
+  agents keep to reach every service; `ServicesPlugin` provides it and
+  keeps what the services know of the world current.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
@@ -59,7 +61,11 @@ and renderers must not import it.
   rebuilt when its static blockers change, and the game's base `Terrain`
   rules for the `gridvail-path` crate. New pathfinding rules (enemy sight,
   door limits, places to avoid) are `Rules` combined with `Terrain`;
-  `PathPlanner` plans on the map with reused memory.
+  `PathPlanner` plans on the map with reused memory. `PathService` plans
+  paths as promises, inline by default, over its own copies of the map
+  (kept current by `share_paths`), into pooled buffers: a `Path` is a cheap
+  shared handle, and its buffer goes back to the pool when the last handle
+  drops.
 - `locomotion/` walks actors to their `Destination` (its input, which
   anything may write): it plans with the navigation planner using the
   actor's `TraversalPrefs`, keeps progress and the outcome in `PathFollow`,
