@@ -1,122 +1,171 @@
-//! Tasks: work the game asks for (a path, a plan, an answer for an AI) that
-//! may take longer than a frame.
+//! Services: work the game asks for (a path, a plan, an answer for an AI)
+//! that may take longer than a frame.
 //!
-//! [`Task::spawn`] takes the work as a closure owning everything it needs (by
-//! value or behind an `Arc`), so it can run on another thread, and returns a
-//! [`Task`] the asker keeps and polls on later frames, like a promise. Until it
-//! lands the asker does something cheap with what it already knows, and the
-//! game goes on rendering and taking turns. Dropping a task cancels it, so an
-//! asker that despawns or changes its mind leaves nothing running.
+//! A service answers with a [`Promise`], which is a plain [`Future`]: the
+//! asker keeps it and polls it on later frames, and does something cheap with
+//! what it already knows until the answer lands. Dropping it cancels the work.
+//! Anything that polls futures can wait on one; behavior trees use
+//! [`crate::ai::await_future`].
 //!
-//! [`ServiceMode`] decides where tasks run, without the asker noticing:
-//! `Inline` is the default because it is deterministic (the same seed plays
-//! the same way, which the scenario tests rely on); the game binary runs them
-//! in the `Background`.
+//! How a service runs its work is the service's own business, its
+//! [`Runner`]: the asker does not change whether the answer comes at once or
+//! frames later. [`Services`] is the one handle an agent keeps to reach every
+//! service.
+
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use bevy::prelude::*;
-use bevy::tasks::{block_on, poll_once, AsyncComputeTaskPool};
+use bevy::tasks::AsyncComputeTaskPool;
 
-/// Where tasks run.
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ServiceMode {
+use crate::navigation::{share_paths, PathService};
+use crate::schedule::GamePhase;
+
+/// How a service runs its work.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Runner {
     /// At once, in the frame that asked: the answer is there on the first poll.
+    /// Deterministic: the same seed plays the same way.
     #[default]
     Inline,
     /// On Bevy's async compute pool: the answer lands in whichever frame the
     /// work finishes, and nothing waits for it.
     Background,
-    /// In the frame that asked, but handed over only after this many more
-    /// polls. Deterministic slow thinking, for tests and tuning.
+    /// At once, but handed over only after this many more polls.
+    /// Deterministic slow thinking, for tests and tuning.
     Deferred(u32),
 }
 
-/// Work in flight, or its answer.
-pub struct Task<T> {
-    state: TaskState<T>,
+impl Runner {
+    /// Runs `work`, promising its answer.
+    pub fn run<T: Send + 'static>(self, work: impl FnOnce() -> T + Send + 'static) -> Promise<T> {
+        Promise(match self {
+            Runner::Inline => PromiseState::Ready {
+                value: Some(work()),
+                polls_left: 0,
+            },
+            Runner::Deferred(polls) => PromiseState::Ready {
+                value: Some(work()),
+                polls_left: polls,
+            },
+            Runner::Background => {
+                PromiseState::Running(AsyncComputeTaskPool::get().spawn(async move { work() }))
+            }
+        })
+    }
 }
 
-enum TaskState<T> {
+/// An answer a service promised: a [`Future`] that is ready at once, after a
+/// few polls, or when background work finishes, as its [`Runner`] decided.
+pub struct Promise<T>(PromiseState<T>);
+
+enum PromiseState<T> {
     Ready { value: Option<T>, polls_left: u32 },
     Running(bevy::tasks::Task<T>),
 }
 
-impl<T: Send + 'static> Task<T> {
-    /// Runs `work` as `mode` says.
-    pub fn spawn(mode: ServiceMode, work: impl FnOnce() -> T + Send + 'static) -> Self {
-        let state = match mode {
-            ServiceMode::Inline => TaskState::Ready {
-                value: Some(work()),
-                polls_left: 0,
-            },
-            ServiceMode::Deferred(polls) => TaskState::Ready {
-                value: Some(work()),
-                polls_left: polls,
-            },
-            ServiceMode::Background => {
-                TaskState::Running(AsyncComputeTaskPool::get().spawn(async move { work() }))
-            }
-        };
-        Self { state }
-    }
-
-    /// A task already answered, for an answer known without any work.
+impl<T> Promise<T> {
+    /// An answer known without any work.
     pub fn ready(value: T) -> Self {
-        Self {
-            state: TaskState::Ready {
-                value: Some(value),
-                polls_left: 0,
-            },
-        }
+        Self(PromiseState::Ready {
+            value: Some(value),
+            polls_left: 0,
+        })
     }
+}
 
-    /// The answer, once it is ready. A task that answered is spent: later
-    /// polls return `None`.
-    pub fn poll(&mut self) -> Option<T> {
-        match &mut self.state {
-            TaskState::Ready { polls_left, value } => {
+impl<T: Unpin> Future for Promise<T> {
+    type Output = T;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
+        match &mut self.get_mut().0 {
+            PromiseState::Ready { value, polls_left } => {
                 if *polls_left > 0 {
                     *polls_left -= 1;
-                    None
-                } else {
-                    value.take()
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+                match value.take() {
+                    Some(value) => Poll::Ready(value),
+                    None => Poll::Pending,
                 }
             }
-            TaskState::Running(task) => {
-                if task.is_finished() {
-                    block_on(poll_once(task))
-                } else {
-                    None
-                }
-            }
+            PromiseState::Running(task) => Pin::new(task).poll(cx),
         }
+    }
+}
+
+/// Every service an agent may ask, behind one shared handle: an agent keeps a
+/// clone (one reference count) rather than a copy of any service.
+#[derive(Resource, Clone, Default)]
+pub struct Services(Arc<ServiceSet>);
+
+/// The services themselves.
+#[derive(Default)]
+pub struct ServiceSet {
+    pub paths: PathService,
+}
+
+impl Services {
+    /// The given services, for configuring how they run (tests run them
+    /// inline, for instance).
+    pub fn new(services: ServiceSet) -> Self {
+        Self(Arc::new(services))
+    }
+
+    /// Every service running inline: deterministic, for tests and tools.
+    pub fn inline() -> Self {
+        Self::new(ServiceSet {
+            paths: PathService::with_runner(Runner::Inline),
+        })
+    }
+
+    pub fn paths(&self) -> &PathService {
+        &self.0.paths
+    }
+}
+
+impl std::fmt::Debug for Services {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Services").finish_non_exhaustive()
+    }
+}
+
+/// Provides [`Services`] (insert your own first to configure them) and keeps
+/// what they know of the world current.
+pub struct ServicesPlugin;
+
+impl Plugin for ServicesPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Services>()
+            .add_systems(Update, share_paths.in_set(GamePhase::Simulation));
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::tasks::TaskPool;
+    use bevy::tasks::{block_on, poll_once, TaskPool};
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
 
-    #[test]
-    fn inline_answers_at_once() {
-        assert_eq!(Task::spawn(ServiceMode::Inline, || 7).poll(), Some(7));
+    fn poll<T: Unpin>(promise: &mut Promise<T>) -> Option<T> {
+        block_on(poll_once(promise))
     }
 
     #[test]
-    fn an_answer_is_handed_over_once() {
-        let mut task = Task::ready(7);
-        assert_eq!(task.poll(), Some(7));
-        assert_eq!(task.poll(), None);
+    fn inline_answers_at_once() {
+        assert_eq!(poll(&mut Runner::Inline.run(|| 7)), Some(7));
     }
 
     #[test]
     fn deferred_answers_after_its_polls() {
-        let mut task = Task::spawn(ServiceMode::Deferred(2), || 7);
-        assert_eq!(task.poll(), None);
-        assert_eq!(task.poll(), None);
-        assert_eq!(task.poll(), Some(7));
+        let mut promise = Runner::Deferred(2).run(|| 7);
+        assert_eq!(poll(&mut promise), None);
+        assert_eq!(poll(&mut promise), None);
+        assert_eq!(poll(&mut promise), Some(7));
     }
 
     /// Work in the background that takes its time leaves the caller free to
@@ -125,21 +174,21 @@ mod tests {
     fn background_never_blocks_the_caller() {
         AsyncComputeTaskPool::get_or_init(TaskPool::default);
         let (release, gate) = mpsc::channel::<u32>();
-        let mut task = Task::spawn(ServiceMode::Background, move || gate.recv().unwrap_or(0));
+        let mut promise = Runner::Background.run(move || gate.recv().unwrap_or(0));
         for _ in 0..20 {
             let polled = Instant::now();
-            assert_eq!(task.poll(), None);
+            assert_eq!(poll(&mut promise), None);
             assert!(polled.elapsed() < Duration::from_millis(50));
             std::thread::sleep(Duration::from_millis(1));
         }
         release.send(7).unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
-            if let Some(answer) = task.poll() {
+            if let Some(answer) = poll(&mut promise) {
                 assert_eq!(answer, 7);
                 break;
             }
-            assert!(Instant::now() < deadline, "the task never finished");
+            assert!(Instant::now() < deadline, "the work never finished");
             std::thread::sleep(Duration::from_millis(1));
         }
     }

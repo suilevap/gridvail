@@ -3,13 +3,14 @@ use rand::RngExt;
 
 use crate::lighting::{DARK_RED, DARK_YELLOW, RED, YELLOW};
 use crate::model::*;
-use crate::navigation::{NavCell, NavMap, PathService};
+use crate::navigation::{NavCell, NavMap};
+use crate::service::Services;
 
 /// Tries at picking a stroll cell per turn.
 const STROLL_TRIES: usize = 8;
 
-/// Fill each enemy's blackboard for this frame's tick, and lend it the path
-/// service for the tick (`carry_out` takes it back).
+/// Fill each enemy's blackboard for this frame's tick. The services handle is
+/// handed over once.
 ///
 /// Written through `bypass_change_detection`: the blackboard is rewritten
 /// every frame, and nothing downstream filters on it changing.
@@ -17,7 +18,7 @@ pub fn perceive(
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
     nav: Res<NavMap>,
-    paths: Res<PathService>,
+    services: Res<Services>,
     mut rng: ResMut<SharedRng>,
     players: Query<&Pos, (With<Player>, With<Active>, Without<DestroyRequested>)>,
     mut enemies: Query<
@@ -56,7 +57,9 @@ pub fn perceive(
             mind.last_seen = None;
         }
         mind.prefs = prefs.copied().unwrap_or_default();
-        mind.paths = Some(paths.clone());
+        if mind.services.is_none() {
+            mind.services = Some(services.clone());
+        }
         mind.seed = rng.0.random();
         mind.stroll = (0..STROLL_TRIES)
             .map(|_| {
@@ -70,15 +73,12 @@ pub fn perceive(
     }
 }
 
-/// Turn each enemy's act into this turn's step, and take back the path
-/// service lent for the tick.
+/// Turn each enemy's act into this turn's step.
 ///
 /// A thinking enemy takes no step yet: it keeps its turn while its path is on
 /// its way, and its tree is entered again on the next frame.
-pub fn carry_out(mut enemies: Query<(&EnemyAct, &mut EnemyMind, &mut MoveCommand)>) {
-    for (act, mut mind, mut command) in enemies.iter_mut() {
-        let mind = mind.bypass_change_detection();
-        mind.paths = None;
+pub fn carry_out(mut enemies: Query<(&EnemyAct, &EnemyMind, &mut MoveCommand)>) {
+    for (act, mind, mut command) in enemies.iter_mut() {
         if !mind.has_turn {
             continue;
         }

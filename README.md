@@ -55,14 +55,15 @@ next to this file.
   them one step at a time). Unaware, they stroll to nearby cells and rest. On
   spotting the player in their own field of view (the player's FOV, radius
   8) they freeze for a beat (a yellow `!`), then hunt and attack, search
-  where it was last seen, and give up when it gets away. A tree asks for a
-  path as a task (`service::Task`, waited on with the generic
-  `ai::await_task` node, which writes the answer into a `scope!` local),
+  where it was last seen, and give up when it gets away. A tree picks a
+  target into a `scope!` local, asks the path service for a path to it (a
+  `service::Promise`, a plain future, waited on with the generic
+  `ai::await_future` node, which writes the answer into another local),
   then reports `EnemyAct::Move(mood, path)`, which `ai::carry_out` turns
   into a step a turn. While the path is on its way the enemy thinks (`?`).
-  Where tasks run is `service::ServiceMode`'s business, not the tree's:
-  inline in tests and captures (deterministic), on the async compute pool
-  in play, so a slow plan never costs a frame. Locomotion (`locomotion/`) walks any actor to its
+  How the service runs its work is its own business, not the tree's: paths
+  are planned on the async compute pool, so a slow plan never costs a
+  frame, and tests run them inline (deterministic). Locomotion (`locomotion/`) walks any actor to its
   `Destination`: it plans with the navigation planner using the actor's
   `TraversalPrefs` (what a closed door costs it, or that doors block), takes
   one step per action, and reports the outcome in `PathFollow::status`
@@ -161,7 +162,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo test --workspace   # 152 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 151 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
@@ -234,11 +235,6 @@ cargo run --release -- --map my_map.txt --reveal \
 
 `cargo run -- --map assets/maps/chasers.txt` plays three enemies chasing
 the player, stepping around each other on the way.
-
-`--plan-delay POLLS` makes every task land only after that many polls
-(`ServiceMode::Deferred`), to watch enemies think (`?`) while the game goes
-on: `cargo run -- --plan-delay 20` (a thinking enemy polls each frame it
-keeps its turn open, a few per turn, so 20 is about three turns).
 
 Without a GPU, run it under `xvfb-run` with Mesa's software Vulkan
 (`mesa-vulkan-drivers`, `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`).

@@ -1,5 +1,5 @@
-//! Paths as a service: [`PathService::plan`] answers with a [`Task`] that
-//! lands a [`Path`], inline or in the background as [`ServiceMode`] says.
+//! Paths as a service: [`PathService::plan`] promises a [`Path`], planned in
+//! the background by default (its [`Runner`]).
 //!
 //! The service plans over its own copies of the map (the [`NavMap`] and who
 //! stands where, [`OccupancyMap`]), so a plan can run on another thread while
@@ -11,13 +11,13 @@
 
 use std::cell::RefCell;
 use std::fmt;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex, RwLock, Weak};
 
 use bevy::prelude::*;
 
 use super::{cell_of, Crowd, NavMap, OccupancyMap, PathPlanner, Terrain};
 use crate::model::{MapGrid, TraversalPrefs};
-use crate::service::{ServiceMode, Task};
+use crate::service::{Promise, Runner, Services};
 
 /// Buffers kept for reuse, enough for every enemy's path and a few in flight.
 const POOLED_PATHS: usize = 64;
@@ -109,32 +109,31 @@ impl Drop for Path {
     }
 }
 
-/// Plans paths as tasks, over copies of the map it keeps.
-#[derive(Resource, Clone)]
+/// Plans paths, over copies of the map it keeps.
 pub struct PathService {
+    map: RwLock<SharedMap>,
+    pool: Arc<PathPool>,
+    runner: Runner,
+}
+
+/// The copies plans run over; each plan holds on to the ones it started with.
+#[derive(Default)]
+struct SharedMap {
     nav: Arc<NavMap>,
     occupancy: Arc<OccupancyMap>,
-    pool: Arc<PathPool>,
-    mode: ServiceMode,
 }
 
 impl Default for PathService {
+    /// Plans in the background: a slow plan never costs a frame.
     fn default() -> Self {
-        Self {
-            nav: Arc::default(),
-            occupancy: Arc::default(),
-            pool: Arc::new(PathPool {
-                free: Mutex::new(Vec::with_capacity(POOLED_PATHS)),
-            }),
-            mode: ServiceMode::default(),
-        }
+        Self::with_runner(Runner::Background)
     }
 }
 
 impl fmt::Debug for PathService {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PathService")
-            .field("mode", &self.mode)
+            .field("runner", &self.runner)
             .finish_non_exhaustive()
     }
 }
@@ -145,16 +144,47 @@ thread_local! {
 }
 
 impl PathService {
+    /// A service that runs its plans as `runner` says.
+    pub fn with_runner(runner: Runner) -> Self {
+        Self {
+            map: RwLock::default(),
+            pool: Arc::new(PathPool {
+                free: Mutex::new(Vec::with_capacity(POOLED_PATHS)),
+            }),
+            runner,
+        }
+    }
+
     /// The cheapest path from `from` to `goal` for a walker with `prefs`:
     /// what doors cost it, and what cells others stand on cost it. Lands
     /// `None` when there is no way.
-    pub fn plan(&self, from: IVec2, goal: IVec2, prefs: TraversalPrefs) -> Task<Option<Path>> {
-        let nav = self.nav.clone();
-        let occupancy = self.occupancy.clone();
+    pub fn plan(&self, from: IVec2, goal: IVec2, prefs: TraversalPrefs) -> Promise<Option<Path>> {
+        let (nav, occupancy) = match self.map.read() {
+            Ok(map) => (map.nav.clone(), map.occupancy.clone()),
+            Err(_) => return Promise::ready(None),
+        };
         let pool = self.pool.clone();
-        Task::spawn(self.mode, move || {
-            plan_path(&nav, &occupancy, &pool, from, goal, prefs)
-        })
+        self.runner
+            .run(move || plan_path(&nav, &occupancy, &pool, from, goal, prefs))
+    }
+
+    /// Whether the service has a map to plan on yet: not on the very first
+    /// frame, before the nav map is built. Until then every plan finds no
+    /// way, which says nothing about the map.
+    pub fn knows_map(&self) -> bool {
+        self.map.read().is_ok_and(|map| !map.nav.grid().is_empty())
+    }
+
+    /// Takes in changed walls and doors, and who stands where now. Occupancy
+    /// is refreshed in place unless a plan still reads the previous copy.
+    fn refresh(&self, nav: &NavMap, grid: &MapGrid) {
+        let Ok(mut map) = self.map.write() else {
+            return;
+        };
+        if map.nav.revision() != nav.revision() {
+            map.nav = Arc::new(nav.clone());
+        }
+        Arc::make_mut(&mut map.occupancy).refresh(grid);
     }
 }
 
@@ -206,19 +236,7 @@ fn plan_path(
     found.then_some(path)
 }
 
-/// Keeps the service's copies of the map current: the nav map, retaken when
-/// walls or doors change, and occupancy, refreshed in place each frame unless
-/// a plan in the background still reads the previous copy.
-pub fn share_paths(
-    mode: Res<ServiceMode>,
-    nav: Res<NavMap>,
-    grid: Res<MapGrid>,
-    mut paths: ResMut<PathService>,
-) {
-    let paths = paths.bypass_change_detection();
-    paths.mode = *mode;
-    if paths.nav.revision() != nav.revision() {
-        paths.nav = Arc::new(nav.clone());
-    }
-    Arc::make_mut(&mut paths.occupancy).refresh(&grid);
+/// Keeps the path service's copies of the map current.
+pub fn share_paths(nav: Res<NavMap>, grid: Res<MapGrid>, services: Res<Services>) {
+    services.paths().refresh(&nav, &grid);
 }

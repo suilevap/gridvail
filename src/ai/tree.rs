@@ -1,9 +1,10 @@
 use bevy::math::IVec2;
 use flatbt_bevy::prelude::*;
 
-use super::await_task;
+use super::{await_future, AwaitFuture};
 use crate::model::{EnemyAct, EnemyMind, Mood};
 use crate::navigation::Path;
+use crate::service::Promise;
 
 /// Turns an idle stroll lasts at most.
 const PATROL_TURNS: u8 = 10;
@@ -20,7 +21,7 @@ const NEAR_GOAL: i32 = 2;
 /// pursuit, not on every re-sighting.
 pub fn enemy_tree() -> impl BehaviorNode<EnemyMind, EnemyAct> {
     let (weight, pastimes) = per_child!(|_mind: &EnemyMind| {
-        3.0 => walk(Mood::Patrol, |mind| mind.stroll, |_, _| true, PATROL_TURNS),
+        3.0 => patrol(),
         1.0 => action(Pause { turns: 2, act: EnemyAct::Rest }),
     });
     select((
@@ -40,25 +41,14 @@ pub fn enemy_tree() -> impl BehaviorNode<EnemyMind, EnemyAct> {
                             select((
                                 // A fresh path whenever the player strays from
                                 // where the last one leads.
-                                repeat_while(
-                                    EnemyMind::sees_player,
-                                    walk(Mood::Hunt, |mind| mind.player, player_near_end, u8::MAX),
-                                ),
+                                repeat_while(EnemyMind::sees_player, hunt()),
                                 leaf(|_: &mut EnemyMind| NodeResult::Running(EnemyAct::Hold)),
                             )),
                         ),
                     ),
                     // Walk to the last sighting, then forget it, as also
                     // when there is no way there.
-                    seq((
-                        force_success(walk(
-                            Mood::Search,
-                            |mind| mind.last_seen,
-                            |_, _| true,
-                            u8::MAX,
-                        )),
-                        leaf(forget_sighting),
-                    )),
+                    seq((force_success(search()), leaf(forget_sighting))),
                 )),
             )),
         ),
@@ -71,33 +61,91 @@ pub fn enemy_tree() -> impl BehaviorNode<EnemyMind, EnemyAct> {
     ))
 }
 
-/// Walk to `goal` in `mood`: ask for a path, wait for it, walk it.
-///
-/// While the path is on its way the enemy thinks (`EnemyAct::Think`), keeping
-/// its turn open; once it lands the enemy walks it (`EnemyAct::Move`), a step
-/// per turn, for at most `turns` turns and while `keep` holds. A failed step
-/// (someone in the way) or no way at all fails the walk, so whoever asked can
-/// plan again or give up.
-fn walk(
-    mood: Mood,
-    goal: fn(&EnemyMind) -> Option<IVec2>,
-    keep: fn(&EnemyMind, &Path) -> bool,
-    turns: u8,
-) -> impl BehaviorNode<EnemyMind, EnemyAct> {
-    let plan = action(await_task(
-        move |mind: &mut EnemyMind| {
-            let goal = goal(mind)?;
-            Some(mind.paths.as_ref()?.plan(mind.pos, goal, mind.prefs))
-        },
-        move |_: &EnemyMind| EnemyAct::Think(mood),
-    ));
+// A walk is three steps over two scope locals: pick a target, ask for a
+// path to it (thinking, `EnemyAct::Think`, until it lands), walk the path
+// (`EnemyAct::Move`, a step per turn). The target is a local, so anything can
+// pick it: what the enemy perceives here, a goal or another service later.
+
+/// Walk at the visible player, until it strays from where the path leads.
+fn hunt() -> impl BehaviorNode<EnemyMind, EnemyAct> {
     scope! {
+        let target: IVec2;
         let path: Path;
         sequence {
-            plan.with(out path);
-            action(Follow { mood, keep, turns }).with(path);
+            perceived(|mind| mind.player).with(out target);
+            plan_path(Mood::Hunt).with(target, out path);
+            follow(Mood::Hunt, player_near_end, u8::MAX).with(path);
         }
     }
+}
+
+/// Walk to where the player was last seen.
+fn search() -> impl BehaviorNode<EnemyMind, EnemyAct> {
+    scope! {
+        let target: IVec2;
+        let path: Path;
+        sequence {
+            perceived(|mind| mind.last_seen).with(out target);
+            plan_path(Mood::Search).with(target, out path);
+            follow(Mood::Search, |_, _| true, u8::MAX).with(path);
+        }
+    }
+}
+
+/// Stroll to a nearby cell, for a few turns at most.
+fn patrol() -> impl BehaviorNode<EnemyMind, EnemyAct> {
+    scope! {
+        let target: IVec2;
+        let path: Path;
+        sequence {
+            perceived(|mind| mind.stroll).with(out target);
+            plan_path(Mood::Patrol).with(target, out path);
+            follow(Mood::Patrol, |_, _| true, PATROL_TURNS).with(path);
+        }
+    }
+}
+
+/// Pick a target from what the enemy perceives; fails when there is none.
+pub(super) fn perceived(
+    pick: fn(&EnemyMind) -> Option<IVec2>,
+) -> LeafWith<impl Fn(&mut EnemyMind, &mut Option<IVec2>) -> NodeResult<EnemyAct>> {
+    leaf_with(move |mind: &mut EnemyMind, target: &mut Option<IVec2>| {
+        *target = pick(mind);
+        if target.is_some() {
+            NodeResult::Success
+        } else {
+            NodeResult::Failure
+        }
+    })
+}
+
+/// Ask the path service for a path to the target, thinking in `mood` until
+/// it lands; fails when there is no way there.
+pub(super) fn plan_path(
+    mood: Mood,
+) -> ActionNode<
+    AwaitFuture<
+        impl Fn(&mut EnemyMind, &IVec2) -> Option<Promise<Option<Path>>>,
+        impl Fn(&EnemyMind) -> EnemyAct,
+    >,
+> {
+    action(await_future(
+        |mind: &mut EnemyMind, target: &IVec2| {
+            let services = mind.services.as_ref()?;
+            Some(services.paths().plan(mind.pos, *target, mind.prefs))
+        },
+        move |_: &EnemyMind| EnemyAct::Think(mood),
+    ))
+}
+
+/// Walk the path a step per turn, for at most `turns` turns and while `keep`
+/// holds; a failed step (someone in the way) fails it.
+pub(super) fn follow(
+    mood: Mood,
+    keep: fn(&EnemyMind, &Path) -> bool,
+    turns: u8,
+) -> ActionNode<Follow> {
+    action(Follow { mood, keep, turns })
 }
 
 /// Still worth walking toward the player: it stands near the path's end.
@@ -159,14 +207,14 @@ impl BtAction<EnemyMind, EnemyAct> for Pause {
 }
 
 /// Walk a path a step per turn.
-struct Follow {
+pub(super) struct Follow {
     mood: Mood,
     keep: fn(&EnemyMind, &Path) -> bool,
     turns: u8,
 }
 
 /// Where the last step was ordered from, and turns left.
-struct Following {
+pub(super) struct Following {
     from: Option<IVec2>,
     left: u8,
 }

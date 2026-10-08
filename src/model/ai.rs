@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 
 use super::TraversalPrefs;
-use crate::navigation::{Path, PathService};
+use crate::navigation::Path;
+use crate::service::Services;
 
 /// Picks random reachable floor cells to walk to, one after another.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -43,10 +44,9 @@ pub struct EnemyMind {
     pub stroll: Option<IVec2>,
     /// What walking costs this enemy: closed doors, cells others stand on.
     pub prefs: TraversalPrefs,
-    /// Paths to ask for, lent for the tick: `perceive` hands the service
-    /// over and `carry_out` takes it back, so no copy of the map outlives the
-    /// tick that needed it.
-    pub paths: Option<PathService>,
+    /// The services to ask (paths, for now): one shared handle, handed over
+    /// once.
+    pub services: Option<Services>,
     /// Frames this turn spent thinking (see [`THINK_FRAMES`]).
     pub think_frames: u8,
 }

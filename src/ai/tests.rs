@@ -101,8 +101,9 @@ mod trees {
     use crate::ai::{enemy_tree, AiPlugin};
     use crate::model::*;
     use crate::navigation::NavigationPlugin;
+    use crate::navigation::PathService;
     use crate::schedule::GamePhase;
-    use crate::service::ServiceMode;
+    use crate::service::{Runner, ServiceSet, Services, ServicesPlugin};
     use crate::vision::VisionPlugin;
 
     const ENEMY: IVec2 = IVec2::new(1, 1);
@@ -110,7 +111,14 @@ mod trees {
 
     fn headless() -> App {
         let mut app = App::new();
-        app.add_plugins((MinimalPlugins, AiPlugin, VisionPlugin, NavigationPlugin))
+        app.insert_resource(Services::inline())
+            .add_plugins((
+                MinimalPlugins,
+                AiPlugin,
+                VisionPlugin,
+                NavigationPlugin,
+                ServicesPlugin,
+            ))
             // Sight and the nav map from this frame, as a turn sees them in
             // the game, where they were computed frames earlier.
             .configure_sets(
@@ -122,6 +130,12 @@ mod trees {
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(42)));
         app.world_mut().spawn((Active, Player(0), Pos(PLAYER)));
         app
+    }
+
+    fn services(runner: Runner) -> Services {
+        Services::new(ServiceSet {
+            paths: PathService::with_runner(runner),
+        })
     }
 
     fn spawn_enemy(app: &mut App, tokens: i32) -> Entity {
@@ -245,7 +259,7 @@ mod trees {
     #[test]
     fn a_slow_path_is_thought_about_without_spending_the_turn() {
         let mut app = headless();
-        app.insert_resource(ServiceMode::Deferred(3));
+        app.insert_resource(services(Runner::Deferred(3)));
         let enemy = spawn_enemy(&mut app, 1);
         app.update();
         assert_eq!(act_of(&app, enemy), Some(EnemyAct::Alert));

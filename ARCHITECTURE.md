@@ -36,12 +36,14 @@ and renderers must not import it.
   lighting, world resources, and presentation buffers. It contains no systems.
 - `schedule.rs` defines startup and update phase sets. It contains no systems
   and lets plugins declare ordering without depending on `app`.
-- `service.rs` runs work that may take longer than a frame as a `Task<T>`,
-  a promise its asker keeps and polls on later frames; dropping it cancels
-  the work. `ServiceMode` runs tasks inline (default, deterministic: tests
-  and captures), in the background on the async compute pool (the game),
-  or inline but handed over a fixed number of polls later (tests,
-  `--plan-delay`). It knows nothing of what the work is.
+- `service.rs` is for work that may take longer than a frame. A service
+  answers with a `Promise`, a plain `Future` its asker keeps and polls on
+  later frames; dropping it cancels the work. How a service runs its work
+  is its own `Runner`: inline (deterministic: tests), in the background on
+  the async compute pool (paths, in the game), or handed over a fixed number
+  of polls later (tests). `Services` is the one shared handle agents keep to
+  reach every service; `ServicesPlugin` provides it and keeps what the
+  services know of the world current.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
@@ -53,9 +55,9 @@ and renderers must not import it.
   rules for the `gridvail-path` crate. New pathfinding rules (enemy sight,
   door limits, places to avoid) are `Rules` combined with `Terrain`;
   `PathPlanner` plans on the map with reused memory. `PathService` plans
-  paths as tasks over its own copies of the map (kept current by
-  `share_paths`), into pooled buffers: a `Path` is a cheap shared handle,
-  and its buffer goes back to the pool when the last handle drops.
+  paths, in the background by default, over its own copies of the map (kept
+  current by `share_paths`), into pooled buffers: a `Path` is a cheap shared
+  handle, and its buffer goes back to the pool when the last handle drops.
 - `locomotion/` walks actors to their `Destination` (its input, which
   anything may write): it plans with the navigation planner using the
   actor's `TraversalPrefs`, keeps progress and the outcome in `PathFollow`,
@@ -68,12 +70,14 @@ and renderers must not import it.
   `TraversalPrefs`). It writes intentions, never moves anything itself.
   Enemies decide with FlatBT behavior trees: `perceive` fills the
   `EnemyMind` blackboard (sight through the enemy's own `VisualSensor`
-  field of view, last sighting, a stroll cell) and lends it the
-  `PathService` for the tick. A walk is a `scope!`: `await_task` (generic:
-  any `Task`, held in the node's state, so leaving the branch cancels it)
-  plans into a path local, then `Follow` reports `EnemyAct::Move(mood,
-  path)` a turn at a time until it arrives, the goal moves away, or a step
-  fails (someone in the way), after which the tree plans again.
+  field of view, last sighting, a stroll cell) and hands it the `Services`
+  handle once. A walk is a `scope!` over two locals: a node picks the
+  `target` (here from perception; anything can), `await_future` (generic:
+  any `Future`, held in the node's state, so leaving the branch cancels it)
+  plans from `target` into `path`, then `Follow` reports
+  `EnemyAct::Move(mood, path)` a turn at a time until it arrives, the goal
+  moves away, or a step fails (someone in the way), after which the tree
+  plans again.
   `carry_out` turns each act into a single step. A thinking enemy
   (`EnemyAct::Think`) keeps its turn open for a few frames for its path,
   then waits the turn out. Out-of-turn enemies are skipped with

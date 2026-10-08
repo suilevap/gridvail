@@ -13,7 +13,8 @@ use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::lighting::YELLOW;
 use pav_ecs_game_bevy_port::model::*;
-use pav_ecs_game_bevy_port::service::ServiceMode;
+use pav_ecs_game_bevy_port::navigation::PathService;
+use pav_ecs_game_bevy_port::service::{Runner, ServiceSet, Services};
 use std::time::Duration;
 
 /// An enemy's act as the scenarios check it: a walk by its mood and where
@@ -62,13 +63,16 @@ struct Game {
 
 impl Game {
     fn new(map: &'static str) -> Self {
-        Self::with_services(map, ServiceMode::Inline)
+        Self::with_paths(map, Runner::Inline)
     }
 
-    fn with_services(map: &'static str, mode: ServiceMode) -> Self {
+    /// A game whose paths are planned as `runner` says.
+    fn with_paths(map: &'static str, runner: Runner) -> Self {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
-            .insert_resource(mode)
+            .insert_resource(Services::new(ServiceSet {
+                paths: PathService::with_runner(runner),
+            }))
             .init_resource::<ButtonInput<KeyCode>>()
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
                 16,
@@ -453,13 +457,13 @@ fn the_bundled_map_plays_consistently() {
 /// walks its path and catches the player.
 #[test]
 fn a_slow_plan_holds_the_enemy_not_the_game() {
-    let mut game = Game::with_services(
+    let mut game = Game::with_paths(
         "XXXXXXXXXXXX\n\
          X..........X\n\
          Xe......p..X\n\
          X..........X\n\
          XXXXXXXXXXXX\n",
-        ServiceMode::Deferred(20),
+        Runner::Deferred(20),
     );
     use KeyCode::{ArrowLeft as L, ArrowRight as R};
     for key in [R, L].into_iter().cycle().take(30) {
@@ -492,13 +496,13 @@ fn a_slow_plan_holds_the_enemy_not_the_game() {
 /// When each plan lands depends on the threads, so this checks the outcome.
 #[test]
 fn an_enemy_planning_in_the_background_still_gets_there() {
-    let mut game = Game::with_services(
+    let mut game = Game::with_paths(
         "XXXXXXXXXXXX\n\
          X..........X\n\
          Xe......p..X\n\
          X..........X\n\
          XXXXXXXXXXXX\n",
-        ServiceMode::Background,
+        Runner::Background,
     );
     game.turns(16);
     let last = game.trace.last().unwrap();
