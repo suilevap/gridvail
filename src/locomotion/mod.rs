@@ -46,6 +46,7 @@ pub fn follow_paths(
         let pos = pos.0;
         let door_cost = prefs.and_then(|prefs| prefs.door_cost);
         let crowd_cost = prefs.and_then(|prefs| prefs.crowd_cost);
+        let portals = prefs.is_some_and(|prefs| prefs.portals);
         let Some(goal) = destination.goal() else {
             if follow.status != WalkStatus::Idle {
                 follow.finish(WalkStatus::Idle);
@@ -56,7 +57,7 @@ pub fn follow_paths(
         if command.active {
             continue;
         }
-        let wanted = Some((destination.request(), door_cost));
+        let wanted = Some((destination.request(), door_cost, portals));
         let replan = follow.planned_for != wanted;
         if !replan && follow.status.is_done() {
             continue;
@@ -73,7 +74,7 @@ pub fn follow_paths(
         let off_path = follow
             .steps
             .get(follow.next)
-            .is_none_or(|next| (*next - pos).abs().element_sum() != 1);
+            .is_none_or(|next| nav.step_toward(pos, *next).is_none());
         if replan || off_path {
             follow.planned_for = wanted;
             let PathFollow { steps, .. } = &mut *follow;
@@ -82,7 +83,7 @@ pub fn follow_paths(
                 door_cost,
             };
             let found = match crowd_cost {
-                None => planner.plan_with(&nav, &terrain, pos, goal, steps),
+                None => planner.plan_through(&nav, &terrain, pos, goal, portals, steps),
                 Some(cost) => {
                     let crowd = Crowd {
                         terrain,
@@ -90,7 +91,7 @@ pub fn follow_paths(
                         goal: cell_of(goal),
                         cost,
                     };
-                    planner.plan_with(&nav, &crowd, pos, goal, steps)
+                    planner.plan_through(&nav, &crowd, pos, goal, portals, steps)
                 }
             };
             if !found {
@@ -113,7 +114,13 @@ pub fn follow_paths(
             follow.blocked = 0;
         }
         follow.ordered_from = Some(pos);
-        command.target = follow.steps[follow.next] - pos;
+        // Into a portal face, the step is toward the face, not its exit.
+        let Some(step) = nav.step_toward(pos, follow.steps[follow.next]) else {
+            // The portal is gone since planning: plan again next time.
+            follow.planned_for = None;
+            continue;
+        };
+        command.target = step;
         command.relative = true;
         command.active = true;
     }

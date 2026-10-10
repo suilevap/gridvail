@@ -181,7 +181,9 @@ impl PathService {
         let Ok(mut map) = self.map.write() else {
             return;
         };
-        if map.nav.revision() != nav.revision() {
+        if map.nav.revision() != nav.revision()
+            || map.nav.portal_revision() != nav.portal_revision()
+        {
             map.nav = Arc::new(nav.clone());
         }
         Arc::make_mut(&mut map.occupancy).refresh(grid);
@@ -218,7 +220,7 @@ fn plan_path(
         door_cost: prefs.door_cost,
     };
     let found = PLANNER.with_borrow_mut(|planner| match prefs.crowd_cost {
-        None => planner.plan_with(nav, &terrain, from, goal, cells),
+        None => planner.plan_through(nav, &terrain, from, goal, prefs.portals, cells),
         Some(cost) => {
             let crowd = Crowd {
                 terrain,
@@ -226,7 +228,7 @@ fn plan_path(
                 goal: cell_of(goal),
                 cost,
             };
-            planner.plan_with(nav, &crowd, from, goal, cells)
+            planner.plan_through(nav, &crowd, from, goal, prefs.portals, cells)
         }
     });
     let path = Path {

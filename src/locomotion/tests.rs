@@ -203,3 +203,81 @@ fn a_blocked_walk_is_reported_and_can_be_retried() {
     assert_eq!(cells.last(), Some(&goal), "walked {cells:?}");
     assert_eq!(status(&app, enemy), WalkStatus::Arrived);
 }
+
+/// The portals map with an enemy at `at` in room B under test control.
+/// Rooms A and B are joined only by portals.
+fn boot_portals(enemy_portals: bool, at: IVec2) -> (App, Entity) {
+    use bevy::time::TimeUpdateStrategy;
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_millis(16),
+        ))
+        .insert_resource(crate::app::MapText(include_str!(
+            "../../assets/maps/portals.txt"
+        )))
+        .insert_resource(crate::ai::PortalPolicy {
+            enemies: enemy_portals,
+        })
+        .add_plugins(GamePlugin);
+    app.update();
+    let world = app.world_mut();
+    for mut tokens in world
+        .query_filtered::<&mut Tokens, With<Player>>()
+        .iter_mut(world)
+    {
+        *tokens = Tokens {
+            count: 0,
+            recharge: 0,
+        };
+    }
+    let enemy = place_enemy(&mut app, at);
+    (app, enemy)
+}
+
+#[test]
+fn an_enemy_allowed_through_portals_walks_through_one() {
+    // From room B to the middle of room A: only portals lead there.
+    let start = IVec2::new(45, 17);
+    let goal = IVec2::new(20, 8);
+    let (mut app, enemy) = boot_portals(true, start);
+    app.update();
+    assert!(app.world().get::<TraversalPrefs>(enemy).unwrap().portals);
+    app.world_mut()
+        .get_mut::<Destination>(enemy)
+        .unwrap()
+        .go_to(goal);
+    let cells = walk(&mut app, enemy, 600);
+    assert_eq!(cells.last(), Some(&goal), "walked {cells:?}");
+    assert_eq!(status(&app, enemy), WalkStatus::Arrived);
+    // Every move is a step, except where it came out of a portal.
+    let nav = app.world().resource::<NavMap>();
+    let hops = cells
+        .windows(2)
+        .filter(|step| (step[1] - step[0]).abs().element_sum() != 1)
+        .inspect(|step| {
+            assert!(
+                nav.step_toward(step[0], step[1]).is_some(),
+                "{:?} is neither a step nor a portal",
+                step
+            )
+        })
+        .count();
+    assert!(hops >= 1, "went through no portal: {cells:?}");
+}
+
+#[test]
+fn enemies_keep_out_of_portals_unless_allowed() {
+    let start = IVec2::new(45, 17);
+    let (mut app, enemy) = boot_portals(false, start);
+    app.update();
+    assert!(!app.world().get::<TraversalPrefs>(enemy).unwrap().portals);
+    app.world_mut()
+        .get_mut::<Destination>(enemy)
+        .unwrap()
+        .go_to(IVec2::new(20, 8));
+    walk(&mut app, enemy, 100);
+    assert_eq!(status(&app, enemy), WalkStatus::Unreachable);
+    assert_eq!(app.world().get::<Pos>(enemy).unwrap().0, start);
+}

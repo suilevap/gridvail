@@ -128,6 +128,17 @@ impl MapGrid {
         self.idx(p).and_then(|i| self.portals[i])
     }
 
+    /// Every portal face, with the position of its wall.
+    pub fn portal_faces(&self) -> impl Iterator<Item = (IVec2, PortalFace)> + '_ {
+        let width = self.width.max(1);
+        self.portals
+            .iter()
+            .enumerate()
+            .filter_map(move |(i, face)| {
+                face.map(|face| (IVec2::new(i as i32 % width, i as i32 / width), face))
+            })
+    }
+
     /// Sets or removes the portal face at `p`.
     pub fn set_portal(&mut self, p: IVec2, face: Option<PortalFace>) {
         let Some(i) = self.idx(p) else { return };

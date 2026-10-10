@@ -10,10 +10,11 @@
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
+use pav_ecs_game_bevy_port::ai::PortalPolicy;
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::lighting::YELLOW;
 use pav_ecs_game_bevy_port::model::*;
-use pav_ecs_game_bevy_port::navigation::PathService;
+use pav_ecs_game_bevy_port::navigation::{NavMap, PathService};
 use pav_ecs_game_bevy_port::service::{Runner, ServiceSet, Services};
 use std::time::Duration;
 
@@ -72,8 +73,14 @@ impl Game {
 
     /// A game whose paths are planned as `runner` says.
     fn with_paths(map: &'static str, runner: Runner) -> Self {
+        Self::with_policy(map, runner, PortalPolicy::default())
+    }
+
+    /// A game whose enemies use portals as `portals` says.
+    fn with_policy(map: &'static str, runner: Runner, portals: PortalPolicy) -> Self {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
+            .insert_resource(portals)
             .insert_resource(Services::new(ServiceSet {
                 paths: PathService::with_runner(runner),
             }))
@@ -187,10 +194,16 @@ impl Game {
             assert_eq!(grid.get(pos), Some(enemy), "enemy off the occupancy grid");
         }
         if let Some(previous) = self.trace.last() {
+            let nav = self.app.world().resource::<NavMap>();
             for (&(e, pos, _), &(pe, ppos, _)) in enemies.iter().zip(&previous.enemies) {
                 assert_eq!(e, pe);
                 let moved = (pos - ppos).abs();
-                assert!(moved.x + moved.y <= 1, "enemy moved {moved} in one turn");
+                // One step a turn, or one step into a portal and out of it.
+                let through_portal = nav.step_toward(ppos, pos).is_some();
+                assert!(
+                    moved.x + moved.y <= 1 || through_portal,
+                    "enemy moved {moved} in one turn"
+                );
             }
         }
     }
@@ -807,4 +820,40 @@ fn a_hunter_planning_in_the_background_fetches_the_key() {
     assert_eq!(keys_left(last), 0);
     assert_eq!(doors_open(last), 1);
     assert_caught(&game);
+}
+
+/// Two rooms joined only by a portal: `1` in the left room's east wall
+/// opens west and leads out of the `1` in the right room's west wall.
+const PORTAL_ROOMS: &str = "\
+XXXXXXXXXXXXXXX\n\
+X.....1XX.....X\n\
+X.p...XXX..h..X\n\
+X.....XX1.....X\n\
+XXXXXXXXXXXXXXX\n";
+
+#[test]
+fn a_hunter_allowed_through_portals_reaches_the_player_through_one() {
+    let mut game = Game::with_policy(PORTAL_ROOMS, Runner::Inline, PortalPolicy { enemies: true });
+    game.turns(30);
+    game.print("hunter through a portal");
+    // It walked to the portal in its own room, came out of the other one
+    // and went on to the player.
+    let crossed = game
+        .trace
+        .windows(2)
+        .any(|turns| manhattan(turns[0].enemies[0].1, turns[1].enemies[0].1) > 1);
+    assert!(crossed, "never went through the portal");
+    let last = game.trace.last().unwrap();
+    let (_, pos, act) = last.enemies[0];
+    assert_eq!(manhattan(pos, last.player), 1);
+    assert!(matches!(act, Some(Act::Attack(_))), "{act:?}");
+}
+
+#[test]
+fn a_hunter_kept_out_of_portals_cannot_reach_the_player() {
+    let mut game = Game::new(PORTAL_ROOMS);
+    game.turns(30);
+    let last = game.trace.last().unwrap();
+    let (_, pos, _) = last.enemies[0];
+    assert!(pos.x > 7, "stayed in its own room: {pos}");
 }

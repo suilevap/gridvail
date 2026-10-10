@@ -261,6 +261,8 @@ fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
             TraversalPrefs {
                 door_cost: None,
                 crowd_cost: Some(ENEMY_CROWD_COST),
+                // `PortalPolicy` decides, once the enemy is in play.
+                portals: false,
             },
             PathFollow::with_capacity(cell_count),
         ),

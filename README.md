@@ -110,6 +110,10 @@ next to this file.
   the motion style. The compass in the bottom-right corner shows where the
   map's north, east, south and west lie on screen. While the menu is open,
   movement and camera keys wait.
+- Enemies through portals (an addition, opt-in with `--enemy-portals`):
+  enemies plan paths through portals too, with an A* estimate that knows
+  the portals, so searches stay narrow. They do not see through portals
+  yet.
 - A view camera (an addition): both renderers draw through a
   renderer-neutral `ViewCamera` (centre, rotation, zoom, offset) that a
   camera operator keeps on the player's animated position, so the world
@@ -193,9 +197,10 @@ cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
+cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk through portals too
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 226 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 235 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
@@ -331,8 +336,8 @@ https://suilevap.github.io/gridvail/?renderer=3d-walls&motion=overshoot
 https://suilevap.github.io/gridvail/?map=portals&portal-view=north&reveal
 ```
 
-Supported parameters are `renderer`, `motion`, `map`, `reveal`, `portal-view` and
-`compass`,
+Supported parameters are `renderer`, `motion`, `map`, `reveal`, `portal-view`,
+`compass` and `enemy-portals`,
 with the same values and defaults as the CLI. `reveal` accepts a bare flag,
 `true`/`1`, or `false`/`0`. Options apply when the page loads.
 Maps are discovered from `assets/maps/*.txt` and embedded at build time;

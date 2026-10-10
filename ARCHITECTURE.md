@@ -57,7 +57,11 @@ and renderers must not import it.
   and phase registration; the
   underlying algorithm remains in `foundation/`.
 - `navigation/` keeps `NavMap`, a walls/closed-doors snapshot of the map
-  rebuilt when its static blockers change, and the game's base `Terrain`
+  rebuilt when its static blockers or portals change (portal faces become
+  `gridvail-path` portal links, searched as single moves with a
+  portal-aware estimate for walkers whose `TraversalPrefs::portals` is
+  set; `NavMap::step_toward` turns a path's next cell into a step,
+  including into a portal face), and the game's base `Terrain`
   rules for the `gridvail-path` crate. New pathfinding rules (enemy sight,
   door limits, places to avoid) are `Rules` combined with `Terrain`;
   `PathPlanner` plans on the map with reused memory. `PathService` plans

@@ -23,6 +23,7 @@ pub struct AiPlugin;
 impl Plugin for AiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DoorPolicy>()
+            .init_resource::<PortalPolicy>()
             .add_plugins((
                 BehaviorPlugin::for_tree(enemy_tree).tick_mode(enemy_tick),
                 BehaviorPlugin::for_tree(hunter_tree).tick_mode(enemy_tick),
@@ -41,6 +42,7 @@ impl Plugin for AiPlugin {
                         random_walk,
                         wander_goals,
                         price_doors,
+                        apply_portal_policy,
                         order_hunters,
                         perceive,
                         perceive_objectives,

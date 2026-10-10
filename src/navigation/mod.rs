@@ -25,7 +25,7 @@ pub use plugin::*;
 
 use bevy::prelude::*;
 
-use path::grid::{Cell, Grid};
+use path::grid::{Cell, Grid, PortalLink, Portals};
 use path::Rules;
 
 use crate::model::*;
@@ -55,8 +55,13 @@ pub enum NavCell {
 pub struct NavMap {
     grid: Grid,
     cells: Vec<NavCell>,
+    /// One link per portal face: from the floor in front of it, stepping
+    /// into it, to the floor beyond its exit.
+    portals: Portals,
     /// `MapGrid::blocker_revision` the cells were built from.
     revision: Option<u64>,
+    /// `MapGrid::portal_revision` the portal links were built from.
+    portal_revision: Option<u64>,
 }
 
 impl Default for NavMap {
@@ -64,7 +69,9 @@ impl Default for NavMap {
         Self {
             grid: Grid::new(0, 0),
             cells: Vec::new(),
+            portals: Portals::default(),
             revision: None,
+            portal_revision: None,
         }
     }
 }
@@ -87,6 +94,27 @@ impl NavMap {
         self.cell(cell_of(p))
     }
 
+    /// The links through portal faces, for paths that may use them.
+    pub fn portals(&self) -> &Portals {
+        &self.portals
+    }
+
+    /// The step a walker at `from` takes to reach `to` next on a path: to a
+    /// neighbouring cell, or into the portal face whose exit is `to`.
+    /// `None` when `to` is neither.
+    pub fn step_toward(&self, from: IVec2, to: IVec2) -> Option<IVec2> {
+        let delta = to - from;
+        if delta.abs().element_sum() == 1 {
+            return Some(delta);
+        }
+        let (from, to) = (cell_of(from), cell_of(to));
+        self.portals
+            .links()
+            .iter()
+            .find(|link| link.from == from && link.to == to)
+            .map(|link| pos_of(link.toward))
+    }
+
     /// Rebuilds the snapshot. Reuses its storage unless the map grew.
     pub fn rebuild(
         &mut self,
@@ -106,7 +134,19 @@ impl NavMap {
         for p in closed_doors {
             self.set(p, NavCell::ClosedDoor);
         }
+        let nav_grid = self.grid;
+        self.portals
+            .set(grid.portal_faces().filter_map(|(wall, face)| {
+                let from = cell_of(wall + face.side);
+                nav_grid.contains(from).then(|| PortalLink {
+                    from,
+                    toward: cell_of(-face.side),
+                    // Where the simulation puts a walker stepping in.
+                    to: cell_of(grid.safe_pos(face.through.apply(wall))),
+                })
+            }));
         self.revision = Some(grid.blocker_revision);
+        self.portal_revision = Some(grid.portal_revision);
     }
 
     fn set(&mut self, p: IVec2, cell: NavCell) {
@@ -120,9 +160,16 @@ impl NavMap {
         self.revision
     }
 
-    /// Whether the snapshot is older than the map's static blockers.
+    /// `MapGrid::portal_revision` the portal links were built from.
+    pub fn portal_revision(&self) -> Option<u64> {
+        self.portal_revision
+    }
+
+    /// Whether the snapshot is older than the map's static blockers or its
+    /// portals.
     pub fn is_stale(&self, grid: &MapGrid) -> bool {
         self.revision != Some(grid.blocker_revision)
+            || self.portal_revision != Some(grid.portal_revision)
     }
 }
 

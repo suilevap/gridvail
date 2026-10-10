@@ -48,6 +48,28 @@ const WANDER_TRIES: usize = 16;
 /// only one is not. The price is `last_key_cost` divided by the keys held,
 /// rounded up, so with the default 20: one key 20 steps, two 10, four 5,
 /// ten 2. Insert a different value before adding `AiPlugin` to tune it.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PortalPolicy {
+    /// Whether enemies plan paths through portals. Off by default: a
+    /// portal can make an enemy turn up from an unexpected side, which is a
+    /// game design choice, and on maps with many portals each plan costs a
+    /// little more (an estimate per portal per searched cell).
+    pub enemies: bool,
+}
+
+/// Lets enemies plan through portals as [`PortalPolicy`] says, including
+/// ones spawned later and after the policy changes.
+pub fn apply_portal_policy(
+    policy: Res<PortalPolicy>,
+    mut enemies: Query<&mut TraversalPrefs, (With<Enemy>, Without<DestroyRequested>)>,
+) {
+    for mut prefs in &mut enemies {
+        if prefs.portals != policy.enemies {
+            prefs.portals = policy.enemies;
+        }
+    }
+}
+
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DoorPolicy {
     pub last_key_cost: u32,
