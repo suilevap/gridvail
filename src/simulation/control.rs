@@ -2,6 +2,13 @@ use bevy::prelude::*;
 
 use crate::model::*;
 
+/// Marks the keyboard as the control scheme when any key is pressed.
+pub fn track_keyboard_scheme(keys: Res<ButtonInput<KeyCode>>, mut scheme: ResMut<ControlScheme>) {
+    if keys.get_just_pressed().next().is_some() {
+        scheme.set_if_neq(ControlScheme::Keyboard);
+    }
+}
+
 /// Keep producing player commands while a movement key is held. Keys are
 /// directions on screen: when the view is turned, "up" walks toward the top
 /// of the screen. The map direction is the one the key meant when it was

@@ -447,3 +447,20 @@ fn a_step_blocked_at_a_turning_exit_turns_nothing() {
     assert_eq!(world.get::<Pos>(mover).unwrap().0, IVec2::new(2, 1));
     assert_eq!(world.get::<Facing>(mover).unwrap().0, IVec2::X);
 }
+
+#[test]
+fn a_key_press_switches_the_control_scheme_to_keyboard() {
+    use bevy::ecs::system::RunSystemOnce;
+    let mut app = App::new();
+    let mut keys = ButtonInput::<KeyCode>::default();
+    keys.press(KeyCode::KeyM);
+    app.insert_resource(keys)
+        .insert_resource(ControlScheme::Touch);
+    app.world_mut()
+        .run_system_once(track_keyboard_scheme)
+        .unwrap();
+    assert_eq!(
+        *app.world().resource::<ControlScheme>(),
+        ControlScheme::Keyboard
+    );
+}

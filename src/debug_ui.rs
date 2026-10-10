@@ -28,7 +28,8 @@ struct PerformancePanelState {
 impl Default for PerformancePanelState {
     fn default() -> Self {
         Self {
-            visible: true,
+            // Phones have no F3 to close it, so the web build starts without.
+            visible: !cfg!(target_family = "wasm"),
             refresh: Timer::from_seconds(0.25, TimerMode::Repeating),
         }
     }
@@ -55,7 +56,11 @@ impl Plugin for DebugPerformancePlugin {
     }
 }
 
-fn setup(mut commands: Commands, camera: Single<Entity, With<Camera2d>>) {
+fn setup(
+    mut commands: Commands,
+    camera: Single<Entity, With<Camera2d>>,
+    state: Res<PerformancePanelState>,
+) {
     let mut initial = String::with_capacity(512);
     initial.push_str("DEBUG PERFORMANCE [F3]\ncollecting diagnostics...");
     commands.spawn((
@@ -76,6 +81,11 @@ fn setup(mut commands: Commands, camera: Single<Entity, With<Camera2d>>) {
             ..default()
         },
         ZIndex(100),
+        if state.visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        },
     ));
 }
 

@@ -24,6 +24,7 @@ use pav_ecs_game_bevy_port::model::{
 };
 use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, TextRendererPlugin};
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
+use pav_ecs_game_bevy_port::touch::TouchControlPlugin;
 
 const CAPTURE_STEP_FRAMES: u32 = 8;
 /// Frames recorded after the walk, so the last move can settle on camera.
@@ -63,7 +64,11 @@ fn main() -> AppExit {
         .insert_resource(options.motion)
         .add_plugins(plugins)
         .add_plugins(GamePlugin)
-        .add_plugins((ObjectAnimationPlugin, TextRendererPlugin));
+        .add_plugins((
+            ObjectAnimationPlugin,
+            TextRendererPlugin,
+            TouchControlPlugin,
+        ));
     if renderer == Renderer::Walls3d {
         app.add_plugins(ExtrudedWallRendererPlugin);
     }

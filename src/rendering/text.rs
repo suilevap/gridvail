@@ -485,8 +485,10 @@ fn update_hud(
     collisions: Res<CollisionBuffer>,
     motion: Option<Res<MotionStyle>>,
     operator: Option<Res<CameraOperator>>,
+    scheme: Option<Res<ControlScheme>>,
     mut hud: Query<&mut Text, With<HudText>>,
 ) {
+    let scheme = scheme.map_or(ControlScheme::default(), |scheme| *scheme);
     let (position, tokens, held_keys) = players
         .iter()
         .next()
@@ -503,15 +505,26 @@ fn update_hud(
         .unwrap_or((IVec2::ZERO, 0, 0));
     for mut text in hud.iter_mut() {
         text.0.clear();
+        match scheme {
+            ControlScheme::Keyboard => writeln!(
+                text.0,
+                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {}",
+                if extruded_walls.is_some() {
+                    " | wheel zoom"
+                } else {
+                    ""
+                },
+                motion.as_ref().map_or("off", |motion| motion.name()),
+            ),
+            ControlScheme::Touch => writeln!(
+                text.0,
+                "PavEcsGame Lite Bevy port | swipe to step | hold to keep walking"
+            ),
+        }
+        .expect("writing to String cannot fail");
         write!(
             text.0,
-            "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {}\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | keys {} | enemies {} | bumps {} | N portals: {}",
-            if extruded_walls.is_some() {
-                " | wheel zoom"
-            } else {
-                ""
-            },
-            motion.as_ref().map_or("off", |motion| motion.name()),
+            "Tick {} | {} | map {}x{} | player ({},{}) | tokens {} | keys {} | enemies {} | bumps {} | N portals: {}",
             turn.tick,
             turn.phase_name(),
             grid.width,
