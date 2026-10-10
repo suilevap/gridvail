@@ -17,6 +17,7 @@ use bevy::{
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
+use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
     AnimatedPos, Player, Pos, RevealAll, ViewCamera, Vis, VisibilityMap,
@@ -67,6 +68,7 @@ fn main() -> AppExit {
         app.add_plugins(ExtrudedWallRendererPlugin);
     }
     app.add_plugins(DebugPerformancePlugin);
+    app.world_mut().resource_mut::<CameraOperator>().portal_turn = options.portal_turn;
     if options.reveal {
         app.insert_resource(RevealAll).add_systems(
             Update,
@@ -133,6 +135,8 @@ struct Options {
     /// Show the whole map, not only what the player sees: for recordings of
     /// what happens out of sight.
     reveal: bool,
+    /// What the view does through turning portals.
+    portal_turn: PortalTurn,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -152,6 +156,7 @@ impl Options {
         let mut motion = None;
         let mut map = None;
         let mut reveal = false;
+        let mut portal_turn = None;
         let mut args = std::env::args().skip(1);
         while let Some(argument) = args.next() {
             match argument.as_str() {
@@ -171,6 +176,13 @@ impl Options {
                     map = Some(args.next().expect("--map requires a map file"));
                 }
                 "--reveal" => reveal = true,
+                "--portal-view" if portal_turn.is_none() => {
+                    let name = args.next().expect("--portal-view requires turn or north");
+                    portal_turn = Some(
+                        PortalTurn::from_name(&name)
+                            .expect("--portal-view must be turn or north"),
+                    );
+                }
                 "--walk" if walk.is_none() => {
                     walk = Some(args.next().expect("--walk requires UDLRQEZX steps"));
                 }
@@ -195,7 +207,7 @@ impl Options {
                     }));
                 }
                 _ => panic!(
-                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--motion STYLE] [--map FILE] [--reveal] [--remote | --remote-port PORT] [--screenshot OUTPUT.png | --record DIR] [--walk UDLRQEZX.]"
+                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--motion STYLE] [--map FILE] [--reveal] [--portal-view turn|north] [--remote | --remote-port PORT] [--screenshot OUTPUT.png | --record DIR] [--walk UDLRQEZX.]"
                 ),
             }
         }
@@ -217,6 +229,7 @@ impl Options {
             motion: motion.unwrap_or_default(),
             map,
             reveal,
+            portal_turn: portal_turn.unwrap_or_default(),
         }
     }
 }

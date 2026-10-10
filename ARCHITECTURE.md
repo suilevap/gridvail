@@ -122,7 +122,9 @@ and renderers must not import it.
   all easing uses Bevy's `EaseFunction`). Q/E turn the view a quarter turn
   and Z/X zoom;
   movement keys are read as screen directions. Renderers only read the
-  camera. `PORTALS.md` builds the portal view on it.
+  camera. `PORTALS.md` builds the portal view on it: when the target goes
+  through a portal that turns, the operator turns the view with it so the
+  picture stays, and with `PortalTurn::KeepNorth` (N) then eases it back.
   The frame is a window of `FrameSize` cells (80x80 by default), not the
   map's size: it follows the player, and each map position keeps a slot
   (its coordinates modulo the window size), so steps only rewrite the slots

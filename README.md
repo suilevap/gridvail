@@ -92,7 +92,9 @@ next to this file.
   rooms joined only by portals, a portal that leads from a room back
   into itself, and two that turn the view (a quarter and a half turn):
   walking through one turns the camera with the player, so the picture
-  never jumps and arrow keys keep their screen directions. The drawn frame is a window of its own size that follows
+  never jumps and arrow keys keep their screen directions. With
+  `--portal-view north` (or `N` in game) the view then eases back so
+  north stays up. The drawn frame is a window of its own size that follows
   the player (`FrameSize`), independent of the map's size. The 3D renderer
   does not show portals yet.
 - A view camera (an addition): both renderers draw through a
@@ -176,7 +178,8 @@ cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
-cargo test --workspace   # 179 tests, including allocation and independent C# comparisons
+cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
+cargo test --workspace   # 195 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

@@ -197,3 +197,42 @@ fn a_turning_portal_carries_a_turn_under_way() {
     );
     assert_eq!(camera(&app).position, arrival.as_vec2());
 }
+
+#[test]
+fn keeping_north_turns_back_after_a_turning_portal() {
+    use crate::foundation::portal::CellTransform;
+    let (mut app, player) = app_with_player(IVec2::new(2, 2));
+    operator(&mut app).portal_turn = PortalTurn::KeepNorth;
+    let through = CellTransform {
+        quarters: 1,
+        offset: IVec2::new(1, 6),
+    };
+    app.world_mut().get_mut::<Pos>(player).unwrap().0 = through.apply(IVec2::new(2, 2));
+    operator(&mut app).carry(&through);
+    // It heads back to where it was, from the turn that keeps the picture.
+    assert!(operator(&mut app).target_rotation().abs() < 1e-6);
+    app.update();
+    let first = camera(&app).rotation;
+    assert!(first > -FRAC_PI_2 - 1e-6 && first < 0.0, "{first}");
+    for _ in 0..20 {
+        app.update();
+    }
+    assert!(camera(&app).rotation.abs() < 1e-6);
+
+    // A portal that does not turn leaves the view alone.
+    operator(&mut app).carry(&CellTransform::translation(IVec2::new(3, 0)));
+    assert!(operator(&mut app).target_rotation().abs() < 1e-6);
+}
+
+#[test]
+fn n_switches_what_the_view_does_through_turning_portals() {
+    let (mut app, _) = app_with_player(IVec2::new(2, 2));
+    assert_eq!(operator(&mut app).portal_turn, PortalTurn::WithTarget);
+    let mut keys = ButtonInput::<KeyCode>::default();
+    keys.press(KeyCode::KeyN);
+    app.insert_resource(keys);
+    app.update();
+    assert_eq!(operator(&mut app).portal_turn, PortalTurn::KeepNorth);
+    assert_eq!(PortalTurn::from_name("north"), Some(PortalTurn::KeepNorth));
+    assert_eq!(PortalTurn::from_name("turn"), Some(PortalTurn::WithTarget));
+}
