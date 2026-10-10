@@ -14,6 +14,7 @@ use crate::simulation::Rules;
 
 use super::walls_3d::{billboard_pattern, ExtrudedWalls};
 use crate::animation::MotionStyle;
+use crate::camera::CameraOperator;
 
 /// Square cells: Unscii-8 glyphs are as wide as they are tall.
 pub(super) const CELL_SIZE: Vec2 = Vec2::new(16.0, 16.0);
@@ -483,6 +484,7 @@ fn update_hud(
     enemies: Query<Entity, (With<Enemy>, Without<DestroyRequested>)>,
     collisions: Res<CollisionBuffer>,
     motion: Option<Res<MotionStyle>>,
+    operator: Option<Res<CameraOperator>>,
     mut hud: Query<&mut Text, With<HudText>>,
 ) {
     let (position, tokens, held_keys) = players
@@ -503,7 +505,7 @@ fn update_hud(
         text.0.clear();
         write!(
             text.0,
-            "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {}\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | keys {} | enemies {} | bumps {}",
+            "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {}\nTick {} | {} | map {}x{} | player ({},{}) | tokens {} | keys {} | enemies {} | bumps {} | N portals: {}",
             if extruded_walls.is_some() {
                 " | wheel zoom"
             } else {
@@ -520,6 +522,9 @@ fn update_hud(
             held_keys,
             enemies.iter().count(),
             collisions.0.len(),
+            operator
+                .as_ref()
+                .map_or("off", |operator| operator.portal_turn.name()),
         )
         .expect("writing to String cannot fail");
     }

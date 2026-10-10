@@ -30,6 +30,44 @@ pub enum CameraFollow {
     Trailing(MotionStyle),
 }
 
+/// What the view does when its target steps through a portal that turns
+/// (one whose two faces point different ways).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PortalTurn {
+    /// The view turns with the target: the picture on screen stays as it
+    /// was and arrow keys keep their screen directions, but the map's north
+    /// is no longer up.
+    #[default]
+    WithTarget,
+    /// The view turns with the target, then eases back to the way it was
+    /// turned before (north up, unless Q/E turned it), so the map keeps its
+    /// orientation on screen. While it eases back, arrow keys switch to the
+    /// restored directions halfway through.
+    KeepNorth,
+}
+
+impl PortalTurn {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::WithTarget => "turn",
+            Self::KeepNorth => "north",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::WithTarget, Self::KeepNorth]
+            .into_iter()
+            .find(|turn| turn.name() == name)
+    }
+
+    pub fn toggled(self) -> Self {
+        match self {
+            Self::WithTarget => Self::KeepNorth,
+            Self::KeepNorth => Self::WithTarget,
+        }
+    }
+}
+
 /// Directs the `ViewCamera`: follows a target and eases every change.
 ///
 /// Changes go through methods so that each one becomes a transition of
@@ -40,6 +78,8 @@ pub struct CameraOperator {
     /// Seconds a change of target, rotation, zoom or offset takes.
     pub transition: f32,
     pub easing: EaseFunction,
+    /// What the view does when the target goes through a turning portal.
+    pub portal_turn: PortalTurn,
     target: CameraTarget,
     rotation: Tween<f32>,
     zoom: Tween<f32>,
@@ -64,6 +104,7 @@ impl CameraOperator {
             follow: CameraFollow::Locked,
             transition: 0.3,
             easing: EaseFunction::SmoothStep,
+            portal_turn: PortalTurn::default(),
             target,
             rotation: Tween::at(0.0),
             zoom: Tween::at(1.0),
@@ -132,8 +173,10 @@ impl CameraOperator {
     /// Carries the view through a portal its target stepped through: the
     /// camera goes on from the exit, turned by the portal's quarter turns
     /// the other way, so the picture on screen stays exactly as it was. A
-    /// turn under way carries on from there.
+    /// turn under way carries on from there. With `PortalTurn::KeepNorth`
+    /// the view then eases back to the turn it was heading for.
     pub fn carry(&mut self, through: &CellTransform) {
+        let heading = self.rotation.target();
         // The shorter way round, so going back through restores the view.
         let quarters = match through.quarters {
             3 => -1,
@@ -141,6 +184,9 @@ impl CameraOperator {
         };
         let turn = quarters as f32 * FRAC_PI_2;
         self.rotation.carry(|angle| angle - turn);
+        if self.portal_turn == PortalTurn::KeepNorth && quarters != 0 {
+            self.turn_to(heading);
+        }
         self.handover_from = through.apply_point(self.handover_from);
         if let Some(trail) = self.trail.as_mut() {
             trail.carry(through);
@@ -231,7 +277,8 @@ pub fn operate_camera(
     }
 }
 
-/// Q and E turn the view a quarter turn; Z and X zoom out and in.
+/// Q and E turn the view a quarter turn; Z and X zoom out and in; N
+/// switches what the view does through turning portals (`PortalTurn`).
 pub fn camera_controls(
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut operator: ResMut<CameraOperator>,
@@ -244,6 +291,9 @@ pub fn camera_controls(
     }
     if keys.just_pressed(KeyCode::KeyE) {
         operator.turn_by_quarters(-1);
+    }
+    if keys.just_pressed(KeyCode::KeyN) {
+        operator.portal_turn = operator.portal_turn.toggled();
     }
     if keys.just_pressed(KeyCode::KeyZ) {
         let zoom = operator.target_zoom() / 1.25;

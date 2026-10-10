@@ -135,6 +135,16 @@ can be seen (optional step 8).
      (`ObjectCell::quarters`, added to the view's own turn when the text
      renderer picks wall shapes and facing markers).
 
+   What the view does after that is an option (`PortalTurn`, `N` in game,
+   `--portal-view turn|north`), while it is decided whether to keep the
+   turned view or keep north up and add a compass:
+   - `turn` (the default): the view stays turned, so arrow keys keep their
+     screen directions and the map's north is no longer up;
+   - `north`: the view eases back to the turn it had before (north up,
+     unless Q/E turned it). The crossing frame itself still turns with the
+     player, so nothing jumps; the picture then rotates smoothly, and arrow
+     keys switch to the restored directions halfway through.
+
    `portals.txt` has portal 4 (a quarter turn, room A's north wall to room
    B's east wall) and portal 5 (a half turn, between the rooms' south
    walls).

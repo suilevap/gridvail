@@ -278,3 +278,84 @@ fn going_back_through_a_turning_portal_turns_the_view_back() {
     let camera = *app.world().resource::<ViewCamera>();
     assert!(camera.rotation.abs() < 1e-5, "{}", camera.rotation);
 }
+
+/// With `PortalTurn::KeepNorth`, the view still turns with the player on
+/// the frame they come out of portal 4, so nothing jumps, then eases back
+/// to north up; holding up then walks north in room B.
+#[test]
+fn keeping_north_eases_the_view_back_after_a_turning_portal() {
+    use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
+    const ENTRY: IVec2 = IVec2::new(17, 3);
+    const EXIT_FLOOR: IVec2 = IVec2::new(53, 14);
+    // A point in room B, beyond the exit.
+    const MARK: Vec2 = Vec2::new(50.0, 14.0);
+    let mut app = boot();
+    app.world_mut().resource_mut::<CameraOperator>().portal_turn = PortalTurn::KeepNorth;
+    let through = app
+        .world()
+        .resource::<MapGrid>()
+        .portal_at(ENTRY)
+        .unwrap()
+        .through;
+    hold_until(&mut app, KeyCode::ArrowLeft, IVec2::new(17, 7));
+    hold_until(&mut app, KeyCode::ArrowUp, IVec2::new(17, 4));
+
+    let mark_on_screen = |app: &mut App, crossed: bool| {
+        let camera = *app.world().resource::<ViewCamera>();
+        let mark = if crossed {
+            MARK
+        } else {
+            through.inverse().apply_point(MARK)
+        };
+        camera.to_view(mark)
+    };
+    let mut previous = (
+        mark_on_screen(&mut app, false),
+        app.world().resource::<ViewCamera>().rotation,
+    );
+    let mut crossed = false;
+    let mut turned = false;
+    for _ in 0..400 {
+        app.update();
+        let (pos, shown) = player(&mut app);
+        let crossing = !crossed && pos == EXIT_FLOOR;
+        crossed |= crossing;
+        let camera = *app.world().resource::<ViewCamera>();
+        let now = (mark_on_screen(&mut app, crossed), camera.rotation);
+        assert!(camera.to_view(shown).length() < 1e-3);
+        if crossing {
+            // The view turns with the player: the picture stays.
+            assert!(
+                now.0.distance(previous.0) < 0.3,
+                "the picture jumped from {} to {}",
+                previous.0,
+                now.0
+            );
+            assert!((now.1 + FRAC_PI_2).abs() < 0.2, "turned with the player");
+        } else {
+            // Then it eases back, a little each frame.
+            assert!(
+                (now.1 - previous.1).abs() < 0.2,
+                "the view jumped from {} to {}",
+                previous.1,
+                now.1
+            );
+        }
+        turned |= crossed && now.1 < -0.5;
+        previous = now;
+        // North of the exit, the wall of room B at row 11 stops the player.
+        if crossed && pos.y == 12 {
+            break;
+        }
+    }
+    assert!(crossed, "the player never came out of the exit");
+    assert!(turned, "the view first turned with the player");
+    let (pos, _) = player(&mut app);
+    assert_eq!(pos.y, 12, "holding up walks north in room B again");
+    let camera = *app.world().resource::<ViewCamera>();
+    assert!(
+        camera.rotation.abs() < 1e-5,
+        "north is up: {}",
+        camera.rotation
+    );
+}
