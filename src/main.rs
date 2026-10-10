@@ -43,6 +43,11 @@ fn main() -> AppExit {
             primary_window: Some(Window {
                 title: "PavEcsGame Lite Bevy Port".into(),
                 resolution: (1100_u32, 700_u32).into(),
+                // The web build draws into the page's canvas and fills it.
+                #[cfg(target_family = "wasm")]
+                canvas: Some("#bevy".into()),
+                #[cfg(target_family = "wasm")]
+                fit_canvas_to_parent: true,
                 ..default()
             }),
             ..default()
