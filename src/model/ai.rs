@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 
-use super::WalkStatus;
+use super::TraversalPrefs;
+use crate::navigation::Path;
+use crate::service::Services;
 
 /// Picks random reachable floor cells to walk to, one after another.
 #[derive(Component, Clone, Copy, Debug, Default)]
@@ -19,10 +21,10 @@ pub const STROLL_RADIUS: i32 = 5;
 
 /// What an enemy's behavior tree reads: its view of the world this frame.
 ///
-/// Refreshed by `ai::perceive` before the tree ticks. The tree only reads it;
-/// what the enemy decides leaves through `EnemyAct`, and walking is
-/// locomotion's, which reports back here through `walk`.
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Refreshed by `ai::perceive` before the tree ticks. The tree reads it, and
+/// asks services (paths) through it; what the enemy decides leaves through
+/// `EnemyAct`.
+#[derive(Component, Clone, Debug, Default)]
 pub struct EnemyMind {
     pub pos: IVec2,
     /// A token is available and the turn accepts commands.
@@ -35,15 +37,11 @@ pub struct EnemyMind {
     pub seed: u32,
     /// A floor cell nearby, picked afresh each turn, for idle walks.
     pub stroll: Option<IVec2>,
-    /// Locomotion's report on the current walk.
-    pub walk: Option<Walk>,
-}
-
-/// Where an agent is walking, and how it is going.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Walk {
-    pub goal: IVec2,
-    pub status: WalkStatus,
+    /// What walking costs this enemy: closed doors, cells others stand on.
+    pub prefs: TraversalPrefs,
+    /// The services to ask (paths, for now): one shared handle, handed over
+    /// once.
+    pub services: Option<Services>,
 }
 
 impl EnemyMind {
@@ -73,62 +71,51 @@ impl EnemyMind {
         self.seed = x;
         x
     }
-
-    /// How walking to `goal` is going, if that is the current walk.
-    pub fn walk_to(&self, goal: IVec2) -> Option<WalkStatus> {
-        self.walk
-            .filter(|walk| walk.goal == goal)
-            .map(|walk| walk.status)
-    }
-
-    /// Whether the walk to `goal` has ended without getting there.
-    pub fn failed_to_reach(&self, goal: IVec2) -> bool {
-        matches!(
-            self.walk_to(goal),
-            Some(WalkStatus::Unreachable | WalkStatus::Blocked)
-        )
-    }
 }
 
 /// What an enemy is doing this turn, and why.
 ///
 /// Present only while the enemy's tree is running. `ai::carry_out` turns it
-/// into a single step or a `Destination` for locomotion; `ai::show_mood`
-/// into the enemy's glyph.
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// into a step; `ai::show_mood` into the enemy's glyph.
+#[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
 pub enum EnemyAct {
     /// Just noticed the player: freezes for a beat.
     Alert,
-    /// Walking to the visible player's cell.
-    Hunt(IVec2),
     /// Bumping into the adjacent player.
     Attack(IVec2),
     /// Nothing to do this turn.
     #[default]
     Hold,
-    /// Walking to where the player was last seen.
-    Search(IVec2),
-    /// Idle: strolling to a nearby cell.
-    Patrol(IVec2),
     /// Idle: standing still for a while.
     Rest,
+    /// Waiting for a path to be planned, to walk it in this mood.
+    Think(Mood),
+    /// Walking a path, a step per turn.
+    Move(Mood, Path),
 }
 
-/// How an act moves the enemy.
+/// Why an enemy walks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Movement {
-    /// One step this turn (`ZERO` waits), ordered directly.
-    Step(IVec2),
-    /// A walk locomotion plans and carries out.
-    WalkTo(IVec2),
+pub enum Mood {
+    /// To the visible player.
+    Hunt,
+    /// To where the player was last seen.
+    Search,
+    /// Idle: to a nearby cell.
+    Patrol,
 }
 
 impl EnemyAct {
-    pub fn movement(self) -> Movement {
+    /// The step this act takes from `pos` this turn (`ZERO` waits), or none
+    /// yet: a thinking enemy keeps its turn.
+    pub fn step(&self, pos: IVec2) -> Option<IVec2> {
         match self {
-            Self::Attack(step) => Movement::Step(step),
-            Self::Alert | Self::Hold | Self::Rest => Movement::Step(IVec2::ZERO),
-            Self::Hunt(cell) | Self::Search(cell) | Self::Patrol(cell) => Movement::WalkTo(cell),
+            Self::Attack(step) => Some(*step),
+            Self::Alert | Self::Hold | Self::Rest => Some(IVec2::ZERO),
+            Self::Think(_) => None,
+            Self::Move(_, path) => {
+                Some(path.next_after(pos).map_or(IVec2::ZERO, |next| next - pos))
+            }
         }
     }
 }

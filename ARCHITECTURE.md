@@ -43,11 +43,9 @@ and renderers must not import it.
   answers with a `Promise`, a plain `Future` its asker keeps and polls on
   later frames; dropping it cancels the work. How a service runs its work
   is its own `Runner`: inline (deterministic), in the background on the
-  async compute pool, or handed over a fixed number of polls later (tests).
-  Behavior trees wait on any future with `ai::await_future`, which writes
-  the answer into a `scope!` local. `Services` is the one shared handle
-  agents keep to reach every service; `ServicesPlugin` provides it and
-  keeps what the services know of the world current.
+  async compute pool, or handed over a fixed number of polls later (tests). `Services` is the one shared handle agents keep to
+  reach every service; `ServicesPlugin` provides it and keeps what the
+  services know of the world current.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
@@ -62,10 +60,9 @@ and renderers must not import it.
   rules for the `gridvail-path` crate. New pathfinding rules (enemy sight,
   door limits, places to avoid) are `Rules` combined with `Terrain`;
   `PathPlanner` plans on the map with reused memory. `PathService` plans
-  paths as promises, inline by default, over its own copies of the map
-  (kept current by `share_paths`), into pooled buffers: a `Path` is a cheap
-  shared handle, and its buffer goes back to the pool when the last handle
-  drops.
+  paths, inline by default, over its own copies of the map (kept
+  current by `share_paths`), into pooled buffers: a `Path` is a cheap shared
+  handle, and its buffer goes back to the pool when the last handle drops.
 - `locomotion/` walks actors to their `Destination` (its input, which
   anything may write): it plans with the navigation planner using the
   actor's `TraversalPrefs`, keeps progress and the outcome in `PathFollow`,
@@ -78,11 +75,17 @@ and renderers must not import it.
   `TraversalPrefs`). It writes intentions, never moves anything itself.
   Enemies decide with FlatBT behavior trees: `perceive` fills the
   `EnemyMind` blackboard (sight through the enemy's own `VisualSensor`
-  field of view, last sighting, locomotion's report on the
-  current walk), the tree reports an `EnemyAct`, and `carry_out` turns it
-  into a single step or a `Destination`. A walk is requested again only when
-  its goal changes or a step of it failed, so locomotion replans around
-  whoever is in the way. Out-of-turn enemies are skipped with `Tick::Skip`.
+  field of view, last sighting, a stroll cell) and hands it the `Services`
+  handle once. A walk is a `scope!` over two locals: a node picks the
+  `target` (here from perception; anything can), `await_future` (generic:
+  any `Future`, held in the node's state, so leaving the branch cancels it)
+  plans from `target` into `path`, then `Follow` reports
+  `EnemyAct::Move(mood, path)` a turn at a time until it arrives, the goal
+  moves away, or a step fails (someone in the way), after which the tree
+  plans again.
+  `carry_out` turns each act into a single step; a thinking enemy
+  (`EnemyAct::Think`) waits the turn out. Out-of-turn enemies are skipped
+  with `Tick::Skip`.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for

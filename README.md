@@ -55,9 +55,14 @@ next to this file.
   them one step at a time). Unaware, they stroll to nearby cells and rest. On
   spotting the player in their own field of view (the player's FOV, radius
   8) they freeze for a beat (a yellow `!`), then hunt and attack, search
-  where it was last seen, and give up when it gets away. The trees only
-  report an `EnemyAct`; `ai::carry_out` turns it into a step or a
-  `Destination`. Locomotion (`locomotion/`) walks any actor to its
+  where it was last seen, and give up when it gets away. A tree picks a
+  target into a `scope!` local, asks the path service for a path to it (a
+  `service::Promise`, a plain future, waited on with the generic
+  `ai::await_future` node, which writes the answer into another local),
+  then reports `EnemyAct::Move(mood, path)`, which `ai::carry_out` turns
+  into a step a turn. While the path is on its way the enemy thinks (`?`).
+  How the service runs its work is its own business, not the tree's: paths
+  are planned inline for now, so a path lands on the tick that asked. Locomotion (`locomotion/`) walks any actor to its
   `Destination`: it plans with the navigation planner using the actor's
   `TraversalPrefs` (what a closed door costs it, or that doors block), takes
   one step per action, and reports the outcome in `PathFollow::status`
