@@ -32,6 +32,7 @@ pub fn headless() -> App {
                     resolve_unmap,
                     resolve_missing_positions,
                     resolve_commit,
+                    turn_portal_crossers,
                     relative_position,
                     friction,
                     open_doors,

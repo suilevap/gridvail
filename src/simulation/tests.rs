@@ -377,3 +377,64 @@ fn an_occupied_exit_blocks_the_step() {
     let crossings = app.world().resource::<PortalCrossings>();
     assert!(crossings.arrived(mover, IVec2::new(2, 1)).is_none());
 }
+
+/// A wall at (3, 1) opening west onto (2, 1) that leads out of a wall at
+/// (6, 4) opening south onto (6, 5): stepping east comes out stepping
+/// south, a quarter turn clockwise on screen.
+fn turning_portal(app: &mut App) {
+    use crate::foundation::portal::{CellTransform, PortalFace};
+    let (a, b) = (IVec2::new(3, 1), IVec2::new(6, 4));
+    for (wall, side, exit, exit_side) in [
+        (a, IVec2::NEG_X, b, IVec2::Y),
+        (b, IVec2::Y, a, IVec2::NEG_X),
+    ] {
+        let entity = app.world_mut().spawn((Active, Collider, Pos(wall))).id();
+        let mut grid = app.world_mut().resource_mut::<MapGrid>();
+        grid.set(wall, entity);
+        grid.set_portal(
+            wall,
+            Some(PortalFace {
+                side,
+                through: CellTransform::between_faces(wall, side, exit, exit_side),
+            }),
+        );
+    }
+}
+
+#[test]
+fn a_turning_portal_turns_the_movers_speed_and_facing() {
+    let mut app = test_app::headless();
+    turning_portal(&mut app);
+    let mover = stepper(&mut app, IVec2::new(2, 1), IVec2::X);
+    app.world_mut().entity_mut(mover).insert(Facing(IVec2::X));
+    app.world_mut()
+        .resource_mut::<MapGrid>()
+        .set(IVec2::new(2, 1), mover);
+    app.update();
+    let world = app.world();
+    assert_eq!(world.get::<Pos>(mover).unwrap().0, IVec2::new(6, 5));
+    assert_eq!(world.get::<Speed>(mover).unwrap().0, IVec2::Y);
+    assert_eq!(world.get::<Facing>(mover).unwrap().0, IVec2::Y);
+}
+
+#[test]
+fn a_step_blocked_at_a_turning_exit_turns_nothing() {
+    let mut app = test_app::headless();
+    turning_portal(&mut app);
+    let blocker = app
+        .world_mut()
+        .spawn((Active, Collider, Pos(IVec2::new(6, 5))))
+        .id();
+    app.world_mut()
+        .resource_mut::<MapGrid>()
+        .set(IVec2::new(6, 5), blocker);
+    let mover = stepper(&mut app, IVec2::new(2, 1), IVec2::X);
+    app.world_mut().entity_mut(mover).insert(Facing(IVec2::X));
+    app.world_mut()
+        .resource_mut::<MapGrid>()
+        .set(IVec2::new(2, 1), mover);
+    app.update();
+    let world = app.world();
+    assert_eq!(world.get::<Pos>(mover).unwrap().0, IVec2::new(2, 1));
+    assert_eq!(world.get::<Facing>(mover).unwrap().0, IVec2::X);
+}
