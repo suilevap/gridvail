@@ -8,8 +8,13 @@ fn touch_app() -> (App, Entity) {
     app.add_plugins((MinimalPlugins, bevy::input::InputPlugin))
         .init_resource::<TurnState>()
         .init_resource::<Swipe>()
+        .init_resource::<Pinch>()
         .init_resource::<ControlScheme>()
-        .add_systems(PreUpdate, read_swipes.after(bevy::input::InputSystems))
+        .init_resource::<crate::camera::CameraOperator>()
+        .add_systems(
+            PreUpdate,
+            (read_swipes, read_pinch).after(bevy::input::InputSystems),
+        )
         .add_systems(Update, swipe_commands);
     let player = app
         .world_mut()
@@ -27,15 +32,35 @@ fn touch_app() -> (App, Entity) {
 }
 
 fn touch(app: &mut App, phase: TouchPhase, x: f32, y: f32) {
+    finger(app, 7, phase, x, y);
+    app.update();
+}
+
+/// Moves one finger without running a frame, so several can move at once.
+fn finger(app: &mut App, id: u64, phase: TouchPhase, x: f32, y: f32) {
     let window = app.world_mut().spawn_empty().id();
     app.world_mut().write_message(TouchInput {
         phase,
         position: Vec2::new(x, y),
         window,
         force: None,
-        id: 7,
+        id,
     });
+}
+
+/// Puts two fingers down at `a` and `b`, then moves them to `to_a` and
+/// `to_b`.
+fn two_fingers(app: &mut App, a: Vec2, b: Vec2, to_a: Vec2, to_b: Vec2) {
+    finger(app, 1, TouchPhase::Started, a.x, a.y);
+    finger(app, 2, TouchPhase::Started, b.x, b.y);
     app.update();
+    finger(app, 1, TouchPhase::Moved, to_a.x, to_a.y);
+    finger(app, 2, TouchPhase::Moved, to_b.x, to_b.y);
+    app.update();
+}
+
+fn operator(app: &App) -> &crate::camera::CameraOperator {
+    app.world().resource::<crate::camera::CameraOperator>()
 }
 
 /// Gives the player a token, runs a frame, and returns the walk it issued.
@@ -93,4 +118,66 @@ fn a_touch_switches_the_control_scheme_to_touch() {
         *app.world().resource::<ControlScheme>(),
         ControlScheme::Touch
     );
+}
+
+#[test]
+fn spreading_two_fingers_zooms_in_and_pinching_zooms_out() {
+    let (mut app, _) = touch_app();
+    two_fingers(
+        &mut app,
+        Vec2::new(100.0, 100.0),
+        Vec2::new(200.0, 100.0),
+        Vec2::new(75.0, 100.0),
+        Vec2::new(225.0, 100.0),
+    );
+    assert!((operator(&app).target_zoom() - 1.5).abs() < 1e-4);
+    finger(&mut app, 1, TouchPhase::Moved, 125.0, 100.0);
+    finger(&mut app, 2, TouchPhase::Moved, 175.0, 100.0);
+    app.update();
+    // Half the starting span, clamped to the operator's range.
+    assert!((operator(&app).target_zoom() - 0.5).abs() < 1e-4);
+}
+
+#[test]
+fn twisting_two_fingers_turns_the_view_a_quarter_at_a_time() {
+    use std::f32::consts::FRAC_PI_2;
+    let (mut app, _) = touch_app();
+    // A clockwise twist past an eighth of a turn turns the picture
+    // clockwise: the view's angle, counter-clockwise, goes down a quarter.
+    two_fingers(
+        &mut app,
+        Vec2::new(100.0, 100.0),
+        Vec2::new(200.0, 100.0),
+        Vec2::new(125.0, 57.0),
+        Vec2::new(175.0, 143.0),
+    );
+    assert!((operator(&app).target_rotation() + FRAC_PI_2).abs() < 1e-4);
+    // Less than another eighth past the new quarter changes nothing.
+    finger(&mut app, 1, TouchPhase::Moved, 150.0, 50.0);
+    finger(&mut app, 2, TouchPhase::Moved, 150.0, 150.0);
+    app.update();
+    assert!((operator(&app).target_rotation() + FRAC_PI_2).abs() < 1e-4);
+}
+
+#[test]
+fn a_second_finger_cancels_the_swipe_until_all_fingers_lift() {
+    let (mut app, player) = touch_app();
+    two_fingers(
+        &mut app,
+        Vec2::new(100.0, 100.0),
+        Vec2::new(200.0, 100.0),
+        Vec2::new(20.0, 100.0),
+        Vec2::new(200.0, 100.0),
+    );
+    assert_eq!(step_taken(&mut app, player), None);
+    finger(&mut app, 2, TouchPhase::Ended, 200.0, 100.0);
+    app.update();
+    finger(&mut app, 1, TouchPhase::Moved, 0.0, 100.0);
+    app.update();
+    assert_eq!(step_taken(&mut app, player), None, "the leftover finger");
+    finger(&mut app, 1, TouchPhase::Ended, 0.0, 100.0);
+    app.update();
+    touch(&mut app, TouchPhase::Started, 100.0, 100.0);
+    touch(&mut app, TouchPhase::Moved, 160.0, 100.0);
+    assert_eq!(step_taken(&mut app, player), Some(IVec2::X));
 }

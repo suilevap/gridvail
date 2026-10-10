@@ -309,7 +309,9 @@ python3 -m http.server -d dist 8000
 ```
 
 On touch screens, swipe to take a step and keep the finger down to keep
-walking; slide it past where it landed to turn. The performance panel starts
+walking; slide it past where it landed to turn. Two fingers pinch to zoom,
+and twisting them an eighth of a turn turns the view a quarter turn, like Q
+and E; they never walk. The performance panel starts
 hidden in the browser (F3 shows it). Touch controls live in `src/touch/`;
 the HUD shows the hints for whichever input was used last.
 

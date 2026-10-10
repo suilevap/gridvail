@@ -518,7 +518,7 @@ fn update_hud(
             ),
             ControlScheme::Touch => writeln!(
                 text.0,
-                "PavEcsGame Lite Bevy port | swipe to step | hold to keep walking"
+                "PavEcsGame Lite Bevy port | swipe to step, hold to walk | pinch zoom | twist turns view"
             ),
         }
         .expect("writing to String cannot fail");
