@@ -285,3 +285,19 @@ fn a_held_key_keeps_its_direction_while_the_view_turns() {
         IVec2::NEG_Y
     );
 }
+
+#[test]
+fn a_zoom_floor_keeps_the_view_from_zooming_out_past_it() {
+    let (mut app, _) = app_with_player(IVec2::new(2, 2));
+    operator(&mut app).zoom_to(0.5);
+    assert_eq!(operator(&mut app).target_zoom(), 0.5);
+    // A renderer that cannot draw that far eases the view back in...
+    operator(&mut app).set_zoom_floor(0.8);
+    assert_eq!(operator(&mut app).target_zoom(), 0.8);
+    // ...and zooming out stops there.
+    operator(&mut app).zoom_to(0.6);
+    assert_eq!(operator(&mut app).target_zoom(), 0.8);
+    // The floor never goes below the operator's own range.
+    operator(&mut app).set_zoom_floor(0.1);
+    assert_eq!(operator(&mut app).zoom_floor(), ZOOM_RANGE.0);
+}

@@ -84,6 +84,9 @@ pub struct CameraOperator {
     target: CameraTarget,
     rotation: Tween<f32>,
     zoom: Tween<f32>,
+    /// The furthest out the view may zoom: `ZOOM_RANGE.0` unless the
+    /// renderer cannot draw that much of the map (see `set_zoom_floor`).
+    zoom_floor: f32,
     offset: Tween<Vec2>,
     /// Blends from where the camera was to the new target after a change of
     /// target, from 0 (old place) to 1 (on the target).
@@ -109,6 +112,7 @@ impl CameraOperator {
             target,
             rotation: Tween::at(0.0),
             zoom: Tween::at(1.0),
+            zoom_floor: ZOOM_RANGE.0,
             offset: Tween::at(Vec2::ZERO),
             handover: Tween::at(1.0),
             handover_from: Vec2::ZERO,
@@ -152,10 +156,25 @@ impl CameraOperator {
         self.zoom.target()
     }
 
-    /// Zooms to `zoom`, kept within `ZOOM_RANGE`.
+    /// Zooms to `zoom`, kept within `ZOOM_RANGE` and above the zoom floor.
     pub fn zoom_to(&mut self, zoom: f32) {
-        let zoom = zoom.clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
+        let zoom = zoom.clamp(self.zoom_floor, ZOOM_RANGE.1);
         self.zoom.ease_to(zoom, self.transition, self.easing);
+    }
+
+    /// The furthest out the view may zoom now.
+    pub fn zoom_floor(&self) -> f32 {
+        self.zoom_floor
+    }
+
+    /// Keeps the view from zooming out past `floor` (within `ZOOM_RANGE`),
+    /// for a renderer that can only draw so much of the map: a view zoomed
+    /// out further now eases back in.
+    pub fn set_zoom_floor(&mut self, floor: f32) {
+        self.zoom_floor = floor.clamp(ZOOM_RANGE.0, ZOOM_RANGE.1);
+        if self.zoom.target() < self.zoom_floor {
+            self.zoom_to(self.zoom_floor);
+        }
     }
 
     /// Shows the target at `offset` view cells from the screen centre.

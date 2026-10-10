@@ -132,11 +132,14 @@ and renderers must not import it.
   camera. `PORTALS.md` builds the portal view on it: when the target goes
   through a portal that turns, the operator turns the view with it so the
   picture stays, and with `PortalTurn::KeepNorth` (N) then eases it back.
-  The frame is a window of `FrameSize` cells (80x80 by default), not the
-  map's size: it follows the player, and each map position keeps a slot
-  (its coordinates modulo the window size), so steps only rewrite the slots
-  scrolling in. `PresentationPlugin` owns those systems and the frame and
-  light-map resources.
+  The frame is a window of `FrameSize` cells, not the map's size: it
+  follows the player, and each map position keeps a slot (its coordinates
+  modulo the window size), so steps only rewrite the slots scrolling in.
+  It is 80x80 headless; the text renderer grows it to cover its window at
+  the furthest zoom-out, turned any way (the window's diagonal), up to 192
+  cells a side, past which the camera operator's zoom floor rises instead.
+  Changing `FrameSize` rebuilds the frame. `PresentationPlugin` owns those
+  systems and the frame and light-map resources.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
   at its animated position, each placed where the view camera shows it. Its

@@ -14,10 +14,18 @@ use crate::simulation::Rules;
 
 use super::walls_3d::{billboard_pattern, ExtrudedWalls};
 use crate::animation::MotionStyle;
-use crate::camera::CameraOperator;
+use crate::camera::{CameraOperator, ZOOM_RANGE};
 
 /// Square cells: Unscii-8 glyphs are as wide as they are tall.
 pub(super) const CELL_SIZE: Vec2 = Vec2::new(16.0, 16.0);
+
+/// The longest side the frame grows to, in cells. Every frame slot is a
+/// text entity, so a window too large to cover at the furthest zoom-out
+/// keeps this size and limits how far the view zooms out instead.
+const MAX_FRAME_SIDE: i32 = 192;
+/// Cells of slack around the screen on each side: the frame follows the
+/// player, while the camera may trail them or show them off centre.
+const FRAME_MARGIN: i32 = 4;
 /// Unscii-8 is an 8 px pixel font, drawn at twice its size.
 const CELL_FONT_SIZE: f32 = 16.0;
 
@@ -114,6 +122,8 @@ impl Plugin for TextRendererPlugin {
                 Update,
                 (
                     cycle_motion,
+                    fit_frame_to_window,
+                    match_cells_to_frame,
                     place_cells,
                     smooth_turning_glyphs,
                     flush_cells,
@@ -124,6 +134,94 @@ impl Plugin for TextRendererPlugin {
                     .chain()
                     .in_set(GamePhase::Output),
             );
+    }
+}
+
+/// The text entity for frame slot `index`, blank until flushed.
+fn map_cell(index: usize, font: &Handle<Font>) -> impl Bundle {
+    // The perspective backend reuses this allocation for small multiline
+    // ASCII billboards.
+    let mut cell_text = String::with_capacity(32);
+    cell_text.push(' ');
+    (
+        MapCell(index),
+        Text2d::new(cell_text),
+        TextLayout::justify(Justify::Center),
+        TextFont {
+            font: font.clone().into(),
+            font_size: FontSize::Px(CELL_FONT_SIZE),
+            ..default()
+        },
+        TextColor(palette_color(GRAY)),
+        Transform::default(),
+    )
+}
+
+/// The square frame side, in cells, that covers a window of `size`
+/// logical pixels at `zoom` however the view is turned (its diagonal),
+/// with `FRAME_MARGIN` to spare.
+fn frame_side_for(size: Vec2, zoom: f32) -> i32 {
+    (size.length() / (CELL_SIZE.x * zoom)).ceil() as i32 + 2 * FRAME_MARGIN
+}
+
+/// The furthest zoom-out at which a frame of `side` cells still covers a
+/// window of `size` logical pixels, turned any way.
+fn zoom_floor_for(size: Vec2, side: i32) -> f32 {
+    size.length() / (CELL_SIZE.x * (side - 2 * FRAME_MARGIN).max(1) as f32)
+}
+
+/// Grows the frame to cover the window at the furthest zoom-out, turned any
+/// way, so its edge never shows. Past `MAX_FRAME_SIDE` the frame stops
+/// growing and the view stops zooming out that far instead. Runs when the
+/// window's size changes; headless runs have no window and keep their frame.
+fn fit_frame_to_window(
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    mut frame: ResMut<FrameSize>,
+    operator: Option<ResMut<CameraOperator>>,
+    mut fitted: Local<Vec2>,
+) {
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    let size = window.size();
+    if size == *fitted || size.min_element() <= 0.0 {
+        return;
+    }
+    *fitted = size;
+    let needed = frame_side_for(size, ZOOM_RANGE.0).min(MAX_FRAME_SIDE);
+    let side = needed.max(frame.0.min_element());
+    if frame.0 != IVec2::splat(side) && side > frame.0.min_element() {
+        frame.0 = IVec2::splat(side);
+    }
+    if let Some(mut operator) = operator {
+        operator.set_zoom_floor(zoom_floor_for(size, frame.0.min_element()));
+    }
+}
+
+/// Keeps one text entity per frame slot when the frame is resized. Kept
+/// cells are blanked, as the new frame redraws every slot.
+fn match_cells_to_frame(
+    mut commands: Commands,
+    buffers: Res<RenderBuffers>,
+    font: Option<Res<CellFont>>,
+    mut cells: Query<(Entity, &MapCell, &mut Text2d)>,
+) {
+    let slots = buffers.current.len();
+    let count = cells.iter().len();
+    if count == slots || !buffers.is_changed() {
+        return;
+    }
+    for (entity, cell, mut text) in &mut cells {
+        if cell.0 >= slots {
+            commands.entity(entity).despawn();
+        } else {
+            text.0.clear();
+            text.0.push(' ');
+        }
+    }
+    let font = font.map(|font| font.0.clone()).unwrap_or_default();
+    for index in count..slots {
+        commands.spawn(map_cell(index, &font));
     }
 }
 
@@ -157,22 +255,7 @@ pub(super) fn setup(
     // One text entity per frame slot; `place_cells` puts each where the
     // map position it shows is on screen.
     for index in 0..buffers.current.len() {
-        // The perspective backend reuses this allocation for small
-        // multiline ASCII billboards.
-        let mut cell_text = String::with_capacity(32);
-        cell_text.push(' ');
-        commands.spawn((
-            MapCell(index),
-            Text2d::new(cell_text),
-            TextLayout::justify(Justify::Center),
-            TextFont {
-                font: font.clone().into(),
-                font_size: FontSize::Px(CELL_FONT_SIZE),
-                ..default()
-            },
-            TextColor(palette_color(GRAY)),
-            Transform::default(),
-        ));
+        commands.spawn(map_cell(index, &font));
     }
 
     commands.insert_resource(CellFont(font.clone()));
@@ -376,10 +459,10 @@ fn place_cells(
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
-    mut placed: Local<Option<(ViewCamera, IVec2)>>,
+    mut placed: Local<Option<(ViewCamera, IVec2, usize)>>,
     mut cells: Query<(&MapCell, &mut Transform)>,
 ) {
-    let placement = (*camera, buffers.origin);
+    let placement = (*camera, buffers.origin, cells.iter().len());
     if extruded_walls.is_some() || *placed == Some(placement) {
         return;
     }
@@ -732,6 +815,61 @@ mod tests {
             assert_eq!(text, expected.to_string(), "glyph {ch}");
         }
         assert!(walls > 0 && markers > 0, "walls {walls}, markers {markers}");
+    }
+
+    #[test]
+    fn the_frame_covers_the_window_at_the_furthest_zoom_however_turned() {
+        // 1100x700 has a 1304 px diagonal: 163 cells of 8 px at zoom 0.5,
+        // plus the margin each side.
+        let window = Vec2::new(1100.0, 700.0);
+        let side = frame_side_for(window, ZOOM_RANGE.0);
+        assert_eq!(side, 163 + 2 * FRAME_MARGIN);
+        assert!(side <= MAX_FRAME_SIDE);
+        assert!((zoom_floor_for(window, side) - ZOOM_RANGE.0).abs() < 1e-3);
+        // A 4K window would need far more: the frame stops at its cap and
+        // the view stops zooming out where the capped frame still covers.
+        let large = Vec2::new(3840.0, 2160.0);
+        assert!(frame_side_for(large, ZOOM_RANGE.0) > MAX_FRAME_SIDE);
+        let floor = zoom_floor_for(large, MAX_FRAME_SIDE);
+        assert!(floor > ZOOM_RANGE.0);
+        assert!(frame_side_for(large, floor) <= MAX_FRAME_SIDE);
+    }
+
+    #[test]
+    fn a_window_grows_the_frame_and_its_cells_to_match() {
+        let mut app = boot(false);
+        assert_eq!(app.world().resource::<FrameSize>().0, IVec2::splat(80));
+        app.world_mut().spawn((
+            Window {
+                resolution: (1100_u32, 700_u32).into(),
+                ..default()
+            },
+            bevy::window::PrimaryWindow,
+        ));
+        for _ in 0..3 {
+            app.update();
+        }
+        let side = frame_side_for(Vec2::new(1100.0, 700.0), ZOOM_RANGE.0);
+        assert_eq!(app.world().resource::<FrameSize>().0, IVec2::splat(side));
+        let buffers = app.world().resource::<RenderBuffers>();
+        assert_eq!((buffers.width, buffers.height), (side, side));
+        let world = app.world_mut();
+        let cells = world.query::<&MapCell>().iter(world).count();
+        assert_eq!(cells, (side * side) as usize);
+        // The player is still drawn, in the middle of the new frame.
+        let player = world
+            .query_filtered::<&Pos, With<Player>>()
+            .single(world)
+            .unwrap()
+            .0;
+        let buffers = world.resource::<RenderBuffers>();
+        assert_eq!(buffers.ground.len(), cells);
+        assert!(buffers
+            .objects
+            .iter()
+            .any(|object| object.pos == player && object.cell.ch == '@'));
+        let floor = world.resource::<CameraOperator>().zoom_floor();
+        assert!((floor - ZOOM_RANGE.0).abs() < 1e-3);
     }
 
     #[test]

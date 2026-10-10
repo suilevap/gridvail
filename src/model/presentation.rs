@@ -61,8 +61,8 @@ pub struct SeenCell {
 }
 
 /// How many cells the composed frame has, independent of the map: the
-/// frame is a window that follows the player. The default covers a
-/// 1100x700 window of 16 px cells at zoom 1, turned any way.
+/// frame is a window that follows the player. The default suits headless
+/// runs; the text renderer grows it to cover its window at every zoom.
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FrameSize(pub IVec2);
 

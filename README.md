@@ -100,7 +100,8 @@ next to this file.
   never jumps and arrow keys keep their screen directions. With
   `--portal-view north` (or `N` in game) the view then eases back so
   north stays up. The drawn frame is a window of its own size that follows
-  the player (`FrameSize`), independent of the map's size. The 3D renderer
+  the player (`FrameSize`), independent of the map's size and grown to
+  cover the window at any zoom and turn. The 3D renderer
   does not show portals yet.
 - A view camera (an addition): both renderers draw through a
   renderer-neutral `ViewCamera` (centre, rotation, zoom, offset) that a
@@ -186,7 +187,7 @@ cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
-cargo test --workspace   # 209 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 219 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
