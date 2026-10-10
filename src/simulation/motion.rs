@@ -47,13 +47,18 @@ pub fn movement(
 /// Steps blocked at the exit turn nothing.
 pub fn turn_portal_crossers(
     crossings: Res<PortalCrossings>,
-    mut movers: Query<(&Pos, Option<&mut Speed>, Option<&mut Facing>)>,
+    mut movers: Query<(
+        &Pos,
+        Option<&mut Speed>,
+        Option<&mut Facing>,
+        Option<&mut MoveIntent>,
+    )>,
 ) {
     for crossing in &crossings.0 {
         if crossing.through.quarters == 0 {
             continue;
         }
-        let Ok((pos, speed, facing)) = movers.get_mut(crossing.entity) else {
+        let Ok((pos, speed, facing, intent)) = movers.get_mut(crossing.entity) else {
             continue;
         };
         if pos.0 != crossing.arrival {
@@ -64,6 +69,10 @@ pub fn turn_portal_crossers(
         }
         if let Some(mut facing) = facing {
             facing.0 = crossing.through.turn(facing.0);
+        }
+        // A held direction goes on through, the way the mover now faces.
+        if let Some(held) = intent.and_then(|intent| intent.into_inner().held.as_mut()) {
+            held.map = crossing.through.turn(held.map);
         }
     }
 }

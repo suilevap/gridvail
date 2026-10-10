@@ -236,3 +236,52 @@ fn n_switches_what_the_view_does_through_turning_portals() {
     assert_eq!(PortalTurn::from_name("north"), Some(PortalTurn::KeepNorth));
     assert_eq!(PortalTurn::from_name("turn"), Some(PortalTurn::WithTarget));
 }
+
+#[test]
+fn a_held_key_keeps_its_direction_while_the_view_turns() {
+    use bevy::ecs::system::RunSystemOnce;
+
+    let (mut app, player) = app_with_player(IVec2::new(3, 3));
+    app.world_mut().entity_mut(player).insert((
+        Active,
+        MoveCommand::default(),
+        MoveIntent::default(),
+        Tokens {
+            count: 1,
+            recharge: 1,
+        },
+    ));
+    let target = |app: &mut App, key: Option<KeyCode>, rotation: f32| {
+        app.world_mut().insert_resource(ViewCamera {
+            rotation,
+            ..default()
+        });
+        let mut keys = ButtonInput::<KeyCode>::default();
+        if let Some(key) = key {
+            keys.press(key);
+        }
+        app.world_mut().insert_resource(keys);
+        app.world_mut()
+            .run_system_once(crate::simulation::player_input)
+            .unwrap();
+        app.world().get::<MoveCommand>(player).unwrap().target
+    };
+    // Up walks north, and keeps walking north while held, however the
+    // view turns meanwhile.
+    assert_eq!(target(&mut app, Some(KeyCode::ArrowUp), 0.0), IVec2::NEG_Y);
+    assert_eq!(
+        target(&mut app, Some(KeyCode::ArrowUp), FRAC_PI_2),
+        IVec2::NEG_Y
+    );
+    // Let go and press it again: now it means the top of the turned view.
+    target(&mut app, None, FRAC_PI_2);
+    assert_eq!(
+        target(&mut app, Some(KeyCode::ArrowUp), FRAC_PI_2),
+        IVec2::X
+    );
+    // Changing keys is a new intent too.
+    assert_eq!(
+        target(&mut app, Some(KeyCode::ArrowLeft), FRAC_PI_2),
+        IVec2::NEG_Y
+    );
+}

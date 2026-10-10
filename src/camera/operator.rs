@@ -41,8 +41,9 @@ pub enum PortalTurn {
     WithTarget,
     /// The view turns with the target, then eases back to the way it was
     /// turned before (north up, unless Q/E turned it), so the map keeps its
-    /// orientation on screen. While it eases back, arrow keys switch to the
-    /// restored directions halfway through.
+    /// orientation on screen. A key held through the portal keeps walking
+    /// the way the target came out (`MoveIntent`); pressed anew, it means
+    /// the restored direction.
     KeepNorth,
 }
 

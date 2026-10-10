@@ -142,8 +142,10 @@ can be seen (optional step 8).
      screen directions and the map's north is no longer up;
    - `north`: the view eases back to the turn it had before (north up,
      unless Q/E turned it). The crossing frame itself still turns with the
-     player, so nothing jumps; the picture then rotates smoothly, and arrow
-     keys switch to the restored directions halfway through.
+     player, so nothing jumps; the picture then rotates smoothly. A key
+     held through the portal keeps walking the way the player came out
+     (`MoveIntent`), even once the view is back to north up; pressed anew,
+     it means the restored direction.
 
    `portals.txt` has portal 4 (a quarter turn, room A's north wall to room
    B's east wall) and portal 5 (a half turn, between the rooms' south

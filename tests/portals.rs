@@ -281,7 +281,9 @@ fn going_back_through_a_turning_portal_turns_the_view_back() {
 
 /// With `PortalTurn::KeepNorth`, the view still turns with the player on
 /// the frame they come out of portal 4, so nothing jumps, then eases back
-/// to north up; holding up then walks north in room B.
+/// to north up. Holding up keeps its intent all the while: the player goes
+/// on walking west in room B, the way they came out, until the key is let
+/// go. Pressed again, up walks north.
 #[test]
 fn keeping_north_eases_the_view_back_after_a_turning_portal() {
     use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
@@ -343,19 +345,28 @@ fn keeping_north_eases_the_view_back_after_a_turning_portal() {
         }
         turned |= crossed && now.1 < -0.5;
         previous = now;
-        // North of the exit, the wall of room B at row 11 stops the player.
-        if crossed && pos.y == 12 {
-            break;
+        if crossed {
+            assert_eq!(pos.y, EXIT_FLOOR.y, "still walking west, as held");
+            if pos.x <= EXIT_FLOOR.x - 3 {
+                break;
+            }
         }
     }
     assert!(crossed, "the player never came out of the exit");
     assert!(turned, "the view first turned with the player");
-    let (pos, _) = player(&mut app);
-    assert_eq!(pos.y, 12, "holding up walks north in room B again");
+    assert!(player(&mut app).0.x <= EXIT_FLOOR.x - 3);
     let camera = *app.world().resource::<ViewCamera>();
     assert!(
         camera.rotation.abs() < 1e-5,
-        "north is up: {}",
+        "north is up while still walking west: {}",
         camera.rotation
     );
+
+    // Let go, then press up again: now up means north.
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release_all();
+    app.update();
+    let x = player(&mut app).0.x;
+    hold_until(&mut app, KeyCode::ArrowUp, IVec2::new(x, 12));
 }
