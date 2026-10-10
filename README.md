@@ -298,7 +298,11 @@ cp web/index.html dist/ && mkdir -p dist/assets && cp -r assets/shaders dist/ass
 python3 -m http.server -d dist 8000
 ```
 
-The browser build takes no command-line options, and the agent API's HTTP
+On touch screens, swipe to take a step and keep the finger down to keep
+walking; slide it past where it landed to turn. The performance panel starts
+hidden in the browser (F3 shows it). Touch controls live in `src/touch/`;
+the HUD shows the hints for whichever input was used last. The browser build takes no command-line
+options, and the agent API's HTTP
 server is native-only (a page cannot listen on a port).
 
 ## Agent runtime API

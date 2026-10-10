@@ -2,7 +2,8 @@ use bevy::prelude::*;
 use rand::SeedableRng;
 
 use crate::model::{
-    CollisionBuffer, MapGrid, PortalCrossings, SharedRng, TokenTimer, TurnPacing, TurnState,
+    CollisionBuffer, ControlScheme, MapGrid, PortalCrossings, SharedRng, TokenTimer, TurnPacing,
+    TurnState,
 };
 use crate::schedule::{GamePhase, StartupPhase};
 
@@ -23,6 +24,7 @@ impl SimulationPlugin {
 impl Plugin for SimulationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TurnState>()
+            .init_resource::<ControlScheme>()
             .init_resource::<TokenTimer>()
             .init_resource::<TurnPacing>()
             .init_resource::<CollisionBuffer>()
@@ -60,6 +62,12 @@ impl Plugin for SimulationPlugin {
                 )
                     .chain()
                     .in_set(GamePhase::Simulation),
+            )
+            .add_systems(
+                PreUpdate,
+                track_keyboard_scheme
+                    .after(bevy::input::InputSystems)
+                    .run_if(resource_exists::<ButtonInput<KeyCode>>),
             )
             .add_systems(Update, turn_update.in_set(GamePhase::Finalize));
     }

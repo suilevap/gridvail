@@ -17,4 +17,5 @@ pub mod rendering;
 pub mod schedule;
 pub mod service;
 pub mod simulation;
+pub mod touch;
 pub mod vision;
