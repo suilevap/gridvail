@@ -565,3 +565,196 @@ fn dominance_keeps_the_cheapest_path_within_limits() {
         }
     }
 }
+
+/// The same space, estimating nothing: the search falls back to Dijkstra.
+struct NoEstimate<'a, S>(&'a S);
+
+impl<S: Space> Space for NoEstimate<'_, S> {
+    type Node = S::Node;
+
+    fn node_count(&self) -> usize {
+        self.0.node_count()
+    }
+
+    fn index(&self, node: S::Node) -> Option<usize> {
+        self.0.index(node)
+    }
+
+    fn node(&self, index: usize) -> S::Node {
+        self.0.node(index)
+    }
+
+    fn for_each_neighbor(&self, node: S::Node, visit: &mut dyn FnMut(S::Node)) {
+        self.0.for_each_neighbor(node, visit)
+    }
+}
+
+/// Searches `rows` from `S` to `G` with `portals`: the cost, the path and
+/// how many nodes the search expanded.
+fn search_portals(rows: &Rows, portals: &grid::Portals) -> Option<(u32, Vec<Cell>, usize)> {
+    let grid = rows.grid();
+    let goal = rows.find('G');
+    let mut bounds = Vec::new();
+    portals.bounds_to(&grid, goal, &mut bounds);
+    let space = portals.space(&grid, goal, &bounds);
+    let mut search = PathSearch::new();
+    let mut path = Vec::new();
+    let cost = search.find(&space, rows, rows.find('S'), goal, &mut path)?;
+    Some((cost, path, search.expanded()))
+}
+
+#[test]
+fn a_portal_is_one_move_and_paths_go_through_it() {
+    // Two rooms with no way between them but a portal: stepping east from
+    // (1, 1) lands on (6, 1).
+    let rows = Rows::new(&["S.#....", "..#...G", "..#...."]);
+    assert_eq!(search(&rows, &rows), None);
+    let portals = grid::Portals::new([grid::PortalLink {
+        from: Cell::new(1, 1),
+        toward: Cell::new(1, 0),
+        to: Cell::new(4, 1),
+    }]);
+    let (cost, path, _) = search_portals(&rows, &portals).unwrap();
+    // 2 steps to the entrance, 1 through, 2 on to G.
+    assert_eq!(cost, 5);
+    let through = path
+        .windows(2)
+        .position(|step| rows.grid().distance(step[0], step[1]) > 1)
+        .expect("a portal move in the path");
+    assert_eq!(
+        (path[through], path[through + 1]),
+        (Cell::new(1, 1), Cell::new(4, 1))
+    );
+    // Only stepping the link's way goes through: from (1, 1) north is the
+    // plain cell above.
+    let grid = rows.grid();
+    let mut bounds = Vec::new();
+    portals.bounds_to(&grid, rows.find('G'), &mut bounds);
+    let space = portals.space(&grid, rows.find('G'), &bounds);
+    let mut neighbours = Vec::new();
+    space.for_each_neighbor(Cell::new(1, 1), &mut |cell| neighbours.push(cell));
+    neighbours.sort();
+    assert_eq!(
+        neighbours,
+        [
+            Cell::new(0, 1),
+            Cell::new(1, 0),
+            Cell::new(1, 2),
+            Cell::new(4, 1)
+        ]
+    );
+}
+
+/// Rooms joined by portals, including one that leads back into its own room
+/// and a chain of two, so bounds must go through several links.
+const PORTAL_ROOMS: [&str; 7] = [
+    "....#....#....",
+    "....#....#....",
+    "....#....#....",
+    "#############.",
+    "....#.........",
+    "....#....#....",
+    "....#....#....",
+];
+
+fn portal_rooms() -> grid::Portals {
+    let link = |from: (i32, i32), toward: (i32, i32), to: (i32, i32)| grid::PortalLink {
+        from: Cell::new(from.0, from.1),
+        toward: Cell::new(toward.0, toward.1),
+        to: Cell::new(to.0, to.1),
+    };
+    grid::Portals::new([
+        // Top-left room east into the top-middle room, and back.
+        link((3, 1), (1, 0), (5, 1)),
+        link((5, 1), (-1, 0), (3, 1)),
+        // Top-middle room south into the bottom-left room, turned.
+        link((7, 2), (0, 1), (3, 5)),
+        // Bottom-left room into itself, across.
+        link((0, 6), (-1, 0), (3, 4)),
+    ])
+}
+
+#[test]
+fn the_portal_estimate_never_overestimates_and_stays_consistent() {
+    let rows = Rows::new(&PORTAL_ROOMS);
+    let grid = rows.grid();
+    let portals = portal_rooms();
+    let mut bounds = Vec::new();
+    let mut search = PathSearch::new();
+    let mut path = Vec::new();
+    let floor: Vec<Cell> = (0..grid.len())
+        .map(|index| grid.cell(index))
+        .filter(|cell| rows.at(*cell) != '#')
+        .collect();
+    for &goal in &floor {
+        portals.bounds_to(&grid, goal, &mut bounds);
+        let space = portals.space(&grid, goal, &bounds);
+        for &start in &floor {
+            let exact = search.find(&NoEstimate(&space), &rows, start, goal, &mut path);
+            let guided = search.find(&space, &rows, start, goal, &mut path);
+            assert_eq!(guided, exact, "{start:?} to {goal:?}");
+            let estimate = space.min_moves(start, goal);
+            if let Some(exact) = exact {
+                assert!(
+                    estimate <= exact,
+                    "{start:?} to {goal:?}: {estimate} > {exact}"
+                );
+            }
+            // A move lowers the estimate by at most its cost (one).
+            space.for_each_neighbor(start, &mut |next| {
+                assert!(
+                    estimate <= space.min_moves(next, goal) + 1,
+                    "{start:?} -> {next:?} toward {goal:?}"
+                );
+            });
+        }
+    }
+}
+
+#[test]
+fn the_portal_estimate_keeps_the_search_narrow() {
+    // A wide open room cut in two, joined only by a portal near the start:
+    // the goal is far beyond the portal's landing.
+    let mut rows = Vec::new();
+    for y in 0..40 {
+        let mut row = String::new();
+        for x in 0..81 {
+            row.push(match (x, y) {
+                (40, _) => '#',
+                (1, 20) => 'S',
+                (78, 20) => 'G',
+                _ => '.',
+            });
+        }
+        rows.push(row);
+    }
+    let rows = Rows::new(&rows.iter().map(String::as_str).collect::<Vec<_>>());
+    let portals = grid::Portals::new([grid::PortalLink {
+        from: Cell::new(2, 20),
+        toward: Cell::new(1, 0),
+        to: Cell::new(45, 20),
+    }]);
+    let (cost, _, guided) = search_portals(&rows, &portals).unwrap();
+    assert_eq!(cost, 1 + 1 + 33);
+
+    // The same links as jumps turn the estimate off: Dijkstra.
+    let grid = rows.grid();
+    let mut bounds = Vec::new();
+    portals.bounds_to(&grid, rows.find('G'), &mut bounds);
+    let space = portals.space(&grid, rows.find('G'), &bounds);
+    let mut search = PathSearch::new();
+    let mut path = Vec::new();
+    let exact = search.find(
+        &NoEstimate(&space),
+        &rows,
+        rows.find('S'),
+        rows.find('G'),
+        &mut path,
+    );
+    assert_eq!(exact, Some(cost));
+    let blind = search.expanded();
+    assert!(
+        guided * 20 < blind,
+        "the estimate should expand far fewer nodes: {guided} vs {blind}"
+    );
+}
