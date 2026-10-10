@@ -124,7 +124,10 @@ struct PlayerState {
 struct VisualState {
     width: i32,
     height: i32,
-    /// Final composed glyphs, one string per map row.
+    /// Map position of the first glyph of the first row: the composed
+    /// frame is a window that follows the player.
+    origin: Position,
+    /// Final composed glyphs, one string per frame row, from `origin`.
     rows: Vec<String>,
     /// Palette indices corresponding one-for-one with `rows` characters.
     colors: Vec<Vec<u8>>,
@@ -225,10 +228,17 @@ fn move_player(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
 }
 
 fn visual_state(buffers: &RenderBuffers) -> VisualState {
-    let width = buffers.width as usize;
     let mut rows = Vec::with_capacity(buffers.height as usize);
     let mut colors = Vec::with_capacity(buffers.height as usize);
-    for row in buffers.current.chunks(width) {
+    for y in 0..buffers.height {
+        let row: Vec<RenderCell> = (0..buffers.width)
+            .map(|x| {
+                let p = buffers.origin + IVec2::new(x, y);
+                buffers
+                    .idx(p)
+                    .map_or(RenderCell::default(), |index| buffers.current[index])
+            })
+            .collect();
         rows.push(
             row.iter()
                 .map(|cell| match cell.ch {
@@ -242,6 +252,7 @@ fn visual_state(buffers: &RenderBuffers) -> VisualState {
     VisualState {
         width: buffers.width,
         height: buffers.height,
+        origin: buffers.origin.into(),
         rows,
         colors,
         palette: &PALETTE_NAMES,
@@ -278,10 +289,14 @@ mod tests {
     fn state_contains_the_composed_visual_grid() {
         let mut app = game();
         let value = get_state(In(None), app.world_mut()).unwrap();
+        // The frame is an 80x80 window centred on the player at (8, 5).
         assert_eq!(value["visual"]["width"], 80);
-        assert_eq!(value["visual"]["height"], 24);
-        assert_eq!(value["visual"]["rows"].as_array().unwrap().len(), 24);
-        assert_eq!(value["visual"]["colors"].as_array().unwrap().len(), 24);
+        assert_eq!(value["visual"]["height"], 80);
+        assert_eq!(value["visual"]["origin"], json!({ "x": -32, "y": -35 }));
+        let rows = value["visual"]["rows"].as_array().unwrap();
+        assert_eq!(rows.len(), 80);
+        assert_eq!(value["visual"]["colors"].as_array().unwrap().len(), 80);
+        assert_eq!(rows[40].as_str().unwrap().chars().nth(40), Some('@'));
         assert_eq!(value["player"]["position"], json!({ "x": 8, "y": 5 }));
         assert_eq!(value["ready_for_input"], true);
     }

@@ -344,3 +344,57 @@ fn a_child_goes_with_its_parent_even_into_a_portal_wall() {
         .expect("the marker is drawn with its player");
     assert_eq!((drawn.pos, drawn.instance), (IVec2::new(3, 1), 0));
 }
+
+#[test]
+fn the_frame_window_keeps_each_position_in_its_slot_as_it_scrolls() {
+    let mut buffers = RenderBuffers::following(IVec2::new(6, 4), 64);
+    buffers.centre_on(IVec2::new(10, 10));
+    assert_eq!(buffers.origin, IVec2::new(7, 8));
+    for index in 0..buffers.current.len() {
+        assert_eq!(buffers.idx(buffers.pos_of(index)), Some(index));
+    }
+    assert_eq!(buffers.idx(IVec2::new(6, 10)), None, "left of the window");
+    let slot = buffers.idx(IVec2::new(9, 9)).unwrap();
+    // A step right scrolls the window; positions still in it keep slots.
+    buffers.centre_on(IVec2::new(11, 10));
+    assert_eq!(buffers.idx(IVec2::new(9, 9)), Some(slot));
+    assert_eq!(buffers.idx(IVec2::new(7, 9)), None, "scrolled out");
+    for index in 0..buffers.current.len() {
+        assert_eq!(buffers.idx(buffers.pos_of(index)), Some(index));
+    }
+}
+
+#[test]
+fn what_is_seen_past_the_map_edge_is_drawn() {
+    use crate::foundation::fov::ViewSample;
+    use crate::foundation::portal::CellTransform;
+
+    let mut app = test_app::headless();
+    app.insert_resource(DynamicLight::sized(64))
+        .insert_resource(RenderBuffers::following(IVec2::new(9, 9), 64));
+    // At (1, 1), looking west through a portal: frame cell (-2, 1), off the
+    // 8x8 map, shows map cell (5, 5).
+    let through = CellTransform::translation(IVec2::new(7, 4));
+    let mut view = PlayerView::with_radius(4);
+    view.pos = IVec2::new(1, 1);
+    view.samples = vec![ViewSample {
+        delta: IVec2::new(-3, 0),
+        world: IVec2::new(5, 5),
+        transform: through,
+        value: 1.0,
+    }];
+    app.world_mut()
+        .spawn((Player(0), Pos(IVec2::new(1, 1)), view, visibility(&[])));
+    app.world_mut().spawn((
+        Pos(IVec2::new(5, 5)),
+        Speed::default(),
+        Glyph::new('e', 1, 12),
+    ));
+    app.world_mut().run_system_once(compose_frame).unwrap();
+    let buffers = app.world().resource::<RenderBuffers>();
+    assert_eq!(buffers.origin, IVec2::new(-3, -3), "centred on the player");
+    let off_map = buffers.idx(IVec2::new(-2, 1)).expect("in the window");
+    assert_eq!(buffers.current[off_map].ch, 'e');
+    let drawn = buffers.objects.iter().find(|o| o.cell.ch == 'e').unwrap();
+    assert_eq!(drawn.pos, IVec2::new(-2, 1));
+}

@@ -105,7 +105,11 @@ and renderers must not import it.
   and Z/X zoom;
   movement keys are read as screen directions. Renderers only read the
   camera. `PORTALS.md` builds the portal view on it.
-  `PresentationPlugin` owns those systems and all map-sized frame resources.
+  The frame is a window of `FrameSize` cells (80x80 by default), not the
+  map's size: it follows the player, and each map position keeps a slot
+  (its coordinates modulo the window size), so steps only rewrite the slots
+  scrolling in. `PresentationPlugin` owns those systems and the frame and
+  light-map resources.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
   at its animated position, each placed where the view camera shows it. Its

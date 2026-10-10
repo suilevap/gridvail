@@ -116,11 +116,11 @@ can be seen (optional step 8).
    cells show the map cells they look onto; objects drawn once per place
    they are seen. Remembered cells dimmer. **Done.**
 
-   Built differently from the plan above: the frame stays map-sized in
-   the player's map coordinates instead of becoming view-indexed, so
-   renderers needed no change. Cells seen through a portal that would fall
-   outside the map are not drawn yet (keep portal rooms away from the map
-   edge).
+   Built differently from the plan above: instead of a view-indexed frame,
+   the frame is a window of its own size (`FrameSize`) onto the player's
+   map coordinates, following the player, so renderers place frame cells
+   like map cells. The window may extend past the map's edge, where cells
+   seen through a portal are drawn too.
 5. The 3D renderer in view space.
 6. 90° rotations: rotated transforms, facing, and a view frame that turns
    with the player.
