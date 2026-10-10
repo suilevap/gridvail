@@ -395,4 +395,3 @@ with .NET 10 and a clean checkout at the pinned commit:
 ```sh
 python3 tools/generate_reference.py /path/to/PavEcsGame
 ```
-

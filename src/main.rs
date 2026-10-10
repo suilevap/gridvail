@@ -507,4 +507,3 @@ fn save_capture(
         }
     }
 }
-
