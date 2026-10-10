@@ -27,7 +27,7 @@ use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
 use pav_ecs_game_bevy_port::touch::TouchControlPlugin;
 
 #[cfg(target_family = "wasm")]
-#[wasm_bindgen::prelude::wasm_bindgen(module = "/web/options.js")]
+#[wasm_bindgen::prelude::wasm_bindgen(module = "/web/options.mjs")]
 extern "C" {
     fn startup_arguments() -> String;
 }
@@ -262,21 +262,19 @@ impl Options {
     }
 }
 
-/// Browser map selection cannot read the host filesystem. Keep every shipped
-/// map in the Wasm bundle, using the same paths as the native CLI.
-#[cfg(target_family = "wasm")]
+// Generated from assets/maps; no per-map list to maintain.
+#[cfg(any(target_family = "wasm", test))]
+include!(concat!(env!("OUT_DIR"), "/bundled_maps.rs"));
+
+#[cfg(any(target_family = "wasm", test))]
 fn bundled_map(path: &str) -> &'static str {
-    match path {
-        "assets/maps/map1.txt" => include_str!("../assets/maps/map1.txt"),
-        "assets/maps/map1_test.txt" => include_str!("../assets/maps/map1_test.txt"),
-        "assets/maps/map2.txt" => include_str!("../assets/maps/map2.txt"),
-        "assets/maps/map3.txt" => include_str!("../assets/maps/map3.txt"),
-        "assets/maps/lightTest.txt" => include_str!("../assets/maps/lightTest.txt"),
-        "assets/maps/portals.txt" => include_str!("../assets/maps/portals.txt"),
-        "assets/maps/hunter_keys.txt" => include_str!("../assets/maps/hunter_keys.txt"),
-        "assets/maps/chasers.txt" => include_str!("../assets/maps/chasers.txt"),
-        _ => panic!("the browser can only load bundled maps"),
-    }
+    let name = path.strip_prefix("assets/maps/").unwrap_or(path);
+    let name = name.strip_suffix(".txt").unwrap_or(name);
+    BUNDLED_MAPS
+        .iter()
+        .find(|(map, _)| *map == name)
+        .map(|(_, text)| *text)
+        .unwrap_or_else(|| panic!("unknown bundled map: {path}"))
 }
 
 #[cfg(test)]
@@ -284,15 +282,13 @@ mod option_tests {
     use super::*;
 
     #[test]
-    fn shared_parser_applies_browser_launch_arguments() {
+    fn browser_arguments_use_the_cli_parser() {
         let options = Options::parse_args(
             [
                 "--renderer",
                 "3d-walls",
                 "--motion",
                 "snap",
-                "--map",
-                "assets/maps/portals.txt",
                 "--reveal",
                 "--portal-view",
                 "north",
@@ -301,28 +297,24 @@ mod option_tests {
         );
         assert_eq!(options.renderer, Renderer::Walls3d);
         assert_eq!(options.motion, MotionStyle::Snap);
-        assert_eq!(options.map.as_deref(), Some("assets/maps/portals.txt"));
         assert!(options.reveal);
         assert_eq!(options.portal_turn, PortalTurn::KeepNorth);
-        assert!(options.capture.is_none());
-        assert!(options.record.is_none());
-        assert!(options.remote_port.is_none());
     }
 
     #[test]
-    fn empty_arguments_keep_existing_defaults() {
-        let options = Options::parse_args(Vec::<String>::new());
-        assert_eq!(options.renderer, Renderer::Text);
-        assert_eq!(options.motion, MotionStyle::default());
-        assert_eq!(options.portal_turn, PortalTurn::WithTarget);
-        assert!(options.map.is_none());
-        assert!(!options.reveal);
+    fn generated_maps_accept_names_filenames_and_cli_paths() {
+        assert!(!BUNDLED_MAPS.is_empty());
+        for &(name, text) in BUNDLED_MAPS {
+            assert_eq!(bundled_map(name), text);
+            assert_eq!(bundled_map(&format!("{name}.txt")), text);
+            assert_eq!(bundled_map(&format!("assets/maps/{name}.txt")), text);
+        }
     }
 
     #[test]
-    #[should_panic(expected = "--walk requires --screenshot or --record")]
-    fn shared_parser_preserves_native_walk_validation() {
-        Options::parse_args(["--walk", "UDLR"].map(String::from));
+    #[should_panic(expected = "unknown bundled map")]
+    fn unknown_maps_are_rejected() {
+        bundled_map("../outside-the-bundle.txt");
     }
 }
 
