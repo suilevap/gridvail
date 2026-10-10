@@ -5,7 +5,7 @@
 //! asker keeps it and polls it on later frames, and does something cheap with
 //! what it already knows until the answer lands. Dropping it cancels the work.
 //! Anything that polls futures can wait on one; behavior trees use
-//! [`crate::ai::await_future`].
+//! flatbt's [`flatbt_bevy::prelude::await_future`].
 //!
 //! How a service runs its work is the service's own business, its
 //! [`Runner`]: the asker does not change whether the answer comes at once or

@@ -78,7 +78,7 @@ and renderers must not import it.
   `EnemyMind` blackboard (sight through the enemy's own `VisualSensor`
   field of view, last sighting, a stroll cell) and hands it the `Services`
   handle once. A walk is a `scope!` over two locals: a node picks the
-  `target` (here from perception; anything can), `await_future` (generic:
+  `target` (here from perception; anything can), flatbt's `await_future` (generic:
   any `Future`, held in the node's state, so leaving the branch cancels it)
   plans from `target` into `path`, then `Follow` reports
   `EnemyAct::Move(mood, path)` a turn at a time until it arrives, the goal

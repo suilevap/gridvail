@@ -63,7 +63,7 @@ next to this file.
   first, and fails only when all have. A tree picks a
   target into a `scope!` local, asks the path service for a path to it (a
   `service::Promise`, a plain future, waited on with the generic
-  `ai::await_future` node, which writes the answer into another local),
+  flatbt `await_future` node, which writes the answer into another local),
   then reports `EnemyAct::Move(mood, path)`, which `ai::carry_out` turns
   into a step a turn. While the path is on its way the enemy thinks (`?`).
   How the service runs its work is its own business, not the tree's: paths
