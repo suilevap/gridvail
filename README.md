@@ -102,8 +102,10 @@ next to this file.
   view then eases back so
   north stays up. The drawn frame is a window of its own size that follows
   the player (`FrameSize`), independent of the map's size and grown to
-  cover the window at any zoom and turn. The 3D renderer
-  does not show portals yet.
+  cover the window at any zoom and turn. A portal shows as a magenta `░`
+  where the view passes through it (its threshold), and a portal's wall
+  seen from behind or side-on is magenta too (dark magenta when
+  remembered). The 3D renderer does not show portals yet.
 - Settings (an addition): Esc opens a small menu to choose how the view
   behaves through portals that turn (turn with the player or keep north
   up), when the compass shows (when the view is turned, always or off) and
@@ -203,7 +205,7 @@ cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk through portals too
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 235 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 236 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
