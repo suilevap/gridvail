@@ -1,7 +1,6 @@
 use bevy::math::IVec2;
 use flatbt_bevy::prelude::*;
 
-use super::{await_future, AwaitFuture};
 use crate::model::{EnemyAct, EnemyMind, Mood};
 use crate::navigation::Path;
 use crate::service::Promise;
@@ -129,13 +128,13 @@ pub(super) fn plan_path(
         impl Fn(&EnemyMind) -> EnemyAct,
     >,
 > {
-    action(await_future(
+    await_future(
         |mind: &mut EnemyMind, target: &IVec2| {
             let services = mind.services.as_ref()?;
             Some(services.paths().plan(mind.pos, *target, mind.prefs))
         },
         move |_: &EnemyMind| EnemyAct::Think(mood),
-    ))
+    )
 }
 
 /// Walk the path a step per turn, for at most `turns` turns and while `keep`
