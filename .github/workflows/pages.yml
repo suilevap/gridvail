@@ -3,6 +3,8 @@ name: Deploy web build to GitHub Pages
 on:
   push:
     branches: [main]
+  # Pull requests build the bundle; only main deploys it.
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -11,7 +13,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -45,6 +47,7 @@ jobs:
           path: dist
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:
