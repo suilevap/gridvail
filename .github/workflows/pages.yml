@@ -1,0 +1,55 @@
+name: Deploy web build to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust (rust-toolchain.toml) with the wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --profile web --target wasm32-unknown-unknown
+      - name: Install wasm-bindgen (must match Cargo.lock)
+        run: |
+          version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/version = "\(.*\)"/\1/p')
+          cargo install wasm-bindgen-cli --version "$version" --locked
+      - name: Generate bindings
+        run: |
+          wasm-bindgen --no-typescript --target web --out-dir dist --out-name gridvail \
+            target/wasm32-unknown-unknown/web/pav_ecs_game_bevy_port.wasm
+      - name: Shrink with wasm-opt
+        run: |
+          curl -sSL https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz | tar xz
+          ./binaryen-version_123/bin/wasm-opt -Os --all-features -o dist/gridvail_bg.wasm dist/gridvail_bg.wasm
+      - name: Assemble site
+        run: |
+          cp web/index.html dist/
+          mkdir -p dist/assets && cp -r assets/shaders dist/assets/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

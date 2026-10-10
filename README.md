@@ -257,6 +257,25 @@ to their positions on the 3D ground plane. Humanoid actors expand into small
 multiline symbol billboards without spawning extra runtime entities; compact
 environmental symbols remain single-line billboards to avoid crowding.
 
+## Web build (WebAssembly)
+
+The game also runs in the browser. `.github/workflows/pages.yml` builds it
+on every push to `main` and publishes it to GitHub Pages (enable it once
+under Settings → Pages → Source: GitHub Actions). To build locally:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.128 --locked  # match Cargo.lock
+cargo build --profile web --target wasm32-unknown-unknown
+wasm-bindgen --no-typescript --target web --out-dir dist --out-name gridvail \
+  target/wasm32-unknown-unknown/web/pav_ecs_game_bevy_port.wasm
+cp web/index.html dist/ && mkdir -p dist/assets && cp -r assets/shaders dist/assets/
+python3 -m http.server -d dist 8000
+```
+
+The browser build takes no command-line options, and the agent API's HTTP
+server is native-only (a page cannot listen on a port).
+
 ## Agent runtime API
 
 Start the game with Bevy Remote enabled on its loopback-only default address:
