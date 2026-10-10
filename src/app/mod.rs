@@ -16,6 +16,7 @@ use crate::locomotion::LocomotionPlugin;
 use crate::navigation::NavigationPlugin;
 use crate::presentation::PresentationPlugin;
 use crate::schedule::{GamePhase, StartupPhase};
+use crate::service::ServicesPlugin;
 use crate::simulation::SimulationPlugin;
 use crate::vision::VisionPlugin;
 
@@ -52,6 +53,7 @@ impl Plugin for GamePlugin {
             MapPlugin,
             SimulationPlugin::new(42),
             NavigationPlugin,
+            ServicesPlugin,
             AiPlugin,
             LocomotionPlugin,
             VisionPlugin,

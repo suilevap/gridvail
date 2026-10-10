@@ -9,13 +9,19 @@
 //!
 //! How a service runs its work is the service's own business, its
 //! [`Runner`]: the asker does not change whether the answer comes at once or
-//! frames later.
+//! frames later. [`Services`] is the one handle an agent keeps to reach every
+//! service.
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use bevy::prelude::*;
 use bevy::tasks::AsyncComputeTaskPool;
+
+use crate::navigation::{share_paths, PathService};
+use crate::schedule::GamePhase;
 
 /// How a service runs its work.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -88,6 +94,53 @@ impl<T: Unpin> Future for Promise<T> {
             }
             PromiseState::Running(task) => Pin::new(task).poll(cx),
         }
+    }
+}
+
+/// Every service an agent may ask, behind one shared handle: an agent keeps a
+/// clone (one reference count) rather than a copy of any service.
+#[derive(Resource, Clone, Default)]
+pub struct Services(Arc<ServiceSet>);
+
+/// The services themselves.
+#[derive(Default)]
+pub struct ServiceSet {
+    pub paths: PathService,
+}
+
+impl Services {
+    /// The given services, for configuring how they run (tests run them
+    /// inline, for instance).
+    pub fn new(services: ServiceSet) -> Self {
+        Self(Arc::new(services))
+    }
+
+    /// Every service running inline: deterministic, for tests and tools.
+    pub fn inline() -> Self {
+        Self::new(ServiceSet {
+            paths: PathService::with_runner(Runner::Inline),
+        })
+    }
+
+    pub fn paths(&self) -> &PathService {
+        &self.0.paths
+    }
+}
+
+impl std::fmt::Debug for Services {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Services").finish_non_exhaustive()
+    }
+}
+
+/// Provides [`Services`] (insert your own first to configure them) and keeps
+/// what they know of the world current.
+pub struct ServicesPlugin;
+
+impl Plugin for ServicesPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Services>()
+            .add_systems(Update, share_paths.in_set(GamePhase::Simulation));
     }
 }
 
