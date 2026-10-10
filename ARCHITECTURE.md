@@ -42,8 +42,9 @@ and renderers must not import it.
 - `service.rs` is for work that may take longer than a frame. A service
   answers with a `Promise`, a plain `Future` its asker keeps and polls on
   later frames; dropping it cancels the work. How a service runs its work
-  is its own `Runner`: inline (deterministic), in the background on the
-  async compute pool, or handed over a fixed number of polls later (tests). `Services` is the one shared handle agents keep to
+  is its own `Runner`: inline (deterministic: tests), in the background on
+  the async compute pool (paths, in the game), or handed over a fixed number
+  of polls later (tests). `Services` is the one shared handle agents keep to
   reach every service; `ServicesPlugin` provides it and keeps what the
   services know of the world current.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
@@ -60,7 +61,7 @@ and renderers must not import it.
   rules for the `gridvail-path` crate. New pathfinding rules (enemy sight,
   door limits, places to avoid) are `Rules` combined with `Terrain`;
   `PathPlanner` plans on the map with reused memory. `PathService` plans
-  paths, inline by default, over its own copies of the map (kept
+  paths, in the background by default, over its own copies of the map (kept
   current by `share_paths`), into pooled buffers: a `Path` is a cheap shared
   handle, and its buffer goes back to the pool when the last handle drops.
 - `locomotion/` walks actors to their `Destination` (its input, which
@@ -83,9 +84,10 @@ and renderers must not import it.
   `EnemyAct::Move(mood, path)` a turn at a time until it arrives, the goal
   moves away, or a step fails (someone in the way), after which the tree
   plans again.
-  `carry_out` turns each act into a single step; a thinking enemy
-  (`EnemyAct::Think`) waits the turn out. Out-of-turn enemies are skipped
-  with `Tick::Skip`.
+  `carry_out` turns each act into a single step. A thinking enemy
+  (`EnemyAct::Think`) keeps its turn open for a few frames for its path,
+  then waits the turn out. Out-of-turn enemies are skipped with
+  `Tick::Skip`.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for

@@ -16,6 +16,11 @@ pub const ENEMY_SIGHT_RADIUS: i32 = 8;
 /// The same as the player's own threshold for now.
 pub const ENEMY_SIGHT_THRESHOLD: f32 = super::VISIBILITY_THRESHOLD;
 
+/// Frames a thinking enemy keeps its turn open for its path, before it waits
+/// out the turn and goes on thinking on its next one. Short, so a slow plan
+/// never holds the player's next turn back for long.
+pub const THINK_FRAMES: u8 = 6;
+
 /// How far an idle enemy strolls from where it stands.
 pub const STROLL_RADIUS: i32 = 5;
 
@@ -42,6 +47,8 @@ pub struct EnemyMind {
     /// The services to ask (paths, for now): one shared handle, handed over
     /// once.
     pub services: Option<Services>,
+    /// Frames this turn spent thinking (see [`THINK_FRAMES`]).
+    pub think_frames: u8,
 }
 
 impl EnemyMind {
@@ -88,7 +95,8 @@ pub enum EnemyAct {
     Hold,
     /// Idle: standing still for a while.
     Rest,
-    /// Waiting for a path to be planned, to walk it in this mood.
+    /// Waiting for a path to be planned, to walk it in this mood. Keeps the
+    /// enemy's turn open (up to the turn's end) rather than spending it.
     Think(Mood),
     /// Walking a path, a step per turn.
     Move(Mood, Path),

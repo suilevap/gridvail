@@ -6,6 +6,7 @@ use bevy::time::TimeUpdateStrategy;
 use super::*;
 use crate::app::GamePlugin;
 use crate::model::*;
+use crate::service::Services;
 
 fn boot(motion: Option<MotionStyle>) -> App {
     let mut app = App::new();
@@ -14,6 +15,8 @@ fn boot(motion: Option<MotionStyle>) -> App {
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
             16,
         )))
+        // Turn pacing without enemies waiting on background plans.
+        .insert_resource(Services::inline())
         .add_plugins(GamePlugin);
     if let Some(motion) = motion {
         app.insert_resource(motion)

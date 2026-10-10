@@ -1,5 +1,5 @@
-//! Paths as a service: [`PathService::plan`] promises a [`Path`], planned as
-//! its [`Runner`] says (inline by default).
+//! Paths as a service: [`PathService::plan`] promises a [`Path`], planned in
+//! the background by default (its [`Runner`]).
 //!
 //! The service plans over its own copies of the map (the [`NavMap`] and who
 //! stands where, [`OccupancyMap`]), so a plan can run on another thread while
@@ -124,9 +124,9 @@ struct SharedMap {
 }
 
 impl Default for PathService {
-    /// Plans inline: the path is there on the tick that asked.
+    /// Plans in the background: a slow plan never costs a frame.
     fn default() -> Self {
-        Self::with_runner(Runner::Inline)
+        Self::with_runner(Runner::Background)
     }
 }
 

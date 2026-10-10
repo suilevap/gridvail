@@ -127,9 +127,16 @@ impl Game {
         self.app.world().resource::<TokenTimer>().0.elapsed()
     }
 
+    /// Frames until movement is done and no enemy still holds its turn open
+    /// to think (it acts within a few frames, or waits the turn out).
     fn settle(&mut self) {
         for _ in 0..50 {
-            if !self.app.world().resource::<TurnState>().simulation {
+            let world = self.app.world_mut();
+            let thinking = world
+                .query::<(&Tokens, &EnemyAct)>()
+                .iter(world)
+                .any(|(tokens, act)| tokens.count > 0 && matches!(act, EnemyAct::Think(_)));
+            if !thinking && !world.resource::<TurnState>().simulation {
                 return;
             }
             self.app.update();
@@ -440,4 +447,66 @@ fn the_bundled_map_plays_consistently() {
     for snap in &game.trace {
         assert!(snap.enemies.iter().all(|(_, _, act)| act.is_some()));
     }
+}
+
+// --- slow plans: the enemy thinks, the game goes on ----------------------
+
+/// Planning that takes longer than a turn holds the enemy, not the game. Each
+/// plan here lands 20 polls after it is asked for: the enemy thinks (`?`),
+/// keeping its turn open only briefly, while the player keeps moving, then
+/// walks its path and catches the player.
+#[test]
+fn a_slow_plan_holds_the_enemy_not_the_game() {
+    let mut game = Game::with_paths(
+        "XXXXXXXXXXXX\n\
+         X..........X\n\
+         Xe......p..X\n\
+         X..........X\n\
+         XXXXXXXXXXXX\n",
+        Runner::Deferred(20),
+    );
+    use KeyCode::{ArrowLeft as L, ArrowRight as R};
+    for key in [R, L].into_iter().cycle().take(30) {
+        game.turn(Some(key));
+    }
+    game.print("slow planning");
+
+    let acts = acts(&game);
+    let thought = acts
+        .iter()
+        .position(|a| *a == Some(Act::Think(Mood::Hunt)))
+        .expect("never thought about a hunt");
+    let hunted = acts[thought..]
+        .iter()
+        .position(|a| matches!(a, Some(Act::Hunt(_))))
+        .expect("never hunted")
+        + thought;
+    assert!(hunted >= thought + 2, "planned too fast to show: {acts:?}");
+    // The game did not wait: the player moved while the enemy thought.
+    let player_moves = game.trace[thought..=hunted]
+        .windows(2)
+        .filter(|w| w[0].player != w[1].player)
+        .count();
+    assert!(player_moves >= 2, "player stalled: {player_moves}");
+    let last = game.trace.last().unwrap();
+    assert_eq!(manhattan(last.enemies[0].1, last.player), 1);
+}
+
+/// The same chase with plans made on the async compute pool, as in the game.
+/// When each plan lands depends on the threads, so this checks the outcome.
+#[test]
+fn an_enemy_planning_in_the_background_still_gets_there() {
+    let mut game = Game::with_paths(
+        "XXXXXXXXXXXX\n\
+         X..........X\n\
+         Xe......p..X\n\
+         X..........X\n\
+         XXXXXXXXXXXX\n",
+        Runner::Background,
+    );
+    game.turns(16);
+    let last = game.trace.last().unwrap();
+    let (_, pos, act) = last.enemies[0];
+    assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
+    assert!(matches!(act, Some(Act::Attack(_))), "{act:?}");
 }
