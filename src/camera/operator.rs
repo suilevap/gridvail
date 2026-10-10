@@ -3,6 +3,7 @@ use std::f32::consts::FRAC_PI_2;
 use bevy::prelude::*;
 
 use crate::animation::{MotionState, MotionStyle, Tween};
+use crate::foundation::portal::CellTransform;
 use crate::model::*;
 
 /// The smallest and largest zoom the operator allows.
@@ -128,6 +129,24 @@ impl CameraOperator {
         self.handover.snap(1.0);
     }
 
+    /// Carries the view through a portal its target stepped through: the
+    /// camera goes on from the exit, turned by the portal's quarter turns
+    /// the other way, so the picture on screen stays exactly as it was. A
+    /// turn under way carries on from there.
+    pub fn carry(&mut self, through: &CellTransform) {
+        // The shorter way round, so going back through restores the view.
+        let quarters = match through.quarters {
+            3 => -1,
+            quarters => quarters as i32,
+        };
+        let turn = quarters as f32 * FRAC_PI_2;
+        self.rotation.carry(|angle| angle - turn);
+        self.handover_from = through.apply_point(self.handover_from);
+        if let Some(trail) = self.trail.as_mut() {
+            trail.carry(through);
+        }
+    }
+
     fn advance(&mut self, dt: f32) {
         self.rotation.advance(dt);
         self.zoom.advance(dt);
@@ -190,13 +209,11 @@ pub fn operate_camera(
         // it is.
         (_, None) => (camera.position, camera.position),
     };
-    // A target that stepped through a portal carries a trailing camera's
-    // own motion with it, like its animation.
+    // A target that stepped through a portal takes the view with it, like
+    // its animation.
     if let (Some(entity), Some(crossings)) = (entity, crossings.as_ref()) {
         if let Some(through) = crossings.arrived(entity, cell.as_ivec2()) {
-            if let Some(trail) = operator.trail.as_mut() {
-                trail.carry(&through);
-            }
+            operator.carry(&through);
         }
     }
     let on_target = operator.follow_target(shown, cell, &grid, dt);

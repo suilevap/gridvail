@@ -8,6 +8,8 @@ use bevy::prelude::*;
 #[derive(Clone, Debug)]
 pub struct Tween<T> {
     curve: EasingCurve<T>,
+    from: T,
+    easing: EaseFunction,
     to: T,
     elapsed: f32,
     duration: f32,
@@ -18,6 +20,8 @@ impl<T: Ease + Clone> Tween<T> {
     pub fn at(value: T) -> Self {
         Self {
             curve: EasingCurve::new(value.clone(), value.clone(), EaseFunction::Linear),
+            from: value.clone(),
+            easing: EaseFunction::Linear,
             to: value,
             elapsed: 0.0,
             duration: 0.0,
@@ -44,7 +48,9 @@ impl<T: Ease + Clone> Tween<T> {
     /// Eases from the shown value to `to` over `duration` seconds; zero
     /// jumps there.
     pub fn ease_to(&mut self, to: T, duration: f32, easing: EaseFunction) {
-        self.curve = EasingCurve::new(self.value(), to.clone(), easing);
+        self.from = self.value();
+        self.curve = EasingCurve::new(self.from.clone(), to.clone(), easing);
+        self.easing = easing;
         self.to = to;
         self.elapsed = 0.0;
         self.duration = duration.max(0.0);
@@ -53,6 +59,15 @@ impl<T: Ease + Clone> Tween<T> {
     /// Jumps to `value` and rests there.
     pub fn snap(&mut self, value: T) {
         *self = Self::at(value);
+    }
+
+    /// Moves the whole tween by `f` (where it started, where it ends and so
+    /// what it shows), keeping how far along it is: a change of frame, such
+    /// as stepping through a portal, not a change of mind.
+    pub fn carry(&mut self, f: impl Fn(T) -> T) {
+        self.from = f(self.from.clone());
+        self.to = f(self.to.clone());
+        self.curve = EasingCurve::new(self.from.clone(), self.to.clone(), self.easing);
     }
 
     pub fn advance(&mut self, dt: f32) {

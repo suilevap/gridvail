@@ -41,6 +41,33 @@ pub fn movement(
     }
 }
 
+/// Turns the speed and facing of each mover that came out of a portal by
+/// the portal's quarter turns, so it goes on the way it was going: into a
+/// wall facing south, out of one facing east, the step carries on east.
+/// Steps blocked at the exit turn nothing.
+pub fn turn_portal_crossers(
+    crossings: Res<PortalCrossings>,
+    mut movers: Query<(&Pos, Option<&mut Speed>, Option<&mut Facing>)>,
+) {
+    for crossing in &crossings.0 {
+        if crossing.through.quarters == 0 {
+            continue;
+        }
+        let Ok((pos, speed, facing)) = movers.get_mut(crossing.entity) else {
+            continue;
+        };
+        if pos.0 != crossing.arrival {
+            continue;
+        }
+        if let Some(mut speed) = speed {
+            speed.0 = crossing.through.turn(speed.0);
+        }
+        if let Some(mut facing) = facing {
+            facing.0 = crossing.through.turn(facing.0);
+        }
+    }
+}
+
 pub fn relative_position(
     mut children: Query<
         (&BoundTo, &mut Pos, &mut PrevPos, &mut Facing),

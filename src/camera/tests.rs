@@ -168,3 +168,32 @@ fn movement_keys_follow_the_turned_view() {
         IVec2::X
     );
 }
+
+#[test]
+fn a_turning_portal_carries_a_turn_under_way() {
+    use crate::foundation::portal::CellTransform;
+    let (mut app, player) = app_with_player(IVec2::new(2, 2));
+    operator(&mut app).turn_by_quarters(1);
+    app.update();
+    let before = camera(&app).rotation;
+    assert!(before > 0.0 && before < FRAC_PI_2, "mid-turn: {before}");
+
+    // The player steps through a portal that turns a quarter turn
+    // counter-clockwise: the view turns back by as much, so the picture
+    // stays, and the turn under way carries on from there.
+    let through = CellTransform {
+        quarters: 1,
+        offset: IVec2::new(1, 6),
+    };
+    let arrival = through.apply(IVec2::new(2, 2));
+    app.world_mut().get_mut::<Pos>(player).unwrap().0 = arrival;
+    operator(&mut app).carry(&through);
+    assert!(operator(&mut app).target_rotation().abs() < 1e-6);
+    app.update();
+    let after = camera(&app).rotation + FRAC_PI_2;
+    assert!(
+        after > before && after <= FRAC_PI_2 + 1e-6,
+        "{after} should go on from {before}"
+    );
+    assert_eq!(camera(&app).position, arrival.as_vec2());
+}

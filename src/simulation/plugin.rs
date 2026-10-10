@@ -49,6 +49,7 @@ impl Plugin for SimulationPlugin {
                     resolve_collect,
                     resolve_unmap,
                     resolve_commit,
+                    turn_portal_crossers,
                     relative_position,
                     verify_map,
                     open_doors,
