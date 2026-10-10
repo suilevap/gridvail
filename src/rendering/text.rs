@@ -117,10 +117,13 @@ impl Plugin for TextRendererPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TextRenderStats>()
             .init_resource::<ObjectSprites>()
+            .init_resource::<SettingsMenu>()
+            .init_resource::<CompassMode>()
             .add_systems(Startup, setup.in_set(StartupPhase::Renderer))
             .add_systems(
                 Update,
                 (
+                    super::settings::settings_input,
                     cycle_motion,
                     fit_frame_to_window,
                     match_cells_to_frame,
@@ -130,6 +133,8 @@ impl Plugin for TextRendererPlugin {
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
                     update_hud,
+                    super::settings::draw_settings,
+                    super::settings::draw_compass,
                 )
                     .chain()
                     .in_set(GamePhase::Output),
@@ -280,6 +285,7 @@ pub(super) fn setup(
             ..default()
         },
     ));
+    super::settings::spawn_settings_ui(&mut commands, camera);
 }
 
 fn flush_cells(
@@ -478,7 +484,14 @@ fn place_cells(
 }
 
 /// M cycles through the motion presets.
-fn cycle_motion(keys: Option<Res<ButtonInput<KeyCode>>>, motion: Option<ResMut<MotionStyle>>) {
+fn cycle_motion(
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    menu: Res<SettingsMenu>,
+    motion: Option<ResMut<MotionStyle>>,
+) {
+    if menu.open {
+        return;
+    }
     if let Some(mut motion) = motion {
         if keys.is_some_and(|keys| keys.just_pressed(KeyCode::KeyM)) {
             *motion = motion.next();
@@ -591,7 +604,7 @@ fn update_hud(
         match scheme {
             ControlScheme::Keyboard => writeln!(
                 text.0,
-                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {}",
+                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | Esc settings",
                 if extruded_walls.is_some() {
                     " | wheel zoom"
                 } else {

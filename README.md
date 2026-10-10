@@ -98,11 +98,18 @@ next to this file.
   into itself, and two that turn the view (a quarter and a half turn):
   walking through one turns the camera with the player, so the picture
   never jumps and arrow keys keep their screen directions. With
-  `--portal-view north` (or `N` in game) the view then eases back so
+  `--portal-view north` (or `N`, or the Esc settings menu, in game) the
+  view then eases back so
   north stays up. The drawn frame is a window of its own size that follows
   the player (`FrameSize`), independent of the map's size and grown to
   cover the window at any zoom and turn. The 3D renderer
   does not show portals yet.
+- Settings (an addition): Esc opens a small menu to choose how the view
+  behaves through portals that turn (turn with the player or keep north
+  up), when the compass shows (when the view is turned, always or off) and
+  the motion style. The compass in the bottom-right corner shows where the
+  map's north, east, south and west lie on screen. While the menu is open,
+  movement and camera keys wait.
 - A view camera (an addition): both renderers draw through a
   renderer-neutral `ViewCamera` (centre, rotation, zoom, offset) that a
   camera operator keeps on the player's animated position, so the world
@@ -187,7 +194,8 @@ cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
-cargo test --workspace   # 219 tests, including allocation and independent C# comparisons
+cargo run -- --compass always   # compass: when-turned (default), always or off
+cargo test --workspace   # 226 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
@@ -323,7 +331,8 @@ https://suilevap.github.io/gridvail/?renderer=3d-walls&motion=overshoot
 https://suilevap.github.io/gridvail/?map=portals&portal-view=north&reveal
 ```
 
-Supported parameters are `renderer`, `motion`, `map`, `reveal`, and `portal-view`,
+Supported parameters are `renderer`, `motion`, `map`, `reveal`, `portal-view` and
+`compass`,
 with the same values and defaults as the CLI. `reveal` accepts a bare flag,
 `true`/`1`, or `false`/`0`. Options apply when the page loads.
 Maps are discovered from `assets/maps/*.txt` and embedded at build time;

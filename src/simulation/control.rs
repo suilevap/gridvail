@@ -18,12 +18,16 @@ pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
     turn: Res<TurnState>,
     camera: Option<Res<ViewCamera>>,
+    menu: Option<Res<SettingsMenu>>,
     mut players: Query<
         (&mut MoveCommand, &Tokens, Option<&mut MoveIntent>),
         (With<Player>, With<Active>, Without<DestroyRequested>),
     >,
 ) {
-    let screen = if keys.any_pressed([KeyCode::ArrowUp, KeyCode::KeyW]) {
+    // The settings menu takes the arrow keys while it is open.
+    let screen = if SettingsMenu::is_open(menu.as_deref()) {
+        None
+    } else if keys.any_pressed([KeyCode::ArrowUp, KeyCode::KeyW]) {
         Some(IVec2::NEG_Y)
     } else if keys.any_pressed([KeyCode::ArrowDown, KeyCode::KeyS]) {
         Some(IVec2::Y)

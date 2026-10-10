@@ -301,3 +301,26 @@ fn a_zoom_floor_keeps_the_view_from_zooming_out_past_it() {
     operator(&mut app).set_zoom_floor(0.1);
     assert_eq!(operator(&mut app).zoom_floor(), ZOOM_RANGE.0);
 }
+
+#[test]
+fn keeping_north_restores_north_even_after_portals_turned_the_view() {
+    use crate::foundation::portal::CellTransform;
+    let quarter = CellTransform {
+        quarters: 1,
+        offset: IVec2::ZERO,
+    };
+    let (mut app, _) = app_with_player(IVec2::new(2, 2));
+    // Turned by a portal while the view turns with the player...
+    operator(&mut app).carry(&quarter);
+    assert!((operator(&mut app).target_rotation() + FRAC_PI_2).abs() < 1e-6);
+    assert_eq!(operator(&mut app).chosen_rotation(), 0.0);
+    // ...then switched to keeping north: the next turning portal returns
+    // the view to north up, not to the turn the earlier portal left.
+    operator(&mut app).portal_turn = PortalTurn::KeepNorth;
+    operator(&mut app).carry(&quarter);
+    assert!(operator(&mut app).target_rotation().abs() < 1e-6);
+    // A turn the player chose is kept, though.
+    operator(&mut app).turn_by_quarters(1);
+    operator(&mut app).carry(&quarter);
+    assert!((operator(&mut app).target_rotation() - FRAC_PI_2).abs() < 1e-6);
+}

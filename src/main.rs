@@ -20,7 +20,7 @@ use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
-    AnimatedPos, Player, Pos, RevealAll, ViewCamera, Vis, VisibilityMap,
+    AnimatedPos, CompassMode, Player, Pos, RevealAll, SettingsMenu, ViewCamera, Vis, VisibilityMap,
 };
 use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, TextRendererPlugin};
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
@@ -43,8 +43,8 @@ fn main() -> AppExit {
     let walk = options.walk;
     let renderer = options.renderer;
     assert!(
-        walk.chars().all(|c| "UDLRQEZX.".contains(c)),
-        "walk steps must be U, D, L, R, Q, E, Z, X, or . (no key)"
+        walk.chars().all(|c| "UDLRQEZXO.".contains(c)),
+        "walk steps must be U, D, L, R, Q, E, Z, X, O (Esc), or . (no key)"
     );
     let plugins = DefaultPlugins
         .set(WindowPlugin {
@@ -73,6 +73,7 @@ fn main() -> AppExit {
     }
     app.insert_resource(ClearColor(Color::BLACK))
         .insert_resource(options.motion)
+        .insert_resource(options.compass)
         .add_plugins(plugins)
         .add_plugins(GamePlugin)
         .add_plugins((
@@ -153,6 +154,8 @@ struct Options {
     reveal: bool,
     /// What the view does through turning portals.
     portal_turn: PortalTurn,
+    /// When the compass shows.
+    compass: CompassMode,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -206,6 +209,7 @@ impl Options {
         let mut map = None;
         let mut reveal = false;
         let mut portal_turn = None;
+        let mut compass = None;
         parse_options!(source, args;
             "--screenshot": native if capture.is_none() => {
                 capture = Some(
@@ -225,6 +229,15 @@ impl Options {
             "--reveal": flag => {
                 reveal = true;
             },
+            "--compass": value if compass.is_none() => {
+                let name = args
+                    .next()
+                    .expect("--compass requires when-turned, always or off");
+                compass = Some(
+                    CompassMode::from_name(&name)
+                        .expect("--compass must be when-turned, always or off"),
+                );
+            },
             "--portal-view": value if portal_turn.is_none() => {
                 let name = args.next().expect("--portal-view requires turn or north");
                 portal_turn = Some(
@@ -233,7 +246,7 @@ impl Options {
                 );
             },
             "--walk": native if walk.is_none() => {
-                walk = Some(args.next().expect("--walk requires UDLRQEZX steps"));
+                walk = Some(args.next().expect("--walk requires UDLRQEZXO steps"));
             },
             "--remote": native if remote_port.is_none() => {
                 remote_port = Some(DEFAULT_AGENT_PORT);
@@ -277,6 +290,7 @@ impl Options {
             map,
             reveal,
             portal_turn: portal_turn.unwrap_or_default(),
+            compass: compass.unwrap_or_default(),
         }
     }
 }
@@ -394,6 +408,7 @@ fn walk_key(step: char) -> Option<KeyCode> {
         'E' => Some(KeyCode::KeyE),
         'Z' => Some(KeyCode::KeyZ),
         'X' => Some(KeyCode::KeyX),
+        'O' => Some(KeyCode::Escape),
         _ => None,
     }
 }
@@ -420,14 +435,20 @@ struct Recording {
 
 /// Recorded walks hold each key for its whole step, like a player holding
 /// an arrow key, so turns follow the animation pacing.
-fn hold_recorded_input(recording: Res<Recording>, mut keys: ResMut<ButtonInput<KeyCode>>) {
+fn hold_recorded_input(
+    recording: Res<Recording>,
+    menu: Option<Res<SettingsMenu>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+) {
     keys.reset_all();
     let Some(frame) = recording.frames.checked_sub(30) else {
         return;
     };
     let step = recording.walk.get((frame / CAPTURE_STEP_FRAMES) as usize);
-    // Camera keys act on each press, so they are tapped, not held.
-    let tapped = step.is_some_and(|step| "QEZX".contains(*step));
+    // Camera keys, Esc and every key in the settings menu act on each
+    // press, so they are tapped, not held.
+    let menu_open = menu.is_some_and(|menu| menu.open);
+    let tapped = menu_open || step.is_some_and(|step| "QEZXO".contains(*step));
     if tapped && !frame.is_multiple_of(CAPTURE_STEP_FRAMES) {
         return;
     }
