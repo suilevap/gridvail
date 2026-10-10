@@ -194,7 +194,9 @@ impl Options {
         }
     }
 
-    fn parse_with<I: IntoIterator<Item = String>>(source: impl FnOnce(&[(&str, &str)]) -> I) -> Self {
+    fn parse_with<I: IntoIterator<Item = String>>(
+        source: impl FnOnce(&[(&str, &str)]) -> I,
+    ) -> Self {
         let mut capture = None;
         let mut record = None;
         let mut walk = None;
