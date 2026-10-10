@@ -40,7 +40,10 @@ jobs:
           ./binaryen-version_123/bin/wasm-opt -Os --all-features -o dist/gridvail_bg.wasm dist/gridvail_bg.wasm
       - name: Assemble site
         run: |
-          cp web/index.html dist/
+          # Stamp the page with the commit and build time shown in its corner.
+          sed -e "s/__BUILD_SHA__/${GITHUB_SHA::7}/" \
+              -e "s/__BUILD_TIME__/$(date -u '+%Y-%m-%d %H:%M UTC')/" \
+              web/index.html > dist/index.html
           mkdir -p dist/assets && cp -r assets/shaders dist/assets/
       - uses: actions/upload-pages-artifact@v3
         with:
