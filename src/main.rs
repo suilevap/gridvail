@@ -26,6 +26,12 @@ use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, TextRenderer
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
 use pav_ecs_game_bevy_port::touch::TouchControlPlugin;
 
+#[cfg(target_family = "wasm")]
+#[wasm_bindgen::prelude::wasm_bindgen(module = "/web/options.js")]
+extern "C" {
+    fn startup_arguments() -> String;
+}
+
 const CAPTURE_STEP_FRAMES: u32 = 8;
 /// Frames recorded after the walk, so the last move can settle on camera.
 const RECORD_TAIL_FRAMES: u32 = 60;
@@ -57,8 +63,13 @@ fn main() -> AppExit {
         .set(ImagePlugin::default_nearest());
     let mut app = App::new();
     if let Some(path) = options.map {
-        let text = std::fs::read_to_string(&path).expect("read the --map file");
-        app.insert_resource(MapText(text.leak()));
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let text = std::fs::read_to_string(&path).expect("read the --map file");
+            app.insert_resource(MapText(text.leak()));
+        }
+        #[cfg(target_family = "wasm")]
+        app.insert_resource(MapText(bundled_map(&path)));
     }
     app.insert_resource(ClearColor(Color::BLACK))
         .insert_resource(options.motion)
@@ -153,6 +164,18 @@ enum Renderer {
 
 impl Options {
     fn parse() -> Self {
+        #[cfg(not(target_family = "wasm"))]
+        let args = std::env::args().skip(1);
+        #[cfg(target_family = "wasm")]
+        let args = {
+            serde_json::from_str::<Vec<String>>(&startup_arguments())
+                .expect("web startup arguments must be a JSON string array")
+                .into_iter()
+        };
+        Self::parse_args(args)
+    }
+
+    fn parse_args(args: impl IntoIterator<Item = String>) -> Self {
         let mut capture = None;
         let mut record = None;
         let mut walk = None;
@@ -162,7 +185,7 @@ impl Options {
         let mut map = None;
         let mut reveal = false;
         let mut portal_turn = None;
-        let mut args = std::env::args().skip(1);
+        let mut args = args.into_iter();
         while let Some(argument) = args.next() {
             match argument.as_str() {
                 "--screenshot" if capture.is_none() => {
@@ -236,6 +259,70 @@ impl Options {
             reveal,
             portal_turn: portal_turn.unwrap_or_default(),
         }
+    }
+}
+
+/// Browser map selection cannot read the host filesystem. Keep every shipped
+/// map in the Wasm bundle, using the same paths as the native CLI.
+#[cfg(target_family = "wasm")]
+fn bundled_map(path: &str) -> &'static str {
+    match path {
+        "assets/maps/map1.txt" => include_str!("../assets/maps/map1.txt"),
+        "assets/maps/map1_test.txt" => include_str!("../assets/maps/map1_test.txt"),
+        "assets/maps/map2.txt" => include_str!("../assets/maps/map2.txt"),
+        "assets/maps/map3.txt" => include_str!("../assets/maps/map3.txt"),
+        "assets/maps/lightTest.txt" => include_str!("../assets/maps/lightTest.txt"),
+        "assets/maps/portals.txt" => include_str!("../assets/maps/portals.txt"),
+        "assets/maps/hunter_keys.txt" => include_str!("../assets/maps/hunter_keys.txt"),
+        "assets/maps/chasers.txt" => include_str!("../assets/maps/chasers.txt"),
+        _ => panic!("the browser can only load bundled maps"),
+    }
+}
+
+#[cfg(test)]
+mod option_tests {
+    use super::*;
+
+    #[test]
+    fn shared_parser_applies_browser_launch_arguments() {
+        let options = Options::parse_args(
+            [
+                "--renderer",
+                "3d-walls",
+                "--motion",
+                "snap",
+                "--map",
+                "assets/maps/portals.txt",
+                "--reveal",
+                "--portal-view",
+                "north",
+            ]
+            .map(String::from),
+        );
+        assert_eq!(options.renderer, Renderer::Walls3d);
+        assert_eq!(options.motion, MotionStyle::Snap);
+        assert_eq!(options.map.as_deref(), Some("assets/maps/portals.txt"));
+        assert!(options.reveal);
+        assert_eq!(options.portal_turn, PortalTurn::KeepNorth);
+        assert!(options.capture.is_none());
+        assert!(options.record.is_none());
+        assert!(options.remote_port.is_none());
+    }
+
+    #[test]
+    fn empty_arguments_keep_existing_defaults() {
+        let options = Options::parse_args(Vec::<String>::new());
+        assert_eq!(options.renderer, Renderer::Text);
+        assert_eq!(options.motion, MotionStyle::default());
+        assert_eq!(options.portal_turn, PortalTurn::WithTarget);
+        assert!(options.map.is_none());
+        assert!(!options.reveal);
+    }
+
+    #[test]
+    #[should_panic(expected = "--walk requires --screenshot or --record")]
+    fn shared_parser_preserves_native_walk_validation() {
+        Options::parse_args(["--walk", "UDLR"].map(String::from));
     }
 }
 
@@ -428,3 +515,4 @@ fn save_capture(
         }
     }
 }
+
