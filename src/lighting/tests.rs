@@ -59,3 +59,14 @@ fn palette_lookup_matches_original_tables() {
         DARK_GRAY
     );
 }
+
+#[test]
+fn remembered_colours_are_darker() {
+    use super::palette::*;
+    assert_eq!(dimmed(YELLOW), DARK_YELLOW);
+    assert_eq!(dimmed(CYAN), DARK_CYAN);
+    assert_eq!(dimmed(WHITE), GRAY);
+    assert_eq!(dimmed(GRAY), DARK_GRAY);
+    assert_eq!(dimmed(DARK_YELLOW), DARK_GRAY);
+    assert_eq!(dimmed(BLACK), BLACK);
+}

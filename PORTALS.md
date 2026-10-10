@@ -31,7 +31,9 @@ order; each one keeps the game unchanged on maps without portals.
 5. **Remembered cells are dimmer.** Cells known but not visible are drawn
    with a darker palette and come from the world around the player in the
    current view frame. Wherever something is visible (directly or through a
-   portal) the live view replaces the memory.
+   portal) the live view replaces the memory. Only what is seen directly is
+   remembered: cells seen through a portal are visible while in sight, but
+   are not marked known.
 6. **Translation first, then 90° rotations.** The two faces of a portal may
    point in different directions, so going through can turn the view by
    0°, 90°, 180° or 270°. The first version supports only face pairs that
@@ -109,8 +111,15 @@ can be seen (optional step 8).
    including portals seen through portals; maps without portals produce
    identical samples. **Done.**
 3. Moving through a portal, with the animation continuing at the exit face.
-4. View-indexed player vision and a view-space `compose_frame`; the text
-   renderer draws the view frame. Remembered cells dimmer.
+4. The player's view through portals (`PlayerView`) and a frame whose seen
+   cells show the map cells they look onto; objects drawn once per place
+   they are seen. Remembered cells dimmer. **Done.**
+
+   Built differently from the plan above: the frame stays map-sized in
+   the player's map coordinates instead of becoming view-indexed, so
+   renderers needed no change. Cells seen through a portal that would fall
+   outside the map are not drawn yet (keep portal rooms away from the map
+   edge).
 5. The 3D renderer in view space.
 6. 90° rotations: rotated transforms, facing, and a view frame that turns
    with the player.

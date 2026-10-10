@@ -16,7 +16,7 @@ pub use plugin::*;
 
 use bevy::prelude::*;
 
-use crate::foundation::fov::{FovComputer, FovSample};
+use crate::foundation::fov::{FovComputer, FovSample, PortalFovComputer};
 use crate::model::*;
 
 /// Shared FOV computer (mirrors the single `FieldOfViewComputationInt2`
@@ -38,6 +38,45 @@ impl Default for FovShared {
     }
 }
 
+/// The player's field of view through portals (its storage is reused).
+#[derive(Resource, Debug, Default)]
+pub struct PortalFovShared(PortalFovComputer);
+
+/// Computes what the player sees through portals: the cells within the
+/// sensor's (round) radius and the map cells they show. Lights keep the
+/// plain field of view in `compute_fov`.
+pub fn compute_player_view(
+    grid: Res<MapGrid>,
+    mut shared: ResMut<PortalFovShared>,
+    mut players: Query<(&Pos, &VisualSensor, &mut PlayerView), With<Player>>,
+) {
+    for (pos, sensor, mut view) in &mut players {
+        let radius = sensor.radius;
+        if view.pos == pos.0
+            && view.radius == radius
+            && view.obstacle_revision == grid.blocker_revision
+            && view.portal_revision == grid.portal_revision
+        {
+            continue;
+        }
+        let is_obstacle = |p: IVec2| !grid.is_valid(p) || grid.blocks_vision(p);
+        let PlayerView { samples, .. } = &mut *view;
+        shared
+            .0
+            .compute(pos.0, radius, is_obstacle, |p| grid.portal_at(p), samples);
+        // Like the plain field of view: round, and within the map.
+        let radius_sq = radius * radius;
+        samples.retain(|sample| {
+            sample.delta.length_squared() <= radius_sq && grid.is_valid(sample.world)
+        });
+        view.revision = view.revision.wrapping_add(1);
+        view.pos = pos.0;
+        view.radius = radius;
+        view.obstacle_revision = grid.blocker_revision;
+        view.portal_revision = grid.portal_revision;
+    }
+}
+
 /// Allocate per-source output storage when a light or sensor is created.
 /// This is a spawn/configuration cost; normal recomputes mutate it in place.
 pub fn ensure_fov_storage(
@@ -51,7 +90,13 @@ pub fn ensure_fov_storage(
         ),
     >,
     players: Query<Entity, (With<Player>, Without<VisibilityMap>)>,
+    viewers: Query<(Entity, &VisualSensor), (With<Player>, Without<PlayerView>)>,
 ) {
+    for (e, sensor) in viewers.iter() {
+        commands
+            .entity(e)
+            .insert(PlayerView::with_radius(sensor.radius));
+    }
     let n = (grid.width * grid.height) as usize;
     for e in sources.iter() {
         commands.entity(e).insert(FovResult {
@@ -135,31 +180,38 @@ pub fn compute_fov(
 }
 
 /// Mirrors `PlayerFieldOfViewSystem`: the visibility layer persists across
-/// recomputes. FOV above 0.1 marks Visible+Known, otherwise only Visible is
-/// cleared, so explored cells stay Known.
+/// recomputes. A map cell seen directly above 0.1 is marked Visible+Known;
+/// one seen only through a portal is Visible while in sight but not
+/// remembered. Every other cell only loses Visible, so explored cells stay
+/// Known.
 pub fn player_visibility(
     grid: Res<MapGrid>,
-    mut players: Query<(&FovResult, &mut VisibilityMap), With<Player>>,
+    mut players: Query<(&PlayerView, &mut VisibilityMap), With<Player>>,
 ) {
-    for (fov, mut visibility) in players.iter_mut() {
-        if visibility.revision == fov.revision {
+    for (view, mut visibility) in players.iter_mut() {
+        if visibility.revision == view.revision {
             continue;
         }
         let n = (grid.width * grid.height) as usize;
         if visibility.data.len() != n {
             visibility.data.resize(n, Vis::empty());
         }
-        for (i, v) in fov.data.iter().enumerate() {
-            if i >= visibility.data.len() {
-                break;
+        for cell in &mut visibility.data {
+            cell.remove(Vis::VISIBLE);
+        }
+        for sample in &view.samples {
+            if sample.value <= crate::model::VISIBILITY_THRESHOLD {
+                continue;
             }
-            if *v > crate::model::VISIBILITY_THRESHOLD {
-                visibility.data[i] |= Vis::VISIBLE | Vis::KNOWN;
-            } else {
-                visibility.data[i] &= !Vis::VISIBLE;
+            if let Some(i) = grid.idx(sample.world) {
+                visibility.data[i] |= if sample.transform.is_identity() {
+                    Vis::VISIBLE | Vis::KNOWN
+                } else {
+                    Vis::VISIBLE
+                };
             }
         }
-        visibility.revision = fov.revision;
+        visibility.revision = view.revision;
     }
 }
 
@@ -227,6 +279,49 @@ mod tests {
         let vis2 = app.world().get::<VisibilityMap>(p).expect("visibility2");
         assert!(!vis2.data[seen].contains(Vis::VISIBLE));
         assert!(vis2.data[seen].contains(Vis::KNOWN));
+    }
+
+    #[test]
+    fn cells_seen_through_a_portal_are_visible_but_not_remembered() {
+        use crate::foundation::portal::{CellTransform, PortalFace};
+
+        let mut app = test_app::headless();
+        app.init_resource::<FovShared>();
+        // A wall at (3, 1) open to the west, leading out of a wall at
+        // (4, 6) open to the east: (3, 1) shows (5, 6).
+        let wall = app
+            .world_mut()
+            .spawn((Active, Collider, Pos(IVec2::new(3, 1))))
+            .id();
+        {
+            let mut grid = app.world_mut().resource_mut::<MapGrid>();
+            grid.set(IVec2::new(3, 1), wall);
+            grid.set_portal(
+                IVec2::new(3, 1),
+                Some(PortalFace {
+                    side: IVec2::NEG_X,
+                    through: CellTransform::between_faces(
+                        IVec2::new(3, 1),
+                        IVec2::NEG_X,
+                        IVec2::new(4, 6),
+                        IVec2::X,
+                    ),
+                }),
+            );
+        }
+        let p = spawn_player(&mut app, IVec2::new(1, 1));
+        app.update();
+        let vis = app.world().get::<VisibilityMap>(p).expect("visibility");
+        let at = |x: i32, y: i32| vis.data[(y * 8 + x) as usize];
+        assert_eq!(at(2, 1), Vis::VISIBLE | Vis::KNOWN, "seen directly");
+        assert_eq!(at(5, 6), Vis::VISIBLE, "seen through the portal only");
+
+        // Once out of sight, it is forgotten; the direct view is not.
+        app.world_mut().get_mut::<Pos>(p).unwrap().0 = IVec2::new(1, 5);
+        app.update();
+        let vis = app.world().get::<VisibilityMap>(p).expect("visibility");
+        assert!(!vis.data[6 * 8 + 5].contains(Vis::KNOWN));
+        assert!(vis.data[8 + 2].contains(Vis::KNOWN));
     }
 
     #[test]

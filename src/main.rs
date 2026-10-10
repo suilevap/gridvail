@@ -18,7 +18,9 @@ use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
-use pav_ecs_game_bevy_port::model::{AnimatedPos, Player, Pos, ViewCamera, Vis, VisibilityMap};
+use pav_ecs_game_bevy_port::model::{
+    AnimatedPos, Player, Pos, RevealAll, ViewCamera, Vis, VisibilityMap,
+};
 use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, TextRendererPlugin};
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
 
@@ -61,7 +63,7 @@ fn main() -> AppExit {
     }
     app.add_plugins(DebugPerformancePlugin);
     if options.reveal {
-        app.add_systems(
+        app.insert_resource(RevealAll).add_systems(
             Update,
             reveal_map
                 .after(GamePhase::Visibility)
