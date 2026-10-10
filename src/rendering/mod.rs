@@ -1,5 +1,6 @@
 //! Swappable output backends for composed game frames.
 
+mod settings;
 mod text;
 mod walls_3d;
 

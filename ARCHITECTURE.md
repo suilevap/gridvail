@@ -140,6 +140,11 @@ and renderers must not import it.
   cells a side, past which the camera operator's zoom floor rises instead.
   Changing `FrameSize` rebuilds the frame. `PresentationPlugin` owns those
   systems and the frame and light-map resources.
+- `model::settings` holds settings the player changes in game
+  (`CompassMode`) and the open state of the settings menu (`SettingsMenu`),
+  which player input and camera controls check so the menu's keys do not
+  also move them. The menu and the compass are drawn by the text renderer
+  (`rendering/settings.rs`).
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
   at its animated position, each placed where the view camera shows it. Its

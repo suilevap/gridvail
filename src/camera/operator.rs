@@ -1,4 +1,4 @@
-use std::f32::consts::FRAC_PI_2;
+use std::f32::consts::{FRAC_PI_2, TAU};
 
 use bevy::prelude::*;
 
@@ -83,6 +83,9 @@ pub struct CameraOperator {
     pub portal_turn: PortalTurn,
     target: CameraTarget,
     rotation: Tween<f32>,
+    /// The turn the player chose (Q/E or `turn_to`), leaving out what
+    /// portals turned: what `PortalTurn::KeepNorth` returns the view to.
+    chosen_rotation: f32,
     zoom: Tween<f32>,
     /// The furthest out the view may zoom: `ZOOM_RANGE.0` unless the
     /// renderer cannot draw that much of the map (see `set_zoom_floor`).
@@ -111,6 +114,7 @@ impl CameraOperator {
             portal_turn: PortalTurn::default(),
             target,
             rotation: Tween::at(0.0),
+            chosen_rotation: 0.0,
             zoom: Tween::at(1.0),
             zoom_floor: ZOOM_RANGE.0,
             offset: Tween::at(Vec2::ZERO),
@@ -143,13 +147,24 @@ impl CameraOperator {
 
     /// Turns the view to `angle` radians (counter-clockwise on screen).
     pub fn turn_to(&mut self, angle: f32) {
-        self.rotation.ease_to(angle, self.transition, self.easing);
+        self.chosen_rotation += angle - self.rotation.target();
+        self.ease_rotation_to(angle);
     }
 
     /// Turns the view by quarter turns from where it is turning to,
     /// counter-clockwise for positive `quarters`. Repeated turns add up.
     pub fn turn_by_quarters(&mut self, quarters: i32) {
         self.turn_to(self.rotation.target() + quarters as f32 * FRAC_PI_2);
+    }
+
+    /// The turn the player chose, without what portals turned: north up
+    /// unless they turned the view themselves.
+    pub fn chosen_rotation(&self) -> f32 {
+        self.chosen_rotation
+    }
+
+    fn ease_rotation_to(&mut self, angle: f32) {
+        self.rotation.ease_to(angle, self.transition, self.easing);
     }
 
     pub fn target_zoom(&self) -> f32 {
@@ -194,9 +209,10 @@ impl CameraOperator {
     /// camera goes on from the exit, turned by the portal's quarter turns
     /// the other way, so the picture on screen stays exactly as it was. A
     /// turn under way carries on from there. With `PortalTurn::KeepNorth`
-    /// the view then eases back to the turn it was heading for.
+    /// the view then eases back to the turn the player chose (north up,
+    /// unless they turned it), the shorter way round, even if portals
+    /// crossed in the other mode had turned it.
     pub fn carry(&mut self, through: &CellTransform) {
-        let heading = self.rotation.target();
         // The shorter way round, so going back through restores the view.
         let quarters = match through.quarters {
             3 => -1,
@@ -205,7 +221,9 @@ impl CameraOperator {
         let turn = quarters as f32 * FRAC_PI_2;
         self.rotation.carry(|angle| angle - turn);
         if self.portal_turn == PortalTurn::KeepNorth && quarters != 0 {
-            self.turn_to(heading);
+            let now = self.rotation.target();
+            let whole_turns = ((now - self.chosen_rotation) / TAU).round_ties_even();
+            self.ease_rotation_to(self.chosen_rotation + whole_turns * TAU);
         }
         self.handover_from = through.apply_point(self.handover_from);
         if let Some(trail) = self.trail.as_mut() {
@@ -301,11 +319,15 @@ pub fn operate_camera(
 /// switches what the view does through turning portals (`PortalTurn`).
 pub fn camera_controls(
     keys: Option<Res<ButtonInput<KeyCode>>>,
+    menu: Option<Res<SettingsMenu>>,
     mut operator: ResMut<CameraOperator>,
 ) {
     let Some(keys) = keys else {
         return;
     };
+    if SettingsMenu::is_open(menu.as_deref()) {
+        return;
+    }
     if keys.just_pressed(KeyCode::KeyQ) {
         operator.turn_by_quarters(1);
     }

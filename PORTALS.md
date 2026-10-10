@@ -135,13 +135,15 @@ can be seen (optional step 8).
      (`ObjectCell::quarters`, added to the view's own turn when the text
      renderer picks wall shapes and facing markers).
 
-   What the view does after that is an option (`PortalTurn`, `N` in game,
-   `--portal-view turn|north`), while it is decided whether to keep the
-   turned view or keep north up and add a compass:
+   What the view does after that is a player setting (`PortalTurn`: the
+   Esc settings menu, `N`, or `--portal-view turn|north`), with a compass
+   to go with it (`CompassMode`: shown when the view is turned, always or
+   off; `--compass`):
    - `turn` (the default): the view stays turned, so arrow keys keep their
      screen directions and the map's north is no longer up;
-   - `north`: the view eases back to the turn it had before (north up,
-     unless Q/E turned it). The crossing frame itself still turns with the
+   - `north`: the view eases back to the turn the player chose (north up,
+     unless they turned it with Q/E), even if earlier portals crossed with
+     `turn` had turned it. The crossing frame itself still turns with the
      player, so nothing jumps; the picture then rotates smoothly. A key
      held through the portal keeps walking the way the player came out
      (`MoveIntent`), even once the view is back to north up; pressed anew,
