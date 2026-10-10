@@ -127,12 +127,12 @@ pub fn perceive_objectives(
 ///
 /// A thinking enemy takes no step yet: it keeps its turn while its path is on
 /// its way, and its tree is entered again on the next frame.
-pub fn carry_out(mut enemies: Query<(&EnemyAct, &EnemyMind, &mut MoveCommand)>) {
+pub fn carry_out(nav: Res<NavMap>, mut enemies: Query<(&EnemyAct, &EnemyMind, &mut MoveCommand)>) {
     for (act, mind, mut command) in enemies.iter_mut() {
         if !mind.has_turn {
             continue;
         }
-        if let Some(step) = act.step(mind.pos) {
+        if let Some(step) = act.step(mind.pos, |from, to| nav.step_toward(from, to)) {
             command.target = step;
             command.relative = true;
             command.active = true;

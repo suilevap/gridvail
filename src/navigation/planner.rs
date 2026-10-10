@@ -12,6 +12,8 @@ use super::{cell_of, pos_of, NavMap, Terrain};
 pub struct PathPlanner {
     search: PathSearch<Cell, u32, ()>,
     cells: Vec<Cell>,
+    /// Per portal link, a bound on the moves from its exit to the goal.
+    bounds: Vec<u32>,
 }
 
 impl PathPlanner {
@@ -39,17 +41,36 @@ impl PathPlanner {
         goal: IVec2,
         steps: &mut Vec<IVec2>,
     ) -> bool {
+        self.plan_through(nav, rules, from, goal, false, steps)
+    }
+
+    /// Like [`PathPlanner::plan_with`], through portals too when `portals`
+    /// is set: stepping into a portal face is one move to the floor beyond
+    /// its exit. The search stays A*: its distance estimate knows the
+    /// portals (see `Portals::space`), so it does not spread over the whole
+    /// map as a search with jumps would.
+    pub fn plan_through(
+        &mut self,
+        nav: &NavMap,
+        rules: &impl Rules<Node = Cell, Cost = u32, State = ()>,
+        from: IVec2,
+        goal: IVec2,
+        portals: bool,
+        steps: &mut Vec<IVec2>,
+    ) -> bool {
         self.fit(nav);
-        let found = self
-            .search
-            .find(
-                nav.grid(),
-                rules,
-                cell_of(from),
-                cell_of(goal),
-                &mut self.cells,
-            )
-            .is_some();
+        let (start, goal) = (cell_of(from), cell_of(goal));
+        let found = if portals && !nav.portals().is_empty() {
+            nav.portals().bounds_to(nav.grid(), goal, &mut self.bounds);
+            let space = nav.portals().space(nav.grid(), goal, &self.bounds);
+            self.search
+                .find(&space, rules, start, goal, &mut self.cells)
+                .is_some()
+        } else {
+            self.search
+                .find(nav.grid(), rules, start, goal, &mut self.cells)
+                .is_some()
+        };
         steps.clear();
         steps.extend(self.cells.iter().copied().map(pos_of));
         found
@@ -61,6 +82,9 @@ impl PathPlanner {
         }
         if self.cells.capacity() < nav.grid().len() {
             self.cells = Vec::with_capacity(nav.grid().len());
+        }
+        if self.bounds.capacity() < nav.portals().links().len() {
+            self.bounds = Vec::with_capacity(nav.portals().links().len());
         }
     }
 }

@@ -15,6 +15,7 @@ use bevy::{
     },
 };
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
+use pav_ecs_game_bevy_port::ai::PortalPolicy;
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
@@ -74,6 +75,9 @@ fn main() -> AppExit {
     app.insert_resource(ClearColor(Color::BLACK))
         .insert_resource(options.motion)
         .insert_resource(options.compass)
+        .insert_resource(PortalPolicy {
+            enemies: options.enemy_portals,
+        })
         .add_plugins(plugins)
         .add_plugins(GamePlugin)
         .add_plugins((
@@ -152,6 +156,8 @@ struct Options {
     /// Show the whole map, not only what the player sees: for recordings of
     /// what happens out of sight.
     reveal: bool,
+    /// Whether enemies plan paths through portals.
+    enemy_portals: bool,
     /// What the view does through turning portals.
     portal_turn: PortalTurn,
     /// When the compass shows.
@@ -208,6 +214,7 @@ impl Options {
         let mut motion = None;
         let mut map = None;
         let mut reveal = false;
+        let mut enemy_portals = false;
         let mut portal_turn = None;
         let mut compass = None;
         parse_options!(source, args;
@@ -237,6 +244,9 @@ impl Options {
                     CompassMode::from_name(&name)
                         .expect("--compass must be when-turned, always or off"),
                 );
+            },
+            "--enemy-portals": flag => {
+                enemy_portals = true;
             },
             "--portal-view": value if portal_turn.is_none() => {
                 let name = args.next().expect("--portal-view requires turn or north");
@@ -289,6 +299,7 @@ impl Options {
             motion: motion.unwrap_or_default(),
             map,
             reveal,
+            enemy_portals,
             portal_turn: portal_turn.unwrap_or_default(),
             compass: compass.unwrap_or_default(),
         }

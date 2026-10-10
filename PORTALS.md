@@ -156,8 +156,21 @@ can be seen (optional step 8).
 8. Optional, after trying portals on screen: wall shapes joined across
    portal edges, by autotiling walls from the neighbours seen in the view
    instead of their map neighbours. Skipped unless the seams look wrong.
-9. Later: enemies plan paths and look through portals, behind a setting.
-   A step through a portal is a jump, which makes the path search's
-   distance heuristic unreliable (`gridvail-path` ignores it for searches
-   with jumps), so it stays opt-in. Today enemies only cross a portal when
-   they happen to step into one.
+9. Enemies plan paths through portals, behind a setting (`PortalPolicy`,
+   `--enemy-portals`, off by default). **Done.** Looking through portals is
+   still to do: enemies see with the plain field of view.
+
+   Portals are not jumps here. Jumps turn the path search's distance
+   estimate off (a jump can beat any straight-line distance), so a search
+   with them is plain Dijkstra and spreads over the whole map. Instead the
+   portal links are moves of the searched space (`grid::Portals::space`):
+   stepping into a portal face is one move to the floor beyond its exit.
+   Its estimate counts portals: before a search, each link gets a lower
+   bound on the moves from its exit to the goal (straight there, or via
+   other links, relaxed over the few links); a cell's estimate is the least
+   of its straight distance to the goal and, for each link, the distance
+   to its entrance plus one plus that link's bound. That is the distance
+   with walls removed but portals kept, so it never overestimates, and it
+   is consistent, so A* stays exact and guided: in the crate's test, 36
+   cells expanded against 2,160 for the same path as a jump search. Each
+   estimate costs one term per portal link.

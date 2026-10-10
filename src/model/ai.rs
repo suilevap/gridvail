@@ -152,15 +152,24 @@ pub enum Mood {
 
 impl EnemyAct {
     /// The step this act takes from `pos` this turn (`ZERO` waits), or none
-    /// yet: a thinking enemy keeps its turn.
-    pub fn step(&self, pos: IVec2) -> Option<IVec2> {
+    /// yet: a thinking enemy keeps its turn. `step_toward` turns the next
+    /// cell of a path into a step: to a neighbour, or into the portal face
+    /// whose exit it is (`NavMap::step_toward`); a path that leads neither
+    /// way waits.
+    pub fn step(
+        &self,
+        pos: IVec2,
+        step_toward: impl Fn(IVec2, IVec2) -> Option<IVec2>,
+    ) -> Option<IVec2> {
         match self {
             Self::Attack(step) => Some(*step),
             Self::Alert | Self::Hold | Self::Rest => Some(IVec2::ZERO),
             Self::Think(_) => None,
-            Self::Move(_, path) => {
-                Some(path.next_after(pos).map_or(IVec2::ZERO, |next| next - pos))
-            }
+            Self::Move(_, path) => Some(
+                path.next_after(pos)
+                    .and_then(|next| step_toward(pos, next))
+                    .unwrap_or(IVec2::ZERO),
+            ),
         }
     }
 }

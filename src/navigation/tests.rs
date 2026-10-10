@@ -256,3 +256,67 @@ fn a_crowd_cost_routes_around_actors() {
     assert!(planner.plan_with(&nav, &crowd, from, actor, &mut steps));
     assert_eq!(steps.len(), 3, "{steps:?}");
 }
+
+#[test]
+fn the_nav_map_links_portal_faces_and_steps_into_them() {
+    use crate::foundation::portal::{CellTransform, PortalFace};
+    // A wall at (2, 1) open to the west leads out of one at (2, 4) open
+    // to the east: from (1, 1), stepping east lands on (3, 4).
+    let mut grid = MapGrid::new(6, 6);
+    let (a, b) = (IVec2::new(2, 1), IVec2::new(2, 4));
+    grid.set_portal(
+        a,
+        Some(PortalFace {
+            side: IVec2::NEG_X,
+            through: CellTransform::between_faces(a, IVec2::NEG_X, b, IVec2::X),
+        }),
+    );
+    let mut nav = NavMap::default();
+    nav.rebuild(&grid, [a, b], []);
+    assert_eq!(nav.portals().links().len(), 1);
+    let link = nav.portals().links()[0];
+    assert_eq!(
+        (pos_of(link.from), pos_of(link.toward), pos_of(link.to)),
+        (IVec2::new(1, 1), IVec2::X, IVec2::new(3, 4))
+    );
+    assert_eq!(
+        nav.step_toward(IVec2::new(1, 1), IVec2::new(3, 4)),
+        Some(IVec2::X)
+    );
+    assert_eq!(
+        nav.step_toward(IVec2::new(1, 1), IVec2::new(1, 2)),
+        Some(IVec2::Y)
+    );
+    assert_eq!(nav.step_toward(IVec2::new(1, 1), IVec2::new(4, 4)), None);
+    // A portal change makes the snapshot stale.
+    assert!(!nav.is_stale(&grid));
+    grid.set_portal(a, None);
+    assert!(nav.is_stale(&grid));
+}
+
+#[test]
+fn the_planner_goes_through_portals_only_when_asked() {
+    use crate::foundation::portal::{CellTransform, PortalFace};
+    // Two rooms split by a wall column at x = 3, joined by a portal.
+    let mut grid = MapGrid::new(7, 3);
+    let wall: Vec<IVec2> = (0..3).map(|y| IVec2::new(3, y)).collect();
+    let (a, b) = (IVec2::new(3, 0), IVec2::new(3, 2));
+    grid.set_portal(
+        a,
+        Some(PortalFace {
+            side: IVec2::NEG_X,
+            through: CellTransform::between_faces(a, IVec2::NEG_X, b, IVec2::X),
+        }),
+    );
+    let mut nav = NavMap::default();
+    nav.rebuild(&grid, wall.iter().copied(), []);
+    let mut planner = PathPlanner::default();
+    let mut steps = Vec::new();
+    let (from, goal) = (IVec2::new(0, 0), IVec2::new(6, 2));
+    let terrain = Terrain::walls_and_doors(&nav);
+    assert!(!planner.plan_through(&nav, &terrain, from, goal, false, &mut steps));
+    assert!(planner.plan_through(&nav, &terrain, from, goal, true, &mut steps));
+    // 2 steps east, 1 through to (4, 2), 2 more east.
+    assert_eq!(steps.len(), 6, "{steps:?}");
+    assert_eq!(steps[2..4], [IVec2::new(2, 0), IVec2::new(4, 2)]);
+}

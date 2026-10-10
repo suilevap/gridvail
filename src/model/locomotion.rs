@@ -44,6 +44,9 @@ pub struct TraversalPrefs {
     /// on when it is planned, so walkers route around each other; `None`
     /// ignores actors, who will likely have moved by then.
     pub crowd_cost: Option<u32>,
+    /// Whether paths may go through portals: stepping into a portal face
+    /// from its open side is one step to the floor beyond its exit.
+    pub portals: bool,
 }
 
 /// How walking to the current [`Destination`] is going.
@@ -83,9 +86,9 @@ pub struct PathFollow {
     pub steps: Vec<IVec2>,
     /// Index in `steps` of the next cell to enter.
     pub next: usize,
-    /// The request and door cost the path was planned for; a different one
-    /// means planning again.
-    pub planned_for: Option<(u32, Option<u32>)>,
+    /// The request, door cost and portal use the path was planned for; a
+    /// different one means planning again.
+    pub planned_for: Option<(u32, Option<u32>, bool)>,
     /// Where the last step was ordered from, to notice blocked steps.
     pub ordered_from: Option<IVec2>,
     /// Consecutive steps that did not move the actor.
