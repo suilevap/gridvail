@@ -857,3 +857,34 @@ fn a_hunter_kept_out_of_portals_cannot_reach_the_player() {
     let (_, pos, _) = last.enemies[0];
     assert!(pos.x > 7, "stayed in its own room: {pos}");
 }
+
+/// The player's room and the enemy's, joined only by portal `1`: the left
+/// room's east wall leads out of the right room's west wall, on the same
+/// row as both of them.
+const SEEN_THROUGH_A_PORTAL: &str = "\
+XXXXXXXXXXXXXXX\n\
+X.....XXX.....X\n\
+X.p...1X1...e.X\n\
+X.....XXX.....X\n\
+XXXXXXXXXXXXXXX\n";
+
+#[test]
+fn an_enemy_sees_the_player_through_a_portal() {
+    let mut game = Game::new(SEEN_THROUGH_A_PORTAL);
+    game.turns(2);
+    game.print("seen through a portal");
+    assert!(
+        acts(&game).contains(&Some(Act::Alert)),
+        "never noticed the player: {:?}",
+        acts(&game)
+    );
+
+    // The same rooms with the portal walled up: nothing to see.
+    let mut game = Game::new(&*SEEN_THROUGH_A_PORTAL.replace('1', "X").leak());
+    game.turns(2);
+    assert!(
+        !acts(&game).contains(&Some(Act::Alert)),
+        "noticed the player through a wall: {:?}",
+        acts(&game)
+    );
+}

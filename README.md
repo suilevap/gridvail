@@ -112,8 +112,11 @@ next to this file.
   movement and camera keys wait.
 - Enemies through portals (an addition, opt-in with `--enemy-portals`):
   enemies plan paths through portals too, with an A* estimate that knows
-  the portals, so searches stay narrow. They do not see through portals
-  yet.
+  the portals, so searches stay narrow.
+- Seeing and lighting through portals (an addition): every field of view
+  goes through portals, as the player's does, so enemies notice the player
+  through a portal and lamps light the far side of one, fading with the
+  distance the light travelled.
 - A view camera (an addition): both renderers draw through a
   renderer-neutral `ViewCamera` (centre, rotation, zoom, offset) that a
   camera operator keeps on the player's animated position, so the world

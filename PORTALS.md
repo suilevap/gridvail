@@ -152,13 +152,22 @@ can be seen (optional step 8).
    `portals.txt` has portal 4 (a quarter turn, room A's north wall to room
    B's east wall) and portal 5 (a half turn, between the rooms' south
    walls).
-7. Optional: light through portals. Deprioritised for now.
+7. Light through portals. **Done**, with enemy sight: every light and
+   sensor computes its field of view with `PortalFovComputer`, as the
+   player's view does. `FovResult` keeps the samples (the cells around the
+   source and the map cells they show) and, per map cell, the best
+   visibility over every way it is seen. Enemies read that grid, so they
+   notice the player through a portal. Lights blend along the samples and
+   fade by each sample's offset from the lamp, the way the light came, not
+   the straight distance between the lamp and the lit map cell. Without
+   portals both equal the plain field (a test compares them on random
+   walls).
 8. Optional, after trying portals on screen: wall shapes joined across
    portal edges, by autotiling walls from the neighbours seen in the view
    instead of their map neighbours. Skipped unless the seams look wrong.
 9. Enemies plan paths through portals, behind a setting (`PortalPolicy`,
-   `--enemy-portals`, off by default). **Done.** Looking through portals is
-   still to do: enemies see with the plain field of view.
+   `--enemy-portals`, off by default). **Done.** Enemies also see through
+   portals (step 7), whatever this setting says.
 
    Portals are not jumps here. Jumps turn the path search's distance
    estimate off (a jump can beat any straight-line distance), so a search

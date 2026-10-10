@@ -64,6 +64,10 @@ pub fn render_light_layers(
     }
 }
 
+/// Adds one light to `layer` along what it sees. Through a portal the light
+/// fades with the distance it travelled (`delta`), not the straight one
+/// between its cell and the lit map cell, so a lamp lights the far side of a
+/// portal as it would the cells just past it.
 fn blend_source(
     layer: &mut [LightCell],
     grid: &MapGrid,
@@ -72,12 +76,20 @@ fn blend_source(
     fov: &FovResult,
 ) {
     let context = LightContext::new((center.x, center.y), light.radius, light.value, light.kind);
-    for (index, visibility) in fov.data.iter().enumerate() {
-        if *visibility <= 0.0 || index >= layer.len() {
+    for sample in &fov.samples {
+        if sample.value <= 0.0 {
             continue;
         }
-        let x = index as i32 % grid.width;
-        let y = index as i32 / grid.width;
-        merge_light(&mut layer[index], *visibility, x, y, &context);
+        let Some(index) = grid.idx(sample.world).filter(|&index| index < layer.len()) else {
+            continue;
+        };
+        let apparent = center + sample.delta;
+        merge_light(
+            &mut layer[index],
+            sample.value,
+            apparent.x,
+            apparent.y,
+            &context,
+        );
     }
 }

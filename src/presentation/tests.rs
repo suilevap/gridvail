@@ -61,9 +61,16 @@ fn static_light_rebuilds_only_on_change() {
             FovResult {
                 revision: 0,
                 obstacle_revision: 0,
+                portal_revision: 0,
                 pos: IVec2::new(4, 4),
                 radius: 2,
                 data: vec![1.0; 64],
+                samples: vec![crate::foundation::fov::ViewSample {
+                    delta: IVec2::ZERO,
+                    world: IVec2::new(4, 4),
+                    transform: crate::foundation::portal::CellTransform::IDENTITY,
+                    value: 1.0,
+                }],
             },
         ))
         .id();
