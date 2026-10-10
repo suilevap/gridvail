@@ -26,7 +26,18 @@ fn boot() -> App {
         )))
         .insert_resource(MapText(include_str!("../assets/maps/portals.txt")))
         .add_plugins((GamePlugin, ObjectAnimationPlugin));
-    for _ in 0..30 {
+    app.update();
+    // These tests are about walking and the view, not the enemy in room B:
+    // it sees through portals too, and would come to meet the player.
+    let world = app.world_mut();
+    let enemies: Vec<Entity> = world
+        .query_filtered::<Entity, With<Enemy>>()
+        .iter(world)
+        .collect();
+    for enemy in enemies {
+        world.entity_mut(enemy).remove::<Active>();
+    }
+    for _ in 0..29 {
         app.update();
     }
     app

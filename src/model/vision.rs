@@ -9,13 +9,34 @@ pub struct VisualSensor {
     pub radius: i32,
 }
 
+/// What a light or sensor sees, through portals: `samples` are the cells
+/// around it and the map cells they show (see `PortalFovComputer`), and
+/// `data` is, per map cell, the best visibility over every way it is seen.
+/// Recomputed when the source moves or the walls or portals change.
 #[derive(Component, Clone, Debug)]
 pub struct FovResult {
     pub revision: u64,
     pub obstacle_revision: u64,
+    pub portal_revision: u64,
     pub pos: IVec2,
     pub radius: i32,
     pub data: Vec<f32>,
+    pub samples: Vec<ViewSample>,
+}
+
+impl FovResult {
+    /// Not computed yet, for a map of `cell_count` cells.
+    pub fn empty(cell_count: usize) -> Self {
+        Self {
+            revision: 0,
+            obstacle_revision: u64::MAX,
+            portal_revision: u64::MAX,
+            pos: IVec2::splat(i32::MIN),
+            radius: -1,
+            data: vec![0.0; cell_count],
+            samples: Vec::new(),
+        }
+    }
 }
 
 /// What the player sees around them, through portals: one sample per cell
