@@ -39,6 +39,13 @@ and renderers must not import it.
   lighting, world resources, and presentation buffers. It contains no systems.
 - `schedule.rs` defines startup and update phase sets. It contains no systems
   and lets plugins declare ordering without depending on `app`.
+- `service.rs` is for work that may take longer than a frame. A service
+  answers with a `Promise`, a plain `Future` its asker keeps and polls on
+  later frames; dropping it cancels the work. How a service runs its work
+  is its own `Runner`: inline (deterministic), in the background on the
+  async compute pool, or handed over a fixed number of polls later (tests).
+  Behavior trees wait on any future with `ai::await_future`, which writes
+  the answer into a `scope!` local.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.

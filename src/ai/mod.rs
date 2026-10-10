@@ -19,10 +19,12 @@
 
 #![allow(clippy::type_complexity)]
 
+mod await_future;
 mod perception;
 mod plugin;
 mod tree;
 
+pub use await_future::*;
 pub use perception::*;
 pub use plugin::*;
 pub use tree::*;
