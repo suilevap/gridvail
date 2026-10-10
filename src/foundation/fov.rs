@@ -244,13 +244,16 @@ impl FovComputer {
 
 /// One cell of a view through portals: the cell `delta` from the viewer
 /// shows the map cell `world`, seen through `transform` (the identity for
-/// cells seen directly), with visibility `value` in [0, 1].
+/// cells seen directly), with visibility `value` in [0, 1]. `portal` is set
+/// where the view passes through a portal face: the cell where the face's
+/// wall stands, which shows the floor beyond the exit.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ViewSample {
     pub delta: IVec2,
     pub world: IVec2,
     pub transform: CellTransform,
     pub value: f32,
+    pub portal: bool,
 }
 
 /// Part of the view seen through a portal (or directly, for the first):
@@ -326,6 +329,7 @@ impl PortalFovComputer {
             world: origin,
             transform: CellTransform::IDENTITY,
             value: 1.0,
+            portal: false,
         });
         for r in 1..=radius.max(0) {
             let ring = rings.ring(r);
@@ -358,6 +362,7 @@ impl PortalFovComputer {
                 } else {
                     transform.apply(origin + *delta)
                 };
+                let mut portal = false;
                 // Portal faces are on walls, so only obstacles are asked
                 // about portals: most cells are floor, and need one lookup.
                 if value > 0.0 && is_obstacle(world) {
@@ -366,6 +371,7 @@ impl PortalFovComputer {
                         Some(face) if face.faces(world, viewer) => {
                             transform = transform.then(&face.through);
                             world = face.through.apply(world);
+                            portal = true;
                             open_window(windows, open, seen_in, transform, range);
                         }
                         _ => {}
@@ -379,6 +385,7 @@ impl PortalFovComputer {
                     // Roundoff in interval division can exceed 1 by a few
                     // ulps. Keep the public visibility field in [0, 1].
                     value: value.clamp(0.0, 1.0),
+                    portal,
                 });
             }
         }
@@ -545,6 +552,7 @@ mod tests {
                 assert_eq!(a.value, b.value, "at {}", a.delta);
                 assert_eq!(b.world, origin + b.delta);
                 assert!(b.transform.is_identity());
+                assert!(!b.portal);
             }
         }
     }
@@ -580,6 +588,9 @@ mod tests {
             (face.world, face.transform, face.value),
             (IVec2::new(21, 0), through, 1.0)
         );
+        // It is the threshold, and the only one: cells beyond it are not.
+        assert!(face.portal);
+        assert_eq!(out.iter().filter(|sample| sample.portal).count(), 1);
         assert_eq!(sample_at(&out, IVec2::new(4, 0)).world, IVec2::new(22, 0));
         // The pillar beyond the exit is seen, and casts a shadow there.
         let pillar = sample_at(&out, IVec2::new(5, 0));
@@ -656,8 +667,8 @@ mod tests {
         fov.compute(IVec2::new(6, 0), 8, wall, portal_at, &mut out);
         let back = sample_at(&out, IVec2::new(-3, 0));
         assert_eq!(
-            (back.world, back.transform),
-            (IVec2::new(3, 0), CellTransform::IDENTITY)
+            (back.world, back.transform, back.portal),
+            (IVec2::new(3, 0), CellTransform::IDENTITY, false)
         );
         assert_eq!(sample_at(&out, IVec2::new(-4, 0)).value, 0.0);
     }
