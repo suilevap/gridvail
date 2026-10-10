@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::foundation::portal::PortalFace;
+use crate::foundation::portal::{CellTransform, PortalFace};
 
 pub const TOKEN_RECHARGE_SECS: f32 = 1.0;
 
@@ -12,6 +12,33 @@ pub struct CollisionEvent {
 
 #[derive(Resource, Debug, Default)]
 pub struct CollisionBuffer(pub Vec<CollisionEvent>);
+
+/// A step through a portal: `entity` stepped into a portal face and
+/// should arrive at `arrival`, the floor in front of the exit. `through`
+/// takes positions in front of the portal to where they continue beyond
+/// its exit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PortalCrossing {
+    pub entity: Entity,
+    pub through: CellTransform,
+    pub arrival: IVec2,
+}
+
+/// The steps through portals of the current simulation pass. A step can
+/// still be blocked at the exit, so a crossing happened only if the entity
+/// now stands on its `arrival`.
+#[derive(Resource, Debug, Default)]
+pub struct PortalCrossings(pub Vec<PortalCrossing>);
+
+impl PortalCrossings {
+    /// The crossing `entity` made this pass, if it arrived.
+    pub fn arrived(&self, entity: Entity, at: IVec2) -> Option<CellTransform> {
+        self.0
+            .iter()
+            .find(|crossing| crossing.entity == entity && crossing.arrival == at)
+            .map(|crossing| crossing.through)
+    }
+}
 
 #[derive(Resource, Debug)]
 pub struct MapGrid {

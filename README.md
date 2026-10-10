@@ -81,8 +81,10 @@ next to this file.
   a map are portal walls, and the two walls with the same digit are paired.
   Seen from the floor in front of it, a portal wall shows what lies beyond
   the other one, through any number of portals; cells seen through a
-  portal are not remembered. Walking through them comes next, so for now
-  they block like walls. The 3D renderer does not show portals yet.
+  portal are not remembered. Walking into it comes out of the other one,
+  with the step animated straight through. The `portals.txt` map has two
+  rooms joined only by portals and a portal that leads from a room back
+  into itself. The 3D renderer does not show portals yet.
 - A view camera (an addition): both renderers draw through a
   renderer-neutral `ViewCamera` (centre, rotation, zoom, offset) that a
   camera operator keeps on the player's animated position, so the world
@@ -164,7 +166,7 @@ cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
-cargo test --workspace   # 162 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 168 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

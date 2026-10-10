@@ -110,7 +110,8 @@ can be seen (optional step 8).
 2. Portal-aware FOV (`PortalFovComputer`) with windows and transforms,
    including portals seen through portals; maps without portals produce
    identical samples. **Done.**
-3. Moving through a portal, with the animation continuing at the exit face.
+3. Moving through a portal (`PortalCrossings`), with the animation carried
+   through so the step continues out of the exit face. **Done.**
 4. The player's view through portals (`PlayerView`) and a frame whose seen
    cells show the map cells they look onto; objects drawn once per place
    they are seen. Remembered cells dimmer. **Done.**

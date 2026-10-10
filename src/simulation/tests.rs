@@ -286,3 +286,94 @@ fn portal_faces_follow_portal_components_at_runtime() {
     assert!(grid.portal_at(IVec2::new(1, 3)).is_none());
     assert!(revision(&app) > before);
 }
+
+/// Walls at (3, 1) and (6, 1) on the 8x8 test map. The first opens west
+/// onto (2, 1) and leads out of the second, which opens east onto (7, 1).
+fn portal_pair(app: &mut App) {
+    use crate::foundation::portal::{CellTransform, PortalFace};
+    let (a, b) = (IVec2::new(3, 1), IVec2::new(6, 1));
+    for (wall, side, exit, exit_side) in [
+        (a, IVec2::NEG_X, b, IVec2::X),
+        (b, IVec2::X, a, IVec2::NEG_X),
+    ] {
+        let entity = app.world_mut().spawn((Active, Collider, Pos(wall))).id();
+        let mut grid = app.world_mut().resource_mut::<MapGrid>();
+        grid.set(wall, entity);
+        grid.set_portal(
+            wall,
+            Some(PortalFace {
+                side,
+                through: CellTransform::between_faces(wall, side, exit, exit_side),
+            }),
+        );
+    }
+}
+
+fn stepper(app: &mut App, at: IVec2, step: IVec2) -> Entity {
+    app.world_mut()
+        .spawn((
+            Active,
+            Collider,
+            Pos(at),
+            PrevPos(at),
+            Speed(step),
+            PendingPos::default(),
+        ))
+        .id()
+}
+
+#[test]
+fn stepping_into_a_portal_face_comes_out_of_its_exit() {
+    let mut app = test_app::headless();
+    portal_pair(&mut app);
+    let mover = stepper(&mut app, IVec2::new(2, 1), IVec2::X);
+    app.world_mut()
+        .resource_mut::<MapGrid>()
+        .set(IVec2::new(2, 1), mover);
+    app.update();
+    assert_eq!(app.world().get::<Pos>(mover).unwrap().0, IVec2::new(7, 1));
+    let grid = app.world().resource::<MapGrid>();
+    assert_eq!(grid.get(IVec2::new(7, 1)), Some(mover));
+    assert_eq!(grid.get(IVec2::new(2, 1)), None);
+    let crossings = app.world().resource::<PortalCrossings>();
+    assert!(crossings.arrived(mover, IVec2::new(7, 1)).is_some());
+}
+
+#[test]
+fn a_portal_wall_blocks_steps_that_do_not_face_it() {
+    let mut app = test_app::headless();
+    portal_pair(&mut app);
+    // From the north, the portal wall is just a wall.
+    let mover = stepper(&mut app, IVec2::new(3, 0), IVec2::Y);
+    app.world_mut()
+        .resource_mut::<MapGrid>()
+        .set(IVec2::new(3, 0), mover);
+    app.update();
+    assert_eq!(app.world().get::<Pos>(mover).unwrap().0, IVec2::new(3, 0));
+    assert!(app.world().resource::<PortalCrossings>().0.is_empty());
+}
+
+#[test]
+fn an_occupied_exit_blocks_the_step() {
+    let mut app = test_app::headless();
+    portal_pair(&mut app);
+    let blocker = app
+        .world_mut()
+        .spawn((Active, Collider, Pos(IVec2::new(7, 1))))
+        .id();
+    app.world_mut()
+        .resource_mut::<MapGrid>()
+        .set(IVec2::new(7, 1), blocker);
+    let mover = stepper(&mut app, IVec2::new(2, 1), IVec2::X);
+    app.world_mut()
+        .resource_mut::<MapGrid>()
+        .set(IVec2::new(2, 1), mover);
+    app.update();
+    assert_eq!(app.world().get::<Pos>(mover).unwrap().0, IVec2::new(2, 1));
+    let collisions = &app.world().resource::<CollisionBuffer>().0;
+    assert!(collisions
+        .iter()
+        .any(|c| c.source == mover && c.target == blocker));
+    let crossings = app.world().resource::<PortalCrossings>();
+    assert!(crossings.arrived(mover, IVec2::new(2, 1)).is_none());
+}

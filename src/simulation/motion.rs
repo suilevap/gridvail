@@ -12,14 +12,32 @@ pub fn update_direction(
     }
 }
 
+/// Starts each mover's step. A step into a portal face from its open side
+/// goes to the floor in front of the exit face instead, and is recorded in
+/// `PortalCrossings`; collisions there are resolved like any other step.
 pub fn movement(
     grid: Res<MapGrid>,
-    mut movers: Query<(&Pos, &Speed, &mut PendingPos), (With<Active>, Without<DestroyRequested>)>,
+    mut crossings: ResMut<PortalCrossings>,
+    mut movers: Query<
+        (Entity, &Pos, &Speed, &mut PendingPos),
+        (With<Active>, Without<DestroyRequested>),
+    >,
 ) {
-    for (pos, speed, mut pending) in movers.iter_mut() {
-        if speed.0 != IVec2::ZERO && *pending == PendingPos::None {
-            *pending = PendingPos::MoveTo(grid.safe_pos(pos.0 + speed.0));
+    crossings.0.clear();
+    for (entity, pos, speed, mut pending) in movers.iter_mut() {
+        if speed.0 == IVec2::ZERO || *pending != PendingPos::None {
+            continue;
         }
+        let mut target = pos.0 + speed.0;
+        if let Some(face) = grid.portal_at(target).filter(|face| face.side == -speed.0) {
+            target = grid.safe_pos(face.through.apply(target));
+            crossings.0.push(PortalCrossing {
+                entity,
+                through: face.through,
+                arrival: target,
+            });
+        }
+        *pending = PendingPos::MoveTo(grid.safe_pos(target));
     }
 }
 

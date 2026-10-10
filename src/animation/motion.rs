@@ -18,6 +18,8 @@
 
 use bevy::prelude::*;
 
+use crate::foundation::portal::CellTransform;
+
 /// Upper bound on one spring integration step, for stability at low FPS.
 const MAX_SPRING_STEP: f32 = 1.0 / 240.0;
 /// A coasting object closer than this to rest lands exactly on its cell.
@@ -319,6 +321,34 @@ impl MotionState {
         }
     }
 
+    /// Carries the whole motion through a portal: positions go where
+    /// `through` takes them and directions turn with it, so a move that
+    /// stepped into a portal carries on from its exit without a jump.
+    pub fn carry(&mut self, through: &CellTransform) {
+        let point = |p: Vec2| through.apply_point(p);
+        let turn = |v: Vec2| through.turn_vec(v);
+        self.position = point(self.position);
+        self.velocity = turn(self.velocity);
+        self.current.from = point(self.current.from);
+        self.current.to = point(self.current.to);
+        self.current.path = match self.current.path {
+            Path::Straight => Path::Straight,
+            Path::Excursion { toward } => Path::Excursion {
+                toward: turn(toward),
+            },
+            // A rigid turn keeps left on the left.
+            Path::Arc { bulge } => Path::Arc { bulge },
+            Path::Hermite { m0, m1 } => Path::Hermite {
+                m0: turn(m0),
+                m1: turn(m1),
+            },
+            Path::Orbit { center } => Path::Orbit {
+                center: point(center),
+            },
+        };
+        self.gait.direction = turn(self.gait.direction);
+    }
+
     /// The cell the current move ends in.
     pub fn target(&self) -> Vec2 {
         self.current.to
@@ -523,6 +553,63 @@ mod tests {
 
     fn ease_out() -> MotionStyle {
         MotionStyle::from_name("ease-out").unwrap()
+    }
+
+    #[test]
+    fn a_carried_move_continues_through_the_portal() {
+        // Mid-run east from (2, 1) to (3, 1), carried through a portal that
+        // takes (3, 1) to (10, 5) facing the same way.
+        let mut state = MotionState::at(Vec2::new(1.0, 1.0));
+        state.move_to(Vec2::new(2.0, 1.0), locomotion());
+        for _ in 0..20 {
+            state.advance(FRAME);
+        }
+        state.move_to(Vec2::new(3.0, 1.0), locomotion());
+        state.advance(FRAME);
+        let before = state;
+        let through = CellTransform::translation(IVec2::new(7, 4));
+        state.carry(&through);
+        assert_eq!(state.position, before.position + Vec2::new(7.0, 4.0));
+        assert_eq!(state.target(), Vec2::new(10.0, 5.0));
+        // The rest of the move plays out exactly as it would have, shifted.
+        let mut uncarried = before;
+        for _ in 0..30 {
+            state.advance(FRAME);
+            uncarried.advance(FRAME);
+            assert!(
+                state
+                    .position
+                    .distance(uncarried.position + Vec2::new(7.0, 4.0))
+                    < 1e-4
+            );
+            assert_eq!(state.lift, uncarried.lift);
+        }
+    }
+
+    #[test]
+    fn a_carried_move_turns_with_a_rotating_portal() {
+        let mut state = MotionState::at(Vec2::ZERO);
+        state.move_to(Vec2::X, locomotion());
+        state.advance(FRAME * 3.0);
+        let quarter = CellTransform {
+            quarters: 1,
+            offset: IVec2::new(5, 5),
+        };
+        let before = state;
+        state.carry(&quarter);
+        // East becomes up the screen; the remaining path turns with it.
+        assert_eq!(state.target(), Vec2::new(5.0, 4.0));
+        let mut uncarried = before;
+        for _ in 0..20 {
+            state.advance(FRAME);
+            uncarried.advance(FRAME);
+            assert!(
+                state
+                    .position
+                    .distance(quarter.apply_point(uncarried.position))
+                    < 1e-4
+            );
+        }
     }
 
     /// Steps along `path` every `every` frames, then runs `rest` more frames.
