@@ -302,7 +302,8 @@ impl PortalFovComputer {
     }
 
     /// Computes the view from `origin`. `is_obstacle` and `portal_at` are
-    /// asked about map cells (after portal transforms).
+    /// asked about map cells (after portal transforms); `portal_at` only
+    /// about obstacles, since a portal face is on a wall.
     pub fn compute(
         &mut self,
         origin: IVec2,
@@ -338,28 +339,38 @@ impl PortalFovComputer {
                     end: (index as f32 + 0.5) * cell,
                 };
                 // The window that sees most of this cell; the first (direct
-                // view) on ties.
+                // view) on ties. Until a portal is seen, only the direct
+                // view is open: no search, and no transform to apply.
                 let (mut seen_in, mut value) = (0, -1.0_f32);
-                for (i, window) in windows[..*open].iter().enumerate() {
-                    let visible = 1.0 - window.occluded.intersect_length(range) / cell;
-                    if visible > value {
-                        (seen_in, value) = (i, visible);
+                if *open == 1 {
+                    value = 1.0 - windows[0].occluded.intersect_length(range) / cell;
+                } else {
+                    for (i, window) in windows[..*open].iter().enumerate() {
+                        let visible = 1.0 - window.occluded.intersect_length(range) / cell;
+                        if visible > value {
+                            (seen_in, value) = (i, visible);
+                        }
                     }
                 }
                 let mut transform = windows[seen_in].transform;
-                let mut world = transform.apply(origin + *delta);
-                if value > 0.0 {
+                let mut world = if seen_in == 0 {
+                    origin + *delta
+                } else {
+                    transform.apply(origin + *delta)
+                };
+                // Portal faces are on walls, so only obstacles are asked
+                // about portals: most cells are floor, and need one lookup.
+                if value > 0.0 && is_obstacle(world) {
                     let viewer = transform.apply(origin);
                     match portal_at(world) {
                         Some(face) if face.faces(world, viewer) => {
                             transform = transform.then(&face.through);
                             world = face.through.apply(world);
                             open_window(windows, open, seen_in, transform, range);
-                            windows[seen_in].occluded.add(range);
                         }
-                        _ if is_obstacle(world) => windows[seen_in].occluded.add(range),
                         _ => {}
                     }
+                    windows[seen_in].occluded.add(range);
                 }
                 out.push(ViewSample {
                     delta: *delta,
