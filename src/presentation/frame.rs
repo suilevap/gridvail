@@ -69,14 +69,15 @@ pub fn compose_frame(
             let seen = buffers.seen[index].expect("listed frame cells are seen");
             // Frame cells map to the map cells they show, so the object is
             // shown at the inverse of its own position.
-            let position = seen.transform.inverse().apply_point(shown.position);
+            let inverse = seen.transform.inverse();
             draw(
                 &mut buffers,
                 index,
                 entity,
                 instance,
-                position,
+                inverse.apply_point(shown.position),
                 shown.lift,
+                inverse.quarters,
                 drawn,
             );
             instance += 1;
@@ -94,6 +95,7 @@ pub fn compose_frame(
                         0,
                         shown.position,
                         shown.lift,
+                        0,
                         drawn,
                     );
                 }
@@ -132,6 +134,7 @@ pub fn compose_frame(
                 parent.instance,
                 position,
                 shown.lift,
+                inverse.quarters,
                 drawn,
             );
         }
@@ -250,6 +253,7 @@ fn mark_seen(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw(
     buffers: &mut RenderBuffers,
     index: usize,
@@ -257,6 +261,7 @@ fn draw(
     instance: u16,
     position: Vec2,
     lift: f32,
+    quarters: u8,
     drawn: RenderCell,
 ) {
     if buffers.current[index].depth <= drawn.depth {
@@ -269,6 +274,7 @@ fn draw(
         pos,
         position,
         lift,
+        quarters,
         cell: drawn,
     });
 }

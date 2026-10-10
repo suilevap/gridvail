@@ -209,6 +209,72 @@ fn objects_behind_a_portal_are_drawn_where_they_are_seen() {
 }
 
 #[test]
+fn objects_behind_a_turning_portal_are_drawn_turned() {
+    use crate::foundation::fov::ViewSample;
+    use crate::foundation::portal::CellTransform;
+
+    let mut app = test_app::headless();
+    app.insert_resource(DynamicLight::sized(64))
+        .insert_resource(RenderBuffers::new(8, 8));
+    // The player at (1, 1) looks east through a portal that turns the view
+    // a quarter turn: frame cells (3, 1) and (4, 1) show map cells (5, 5)
+    // and (5, 4), so east in the frame is north on the map.
+    let through = CellTransform {
+        quarters: 1,
+        offset: IVec2::new(4, 8),
+    };
+    assert_eq!(through.apply(IVec2::new(3, 1)), IVec2::new(5, 5));
+    assert_eq!(through.apply(IVec2::new(4, 1)), IVec2::new(5, 4));
+    let sample = |delta: IVec2, transform: CellTransform| ViewSample {
+        delta,
+        world: transform.apply(IVec2::new(1, 1) + delta),
+        transform,
+        value: 1.0,
+    };
+    let mut view = PlayerView::with_radius(4);
+    view.pos = IVec2::new(1, 1);
+    view.samples = vec![
+        sample(IVec2::ZERO, CellTransform::IDENTITY),
+        sample(IVec2::new(1, 0), CellTransform::IDENTITY),
+        sample(IVec2::new(2, 0), through),
+        sample(IVec2::new(3, 0), through),
+    ];
+    app.world_mut().spawn((
+        Player(0),
+        Pos(IVec2::new(1, 1)),
+        Speed::default(),
+        view,
+        visibility(&[(IVec2::new(1, 1), Vis::VISIBLE | Vis::KNOWN)]),
+    ));
+    // An enemy halfway through a step north, from (5, 5) to (5, 4).
+    let enemy = app
+        .world_mut()
+        .spawn((
+            Pos(IVec2::new(5, 4)),
+            Speed::default(),
+            Glyph::new('e', 1, 12),
+            AnimatedPos {
+                position: Vec2::new(5.0, 4.5),
+                lift: 0.0,
+            },
+        ))
+        .id();
+    app.world_mut().run_system_once(compose_frame).unwrap();
+    let buffers = app.world().resource::<RenderBuffers>();
+    let drawn = buffers
+        .objects
+        .iter()
+        .find(|object| object.entity == enemy)
+        .expect("enemy drawn");
+    assert_eq!(drawn.pos, IVec2::new(4, 1));
+    // Its step north on the map is a step east in the frame...
+    assert!(drawn.position.distance(Vec2::new(3.5, 1.0)) < 1e-5);
+    // ...and its glyph is drawn turned back the other way, three quarter
+    // turns, so shapes line up with the frame.
+    assert_eq!(drawn.quarters, 3);
+}
+
+#[test]
 fn an_object_seen_twice_is_drawn_twice() {
     use crate::foundation::fov::ViewSample;
     use crate::foundation::portal::CellTransform;

@@ -84,11 +84,14 @@ impl TurnedGlyphs {
         Self(table)
     }
 
-    /// `symbol` as drawn in the view; glyphs without a direction stay.
-    pub(super) fn get(&self, symbol: char, camera: &ViewCamera) -> char {
+    /// `symbol` as drawn in the view, for an object seen turned by
+    /// `quarters` more (through a portal that turns the view); glyphs
+    /// without a direction stay.
+    pub(super) fn get(&self, symbol: char, quarters: u8, camera: &ViewCamera) -> char {
+        let turns = (camera.quarter_turns() + quarters as i32).rem_euclid(4);
         self.0
             .get(&symbol)
-            .map_or(symbol, |turns| turns[camera.quarter_turns() as usize])
+            .map_or(symbol, |glyphs| glyphs[turns as usize])
     }
 }
 
@@ -315,7 +318,11 @@ pub(super) fn place_object_sprites(
             continue;
         };
         drawn.clear();
-        push_glyph(&mut drawn, turned.get(object.cell.ch, &camera), billboards);
+        push_glyph(
+            &mut drawn,
+            turned.get(object.cell.ch, object.quarters, &camera),
+            billboards,
+        );
         sprite.position = object.position;
         sprite.lift = object.lift;
         sprite.depth = object.cell.depth;
@@ -707,6 +714,22 @@ mod tests {
             assert_eq!(text, expected.to_string(), "glyph {ch}");
         }
         assert!(walls > 0 && markers > 0, "walls {walls}, markers {markers}");
+    }
+
+    #[test]
+    fn glyphs_seen_through_a_turning_portal_add_its_turn_to_the_views() {
+        let turned = TurnedGlyphs(HashMap::from_iter([('>', ['>', '^', '<', 'v'])]));
+        let upright = ViewCamera::default();
+        let quarter = ViewCamera {
+            rotation: FRAC_PI_2,
+            ..default()
+        };
+        assert_eq!(turned.get('>', 0, &upright), '>');
+        assert_eq!(turned.get('>', 1, &upright), '^');
+        assert_eq!(turned.get('>', 1, &quarter), '<');
+        // A portal's turn and the view's can cancel out.
+        assert_eq!(turned.get('>', 3, &quarter), '>');
+        assert_eq!(turned.get('x', 2, &quarter), 'x');
     }
 
     #[test]

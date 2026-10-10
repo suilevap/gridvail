@@ -593,6 +593,51 @@ mod tests {
     }
 
     #[test]
+    fn a_turning_portal_shows_what_lies_beyond_its_exit_turned() {
+        // Looking east into a wall open to the west at (3, 0) comes out of
+        // a wall open to the south at (20, 0), looking south: a quarter
+        // turn clockwise on screen. A pillar stands two cells beyond it.
+        let portal = IVec2::new(3, 0);
+        let through =
+            CellTransform::between_faces(portal, IVec2::NEG_X, IVec2::new(20, 0), IVec2::Y);
+        assert_eq!(through.quarters, 3);
+        let face = PortalFace {
+            side: IVec2::NEG_X,
+            through,
+        };
+        let wall = |p: IVec2| p.x == 3 || (p.y == 0 && p.x >= 15) || p == IVec2::new(20, 3);
+        let portal_at = move |p: IVec2| (p == portal).then_some(face);
+        let mut fov = PortalFovComputer::new();
+        let mut out = Vec::new();
+        fov.compute(IVec2::ZERO, 8, wall, portal_at, &mut out);
+
+        let face = sample_at(&out, IVec2::new(3, 0));
+        assert_eq!(
+            (face.world, face.transform, face.value),
+            (IVec2::new(20, 1), through, 1.0)
+        );
+        assert_eq!(sample_at(&out, IVec2::new(4, 0)).world, IVec2::new(20, 2));
+        // East of the viewer runs south beyond the exit, and south runs
+        // west.
+        assert_eq!(sample_at(&out, IVec2::new(4, 1)).world, IVec2::new(19, 2));
+        let pillar = sample_at(&out, IVec2::new(5, 0));
+        assert_eq!((pillar.world, pillar.value), (IVec2::new(20, 3), 1.0));
+        assert_eq!(sample_at(&out, IVec2::new(6, 0)).value, 0.0);
+        // Seen directly, the portal is a plain wall.
+        let mut plain = FovComputer::new();
+        let mut walls_only = Vec::new();
+        plain.compute(IVec2::ZERO, 8, |o, d| wall(o + d), &mut walls_only);
+        for (sample, plain) in out.iter().zip(&walls_only) {
+            if sample.transform.is_identity() {
+                assert_eq!(sample.value, plain.value, "at {}", sample.delta);
+            } else {
+                assert_eq!(sample.transform, through);
+                assert_eq!(sample.world, through.apply(sample.delta));
+            }
+        }
+    }
+
+    #[test]
     fn a_portal_seen_from_behind_is_a_wall() {
         let (wall, portal_at) = portal_world();
         let mut fov = PortalFovComputer::new();

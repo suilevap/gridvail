@@ -39,6 +39,10 @@ pub struct ObjectCell {
     pub position: Vec2,
     /// Height above the ground in cells.
     pub lift: f32,
+    /// Quarter turns (counter-clockwise on screen) the object is seen
+    /// turned by in the frame: through a portal that turns the view, wall
+    /// shapes and facing markers turn too. Renderers add the camera's turn.
+    pub quarters: u8,
     pub cell: RenderCell,
 }
 
