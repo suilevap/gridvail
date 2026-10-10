@@ -8,15 +8,23 @@
     html, body { margin: 0; height: 100%; background: #000; color: #aaa; font: 14px monospace; }
     #bevy { display: block; width: 100%; height: 100%; outline: none; touch-action: none; }
     #status { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
+    #build { position: fixed; right: 6px; bottom: 4px; font-size: 10px; color: #555; pointer-events: none; }
   </style>
 </head>
 <body>
   <canvas id="bevy" tabindex="0"></canvas>
   <div id="status">Loading…</div>
+  <!-- CI fills in the commit and build time; a local build shows "dev". -->
+  <div id="build" data-sha="__BUILD_SHA__" data-time="__BUILD_TIME__"></div>
   <script type="module">
     import init from "./gridvail.js";
     const status = document.getElementById("status");
     const canvas = document.getElementById("bevy");
+    const build = document.getElementById("build");
+    build.textContent = build.dataset.sha.startsWith("__")
+      ? "dev"
+      : `${build.dataset.sha} · ${build.dataset.time}`;
+    console.info("Gridvail build:", build.textContent);
     canvas.focus();
     // Bevy's winit loop throws a control-flow "exception" once running; that is expected.
     init().catch((e) => {
