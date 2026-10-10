@@ -67,3 +67,38 @@ fn map1_spawns_all_factions_and_settles() {
     let bound = world.query::<&BoundTo>().iter(world).count();
     assert_eq!(bound, 1);
 }
+
+#[test]
+fn every_bundled_map_boots_and_portal_faces_reach_the_grid() {
+    use pav_ecs_game_bevy_port::app::MapText;
+    for (name, text) in [
+        ("map1", include_str!("../assets/maps/map1.txt")),
+        ("map2", include_str!("../assets/maps/map2.txt")),
+        ("map3", include_str!("../assets/maps/map3.txt")),
+        ("map1_test", include_str!("../assets/maps/map1_test.txt")),
+        ("lightTest", include_str!("../assets/maps/lightTest.txt")),
+        ("portals", include_str!("../assets/maps/portals.txt")),
+    ] {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(MapText(text))
+            .add_plugins(GamePlugin);
+        app.update();
+        app.update();
+        let world = app.world_mut();
+        let portals: Vec<(IVec2, Portal)> = world
+            .query::<(&Pos, &Portal)>()
+            .iter(world)
+            .map(|(pos, portal)| (pos.0, *portal))
+            .collect();
+        let grid = world.resource::<MapGrid>();
+        for (pos, portal) in &portals {
+            let face = grid.portal_at(*pos).expect("portal face on the grid");
+            assert_eq!(face.side, portal.side, "{name}");
+        }
+        if name == "portals" {
+            assert_eq!(portals.len(), 6);
+        }
+    }
+}

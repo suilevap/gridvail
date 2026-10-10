@@ -240,3 +240,49 @@ fn a_destroyed_actor_drops_everything_it_carries() {
     expected.sort();
     assert_eq!(found, expected);
 }
+
+#[test]
+fn portal_faces_follow_portal_components_at_runtime() {
+    use crate::foundation::portal::CellTransform;
+    use bevy::ecs::system::RunSystemOnce;
+
+    let mut app = test_app::headless();
+    let a = app.world_mut().spawn(Pos(IVec2::new(1, 3))).id();
+    let b = app.world_mut().spawn(Pos(IVec2::new(6, 3))).id();
+    app.world_mut().entity_mut(a).insert(Portal {
+        side: IVec2::NEG_X,
+        exit: b,
+    });
+    app.world_mut().entity_mut(b).insert(Portal {
+        side: IVec2::X,
+        exit: a,
+    });
+    let revision = |app: &App| app.world().resource::<MapGrid>().portal_revision;
+    let start = revision(&app);
+    app.world_mut().run_system_once(sync_portals).unwrap();
+    let grid = app.world().resource::<MapGrid>();
+    assert_eq!(
+        grid.portal_at(IVec2::new(1, 3)).unwrap().through,
+        CellTransform::translation(IVec2::new(6, 0))
+    );
+    assert!(grid.portal_at(IVec2::new(6, 3)).is_some());
+    assert!(revision(&app) > start);
+
+    // Moving one end retargets both faces.
+    app.world_mut().get_mut::<Pos>(b).unwrap().0 = IVec2::new(6, 5);
+    app.world_mut().run_system_once(sync_portals).unwrap();
+    let grid = app.world().resource::<MapGrid>();
+    assert!(grid.portal_at(IVec2::new(6, 3)).is_none());
+    assert_eq!(
+        grid.portal_at(IVec2::new(1, 3)).unwrap().through,
+        CellTransform::translation(IVec2::new(6, 2))
+    );
+
+    // Without its partner a portal shows nothing.
+    let before = revision(&app);
+    app.world_mut().entity_mut(b).remove::<Portal>();
+    app.world_mut().run_system_once(sync_portals).unwrap();
+    let grid = app.world().resource::<MapGrid>();
+    assert!(grid.portal_at(IVec2::new(1, 3)).is_none());
+    assert!(revision(&app) > before);
+}

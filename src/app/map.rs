@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use flatbt_bevy::prelude::Behavior;
 
 use crate::ai::enemy_tree;
-use crate::content::map::{parse_map, SpawnKind};
+use crate::content::map::{parse_map, portal_links, SpawnKind};
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::lighting::{GRAY, RED, WHITE, YELLOW};
 use crate::model::*;
@@ -47,12 +47,15 @@ impl Plugin for MapPlugin {
 
 fn construct_map(mut commands: Commands, map: Res<MapText>) {
     let (width, height, cells) = parse_map(map.0);
+    let links = portal_links(width, height, &cells).unwrap_or_else(|error| panic!("map: {error}"));
     let cell_count = (width * height) as usize;
     let mut grid = MapGrid::new(width, height);
+    let mut portal_walls = Vec::with_capacity(links.len());
 
     for cell in cells {
         let entity = match cell.kind {
-            SpawnKind::Wall => commands
+            // A portal is a wall; only its open face differs.
+            SpawnKind::Wall | SpawnKind::Portal(_) => commands
                 .spawn((
                     Active,
                     Collider,
@@ -183,16 +186,39 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
         if commands.get_entity(entity).is_ok()
             && matches!(
                 cell.kind,
-                SpawnKind::Wall | SpawnKind::Player | SpawnKind::Enemy | SpawnKind::Door
+                SpawnKind::Wall
+                    | SpawnKind::Portal(_)
+                    | SpawnKind::Player
+                    | SpawnKind::Enemy
+                    | SpawnKind::Door
             )
         {
             // Colliders own their cells (mirrors the first UpdatePosition pass).
             grid.set_with_blocking(
                 cell.pos,
                 entity,
-                matches!(cell.kind, SpawnKind::Wall | SpawnKind::Door),
+                matches!(
+                    cell.kind,
+                    SpawnKind::Wall | SpawnKind::Portal(_) | SpawnKind::Door
+                ),
             );
         }
+        if matches!(cell.kind, SpawnKind::Portal(_)) {
+            portal_walls.push((cell.pos, entity));
+        }
+    }
+    let wall_at = |pos: IVec2| {
+        portal_walls
+            .iter()
+            .find(|(wall, _)| *wall == pos)
+            .map(|(_, entity)| *entity)
+            .expect("every portal link names a portal wall")
+    };
+    for link in links {
+        commands.entity(wall_at(link.pos)).insert(Portal {
+            side: link.side,
+            exit: wall_at(link.exit),
+        });
     }
 
     commands.insert_resource(grid);

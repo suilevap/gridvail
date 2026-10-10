@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::foundation::portal::PortalFace;
+
 pub const TOKEN_RECHARGE_SECS: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,7 +19,11 @@ pub struct MapGrid {
     pub height: i32,
     pub revision: u64,
     pub blocker_revision: u64,
+    /// Bumped whenever a portal face appears, disappears or changes, so
+    /// views through portals are recomputed.
+    pub portal_revision: u64,
     cells: Vec<Option<MapOccupant>>,
+    portals: Vec<Option<PortalFace>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,7 +41,9 @@ impl MapGrid {
             height,
             revision: 0,
             blocker_revision: 0,
+            portal_revision: 0,
             cells: vec![None; (width * height) as usize],
+            portals: vec![None; (width * height) as usize],
         }
     }
 
@@ -86,6 +94,28 @@ impl MapGrid {
         self.idx(p)
             .and_then(|i| self.cells[i])
             .is_some_and(|cell| cell.blocks_vision)
+    }
+
+    /// The portal face of the wall at `p`, if it has one.
+    pub fn portal_at(&self, p: IVec2) -> Option<PortalFace> {
+        self.idx(p).and_then(|i| self.portals[i])
+    }
+
+    /// Sets or removes the portal face at `p`.
+    pub fn set_portal(&mut self, p: IVec2, face: Option<PortalFace>) {
+        let Some(i) = self.idx(p) else { return };
+        if self.portals[i] != face {
+            self.portals[i] = face;
+            self.portal_revision += 1;
+        }
+    }
+
+    /// Removes every portal face.
+    pub fn clear_portals(&mut self) {
+        if self.portals.iter().any(Option::is_some) {
+            self.portals.fill(None);
+            self.portal_revision += 1;
+        }
     }
 
     pub fn idx(&self, p: IVec2) -> Option<usize> {

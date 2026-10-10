@@ -101,10 +101,13 @@ can be seen (optional step 8).
    both renderers draw from it and movement keys follow the turned view.
    Wall shapes and facing markers are drawn turned with the view (each
    rule glyph maps to the glyph of its turned mask or direction). **Done.**
-1. Portal model: wall-face portal components, map glyphs for paired faces,
-   a portal revision on the grid.
-2. Portal-aware FOV with windows and transforms (translation only), with
-   unit tests; maps without portals produce identical samples.
+1. Portal model: `Portal` components on walls (open side, exit), synced to
+   the grid's portal faces with a `portal_revision`; digits `1`-`9` in maps
+   pair portal walls; `assets/maps/portals.txt` shows them
+   (`--map assets/maps/portals.txt`). **Done.**
+2. Portal-aware FOV (`PortalFovComputer`) with windows and transforms,
+   including portals seen through portals; maps without portals produce
+   identical samples. **Done.**
 3. Moving through a portal, with the animation continuing at the exit face.
 4. View-indexed player vision and a view-space `compose_frame`; the text
    renderer draws the view frame. Remembered cells dimmer.
