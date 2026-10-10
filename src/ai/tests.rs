@@ -152,13 +152,7 @@ mod trees {
                     VisualSensor {
                         radius: ENEMY_SIGHT_RADIUS,
                     },
-                    FovResult {
-                        revision: 0,
-                        obstacle_revision: u64::MAX,
-                        pos: IVec2::splat(i32::MIN),
-                        radius: -1,
-                        data: vec![0.0; 64],
-                    },
+                    FovResult::empty(64),
                 ),
                 EnemyMind::default(),
                 Behavior::for_tree(enemy_tree),

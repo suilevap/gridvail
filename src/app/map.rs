@@ -283,11 +283,5 @@ fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
 }
 
 fn initial_fov(cell_count: usize) -> FovResult {
-    FovResult {
-        revision: 0,
-        obstacle_revision: u64::MAX,
-        pos: IVec2::splat(i32::MIN),
-        radius: -1,
-        data: vec![0.0; cell_count],
-    }
+    FovResult::empty(cell_count)
 }

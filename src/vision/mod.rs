@@ -16,26 +16,15 @@ pub use plugin::*;
 
 use bevy::prelude::*;
 
-use crate::foundation::fov::{FovComputer, FovSample, PortalFovComputer};
+use crate::foundation::fov::{PortalFovComputer, ViewSample};
 use crate::model::*;
 
-/// Shared FOV computer (mirrors the single `FieldOfViewComputationInt2`
-/// instance owned by the system; its occlusion set is cleared per compute).
-#[derive(Resource, Debug)]
+/// Shared FOV computer for lights and sensors (mirrors the single
+/// `FieldOfViewComputationInt2` instance owned by the system; its occlusion
+/// sets are cleared per compute). It sees through portals.
+#[derive(Resource, Debug, Default)]
 pub struct FovShared {
-    computer: FovComputer,
-    scratch: Vec<FovSample>,
-}
-
-impl Default for FovShared {
-    fn default() -> Self {
-        Self {
-            computer: FovComputer::default(),
-            // Radius 16 contains 33x33 square-ring samples. It is the largest
-            // bundled source and avoids growth during the normal game.
-            scratch: Vec::with_capacity(33 * 33),
-        }
-    }
+    computer: PortalFovComputer,
 }
 
 /// The player's field of view through portals (its storage is reused).
@@ -43,8 +32,7 @@ impl Default for FovShared {
 pub struct PortalFovShared(PortalFovComputer);
 
 /// Computes what the player sees through portals: the cells within the
-/// sensor's (round) radius and the map cells they show. Lights keep the
-/// plain field of view in `compute_fov`.
+/// sensor's (round) radius and the map cells they show.
 pub fn compute_player_view(
     grid: Res<MapGrid>,
     mut shared: ResMut<PortalFovShared>,
@@ -99,13 +87,7 @@ pub fn ensure_fov_storage(
     }
     let n = (grid.width * grid.height) as usize;
     for e in sources.iter() {
-        commands.entity(e).insert(FovResult {
-            revision: 0,
-            obstacle_revision: u64::MAX,
-            pos: IVec2::splat(i32::MIN),
-            radius: -1,
-            data: vec![0.0; n],
-        });
+        commands.entity(e).insert(FovResult::empty(n));
     }
     for e in players.iter() {
         commands.entity(e).insert(VisibilityMap {
@@ -116,8 +98,11 @@ pub fn ensure_fov_storage(
 }
 
 /// Mirrors `FieldOfViewSystem`: recompute on moved observer, changed radius,
-/// or changed obstacles; accumulate fractional visibility into the result
-/// field (toroidally wrapped, radius-filtered, like the original).
+/// or changed obstacles or portals. Lights and sensors see through portals
+/// as the player does: the samples keep the cells around the source and the
+/// map cells they show, and `data` keeps per map cell the best visibility
+/// over every way it is seen (radius-filtered, like the original). Without
+/// portals it equals the original's field.
 pub fn compute_fov(
     grid: Res<MapGrid>,
     mut shared: ResMut<FovShared>,
@@ -136,44 +121,34 @@ pub fn compute_fov(
         if result.pos == pos.0
             && result.radius == radius
             && result.obstacle_revision == grid.blocker_revision
+            && result.portal_revision == grid.portal_revision
         {
             continue;
         }
-        let w = grid.width;
-        let h = grid.height;
-        if result.data.len() != (w * h) as usize {
-            result.data.resize((w * h) as usize, 0.0);
+        let n = (grid.width * grid.height) as usize;
+        let FovResult { data, samples, .. } = &mut *result;
+        if data.len() != n {
+            data.resize(n, 0.0);
         }
-        result.data.fill(0.0);
+        data.fill(0.0);
         // Obstacle = out of bounds, or an occupant that cannot move
         // (mirrors `HasObstacle`: no `Speed` pool entry on the occupant).
-        let is_obstacle = |origin: IVec2, delta: IVec2| {
-            let p = origin + delta;
-            if !grid.is_valid(p) {
-                return true;
-            }
-            grid.blocks_vision(grid.safe_pos(p))
-        };
-        let FovShared { computer, scratch } = &mut *shared;
-        computer.compute(pos.0, radius, is_obstacle, scratch);
+        let is_obstacle = |p: IVec2| !grid.is_valid(p) || grid.blocks_vision(p);
+        shared
+            .computer
+            .compute(pos.0, radius, is_obstacle, |p| grid.portal_at(p), samples);
         let radius_sq = radius * radius;
-        for sample in scratch.iter() {
-            let p = pos.0 + sample.delta;
-            if !grid.is_valid(p) {
-                continue;
-            }
-            let d = sample.delta;
-            if d.x * d.x + d.y * d.y > radius_sq {
-                continue;
-            }
-            let wrapped = grid.safe_pos(p);
-            let idx = (wrapped.y * w + wrapped.x) as usize;
-            if idx < result.data.len() {
-                result.data[idx] += sample.value;
+        samples.retain(|sample: &ViewSample| {
+            sample.delta.length_squared() <= radius_sq && grid.is_valid(sample.world)
+        });
+        for sample in samples.iter() {
+            if let Some(i) = grid.idx(sample.world) {
+                data[i] = data[i].max(sample.value);
             }
         }
         result.revision = result.revision.wrapping_add(1);
         result.obstacle_revision = grid.blocker_revision;
+        result.portal_revision = grid.portal_revision;
         result.pos = pos.0;
         result.radius = radius;
     }
@@ -322,6 +297,130 @@ mod tests {
         let vis = app.world().get::<VisibilityMap>(p).expect("visibility");
         assert!(!vis.data[6 * 8 + 5].contains(Vis::KNOWN));
         assert!(vis.data[8 + 2].contains(Vis::KNOWN));
+    }
+
+    /// A wall at (3, 1) open to the west leading out of a wall at (4, 6)
+    /// open to the east, on the 8x8 test grid: from the west, (3, 1) shows
+    /// (5, 6).
+    fn portal_grid(app: &mut bevy::prelude::App) {
+        use crate::foundation::portal::{CellTransform, PortalFace};
+
+        let wall = app
+            .world_mut()
+            .spawn((Active, Collider, Pos(IVec2::new(3, 1))))
+            .id();
+        let mut grid = app.world_mut().resource_mut::<MapGrid>();
+        grid.set(IVec2::new(3, 1), wall);
+        grid.set_portal(
+            IVec2::new(3, 1),
+            Some(PortalFace {
+                side: IVec2::NEG_X,
+                through: CellTransform::between_faces(
+                    IVec2::new(3, 1),
+                    IVec2::NEG_X,
+                    IVec2::new(4, 6),
+                    IVec2::X,
+                ),
+            }),
+        );
+    }
+
+    #[test]
+    fn lights_shine_through_portals_and_fade_by_the_way_they_came() {
+        use crate::presentation::{render_light_layers, DynamicLight};
+        use bevy::ecs::system::RunSystemOnce;
+
+        let mut app = test_app::headless();
+        app.insert_resource(StaticLight::new())
+            .insert_resource(DynamicLight::sized(64));
+        portal_grid(&mut app);
+        let lamp = app
+            .world_mut()
+            .spawn((
+                Pos(IVec2::new(1, 1)),
+                LightSource {
+                    radius: 4,
+                    kind: LightKind::Fire,
+                    value: 100,
+                },
+            ))
+            .id();
+        app.update();
+        let fov = app.world().get::<FovResult>(lamp).expect("fov result");
+        // (5, 6) is 2 cells away through the portal, but too far for the
+        // lamp in a straight line (about 6.4 > 4).
+        let through = (6 * 8 + 5) as usize;
+        assert_eq!(fov.data[through], 1.0, "seen through the portal");
+        app.world_mut()
+            .run_system_once(render_light_layers)
+            .unwrap();
+        let light = app.world().resource::<DynamicLight>().data[through];
+        // Faded as 2 cells away: 100 * (1 - 4 / 25).
+        assert_eq!((light.value, light.kind), (84, LightKind::Fire));
+
+        // Without the portal the wall stops it, and (5, 6) stays dark.
+        app.world_mut()
+            .resource_mut::<MapGrid>()
+            .set_portal(IVec2::new(3, 1), None);
+        app.update();
+        let fov = app.world().get::<FovResult>(lamp).expect("fov result");
+        assert_eq!(fov.data[through], 0.0);
+        app.world_mut()
+            .run_system_once(render_light_layers)
+            .unwrap();
+        assert_eq!(
+            app.world().resource::<DynamicLight>().data[through].kind,
+            LightKind::None
+        );
+    }
+
+    #[test]
+    fn without_portals_the_field_is_the_plain_one() {
+        use crate::foundation::fov::{FovComputer, FovSample};
+        use rand::{RngExt, SeedableRng};
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        for _ in 0..20 {
+            let mut app = test_app::headless();
+            let mut walls = Vec::new();
+            for _ in 0..12 {
+                let p = IVec2::new(rng.random_range(0..8), rng.random_range(0..8));
+                if p != IVec2::new(4, 4) && !walls.contains(&p) {
+                    let wall = app.world_mut().spawn((Active, Collider, Pos(p))).id();
+                    app.world_mut().resource_mut::<MapGrid>().set(p, wall);
+                    walls.push(p);
+                }
+            }
+            let sensor = app
+                .world_mut()
+                .spawn((Pos(IVec2::new(4, 4)), VisualSensor { radius: 5 }))
+                .id();
+            app.update();
+            let fov = app.world().get::<FovResult>(sensor).expect("fov result");
+
+            // The original field: accumulated, radius-filtered, in the map.
+            let mut plain = vec![0.0_f32; 64];
+            let mut samples: Vec<FovSample> = Vec::new();
+            let is_wall =
+                |p: IVec2| !(0..8).contains(&p.x) || !(0..8).contains(&p.y) || walls.contains(&p);
+            FovComputer::new().compute(
+                IVec2::new(4, 4),
+                5,
+                |origin, delta| is_wall(origin + delta),
+                &mut samples,
+            );
+            for sample in &samples {
+                let p = IVec2::new(4, 4) + sample.delta;
+                if sample.delta.length_squared() <= 25 && !is_wall_bounds(p) {
+                    plain[(p.y * 8 + p.x) as usize] += sample.value;
+                }
+            }
+            assert_eq!(fov.data, plain, "walls {walls:?}");
+        }
+
+        fn is_wall_bounds(p: IVec2) -> bool {
+            !(0..8).contains(&p.x) || !(0..8).contains(&p.y)
+        }
     }
 
     #[test]

@@ -51,9 +51,11 @@ and renderers must not import it.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
 - `vision/` converts sensors and blocker state into cached FOV and visibility
-  components. Lights use the plain field of view; the player's
-  `PlayerView` sees through portals, and Visible/Known come from it (only
-  cells seen directly become Known). `VisionPlugin` owns their resources
+  components. Every field of view sees through portals: lights' and
+  sensors' `FovResult` (its samples for lights, which fade by the way the
+  light came, and its per-cell grid for enemy sight), and the player's
+  `PlayerView`, which Visible/Known come from (only cells seen directly
+  become Known). `VisionPlugin` owns their resources
   and phase registration; the
   underlying algorithm remains in `foundation/`.
 - `navigation/` keeps `NavMap`, a walls/closed-doors snapshot of the map
