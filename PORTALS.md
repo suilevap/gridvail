@@ -174,3 +174,10 @@ can be seen (optional step 8).
    is consistent, so A* stays exact and guided: in the crate's test, 36
    cells expanded against 2,160 for the same path as a jump search. Each
    estimate costs one term per portal link.
+10. Portals are visible. **Done.** The field of view marks the sample
+    where the view passes through a portal face (`ViewSample::portal`),
+    and the frame draws that threshold as a magenta `░`
+    (`PORTAL_GLYPH`, `PORTAL_COLOR`) instead of the floor beyond it. A
+    portal wall seen without looking through it (from behind or side-on)
+    is magenta too, and dark magenta when only remembered, so a portal
+    stands out from any side. The 3D renderer does not show them yet.

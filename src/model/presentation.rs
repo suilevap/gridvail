@@ -53,11 +53,13 @@ pub struct ObjectCell {
 pub struct RevealAll;
 
 /// What a frame cell shows while the player sees it: a map cell, seen
-/// through `transform` (the identity when seen directly).
+/// through `transform` (the identity when seen directly). `portal` marks
+/// the portal's threshold: where the view passes through a portal face.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SeenCell {
     pub world: IVec2,
     pub transform: CellTransform,
+    pub portal: bool,
 }
 
 /// How many cells the composed frame has, independent of the map: the
