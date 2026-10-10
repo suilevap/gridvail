@@ -311,9 +311,37 @@ python3 -m http.server -d dist 8000
 On touch screens, swipe to take a step and keep the finger down to keep
 walking; slide it past where it landed to turn. The performance panel starts
 hidden in the browser (F3 shows it). Touch controls live in `src/touch/`;
-the HUD shows the hints for whichever input was used last. The browser build takes no command-line
-options, and the agent API's HTTP
-server is native-only (a page cannot listen on a port).
+the HUD shows the hints for whichever input was used last.
+
+Pass launch options in the page URL, using the CLI option names without `--`:
+
+```text
+https://suilevap.github.io/gridvail/?renderer=3d-walls&motion=overshoot
+https://suilevap.github.io/gridvail/?map=portals&portal-view=north
+https://suilevap.github.io/gridvail/?map=hunter_keys&reveal
+```
+
+| URL parameter | Values (default when omitted) |
+| --- | --- |
+| `renderer` | `text` (default), `3d-walls` |
+| `motion` | `locomotion` (default), `ease-out`, `linear`, `ease-in-out`, `overshoot`, `snap` |
+| `map` | `map1` (default), `map1_test`, `map2`, `map3`, `lightTest`, `portals`, `hunter_keys`, `chasers` |
+| `reveal` | Bare `reveal`, `true`, or `1` show the whole map; `false`, `0`, or omission use normal visibility |
+| `portal-view` | `turn` (default), `north` |
+
+Map names also accept `.txt` filenames or the native path, such as
+`map=assets%2Fmaps%2Fportals.txt`. The browser loads maps embedded in the
+Wasm bundle; arbitrary local files and remote map URLs are unavailable.
+Options apply on page load; reload after changing the URL. Invalid values and
+duplicate supported parameters show a startup error. Unrelated parameters,
+such as tracking tags, are ignored.
+
+`screenshot`, `record`, `walk`, `remote`, and `remote-port` are native-only
+and show an error if passed in the URL. The agent API's HTTP server cannot
+listen on a port in the browser.
+
+Run the URL parser tests with `node --test web/options.test.js` (Node 22+).
+The Pages workflow runs these tests before building WebAssembly.
 
 ## Agent runtime API
 
@@ -378,3 +406,4 @@ with .NET 10 and a clean checkout at the pinned commit:
 ```sh
 python3 tools/generate_reference.py /path/to/PavEcsGame
 ```
+
