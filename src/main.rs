@@ -29,7 +29,7 @@ use pav_ecs_game_bevy_port::touch::TouchControlPlugin;
 #[cfg(target_family = "wasm")]
 #[wasm_bindgen::prelude::wasm_bindgen(module = "/web/options.mjs")]
 extern "C" {
-    fn startup_arguments() -> String;
+    fn startup_arguments(schema: &str) -> String;
 }
 
 const CAPTURE_STEP_FRAMES: u32 = 8;
@@ -162,20 +162,39 @@ enum Renderer {
     Walls3d,
 }
 
+// Each arm declares its URL shape alongside its CLI behavior. The browser
+// receives this schema, so adding an arm never needs a JavaScript allowlist edit.
+macro_rules! parse_options {
+    ($source:ident, $args:ident; $(
+        $name:literal: $kind:ident $(if $guard:expr)? => $body:block
+    ),* $(,)?) => {
+        let mut $args = $source(&[$(($name, stringify!($kind))),*]).into_iter();
+        while let Some(argument) = $args.next() {
+            match argument.as_str() {
+                $($name $(if $guard)? => $body,)*
+                _ => panic!("invalid or duplicate command-line option: {argument}"),
+            }
+        }
+    };
+}
+
 impl Options {
     fn parse() -> Self {
         #[cfg(not(target_family = "wasm"))]
-        let args = std::env::args().skip(1);
+        {
+            Self::parse_with(|_| std::env::args().skip(1))
+        }
         #[cfg(target_family = "wasm")]
-        let args = {
-            serde_json::from_str::<Vec<String>>(&startup_arguments())
-                .expect("web startup arguments must be a JSON string array")
-                .into_iter()
-        };
-        Self::parse_args(args)
+        {
+            Self::parse_with(|schema| {
+                let schema = serde_json::to_string(schema).expect("serialize option schema");
+                serde_json::from_str::<Vec<String>>(&startup_arguments(&schema))
+                    .expect("web startup arguments must be a JSON string array")
+            })
+        }
     }
 
-    fn parse_args(args: impl IntoIterator<Item = String>) -> Self {
+    fn parse_with<I: IntoIterator<Item = String>>(source: impl FnOnce(&[(&str, &str)]) -> I) -> Self {
         let mut capture = None;
         let mut record = None;
         let mut walk = None;
@@ -185,60 +204,58 @@ impl Options {
         let mut map = None;
         let mut reveal = false;
         let mut portal_turn = None;
-        let mut args = args.into_iter();
-        while let Some(argument) = args.next() {
-            match argument.as_str() {
-                "--screenshot" if capture.is_none() => {
-                    capture = Some(
-                        args.next()
-                            .expect("--screenshot requires an output PNG path"),
-                    );
-                }
-                "--record" if record.is_none() => {
-                    record = Some(
-                        args.next()
-                            .expect("--record requires an output directory"),
-                    );
-                }
-                "--map" if map.is_none() => {
-                    map = Some(args.next().expect("--map requires a map file"));
-                }
-                "--reveal" => reveal = true,
-                "--portal-view" if portal_turn.is_none() => {
-                    let name = args.next().expect("--portal-view requires turn or north");
-                    portal_turn = Some(
-                        PortalTurn::from_name(&name)
-                            .expect("--portal-view must be turn or north"),
-                    );
-                }
-                "--walk" if walk.is_none() => {
-                    walk = Some(args.next().expect("--walk requires UDLRQEZX steps"));
-                }
-                "--remote" if remote_port.is_none() => remote_port = Some(DEFAULT_AGENT_PORT),
-                "--remote-port" if remote_port.is_none() => {
-                    let port = args.next().expect("--remote-port requires a port number");
-                    remote_port = Some(port.parse().expect("--remote-port must be a valid u16"));
-                }
-                "--renderer" if renderer.is_none() => {
-                    renderer = Some(match args.next().as_deref() {
-                        Some("text") => Renderer::Text,
-                        Some("3d-walls") => Renderer::Walls3d,
-                        _ => panic!("--renderer must be text or 3d-walls"),
-                    });
-                }
-                "--motion" if motion.is_none() => {
-                    let name = args.next().expect("--motion requires a style name");
-                    motion = Some(MotionStyle::from_name(&name).unwrap_or_else(|| {
-                        let names: Vec<_> =
-                            MotionStyle::PRESETS.iter().map(|(name, _)| *name).collect();
-                        panic!("--motion must be one of: {}", names.join(", "))
-                    }));
-                }
-                _ => panic!(
-                    "usage: pav_ecs_game_bevy_port [--renderer text|3d-walls] [--motion STYLE] [--map FILE] [--reveal] [--portal-view turn|north] [--remote | --remote-port PORT] [--screenshot OUTPUT.png | --record DIR] [--walk UDLRQEZX.]"
-                ),
-            }
-        }
+        parse_options!(source, args;
+            "--screenshot": native if capture.is_none() => {
+                capture = Some(
+                    args.next()
+                        .expect("--screenshot requires an output PNG path"),
+                );
+            },
+            "--record": native if record.is_none() => {
+                record = Some(
+                    args.next()
+                        .expect("--record requires an output directory"),
+                );
+            },
+            "--map": value if map.is_none() => {
+                map = Some(args.next().expect("--map requires a map file"));
+            },
+            "--reveal": flag => {
+                reveal = true;
+            },
+            "--portal-view": value if portal_turn.is_none() => {
+                let name = args.next().expect("--portal-view requires turn or north");
+                portal_turn = Some(
+                    PortalTurn::from_name(&name)
+                        .expect("--portal-view must be turn or north"),
+                );
+            },
+            "--walk": native if walk.is_none() => {
+                walk = Some(args.next().expect("--walk requires UDLRQEZX steps"));
+            },
+            "--remote": native if remote_port.is_none() => {
+                remote_port = Some(DEFAULT_AGENT_PORT);
+            },
+            "--remote-port": native if remote_port.is_none() => {
+                let port = args.next().expect("--remote-port requires a port number");
+                remote_port = Some(port.parse().expect("--remote-port must be a valid u16"));
+            },
+            "--renderer": value if renderer.is_none() => {
+                renderer = Some(match args.next().as_deref() {
+                    Some("text") => Renderer::Text,
+                    Some("3d-walls") => Renderer::Walls3d,
+                    _ => panic!("--renderer must be text or 3d-walls"),
+                });
+            },
+            "--motion": value if motion.is_none() => {
+                let name = args.next().expect("--motion requires a style name");
+                motion = Some(MotionStyle::from_name(&name).unwrap_or_else(|| {
+                    let names: Vec<_> =
+                        MotionStyle::PRESETS.iter().map(|(name, _)| *name).collect();
+                    panic!("--motion must be one of: {}", names.join(", "))
+                }));
+            },
+        );
         let walk = walk.unwrap_or_default();
         assert!(
             capture.is_none() || record.is_none(),
@@ -283,7 +300,10 @@ mod option_tests {
 
     #[test]
     fn browser_arguments_use_the_cli_parser() {
-        let options = Options::parse_args(
+        let options = Options::parse_with(|schema| {
+            assert!(schema.contains(&("--motion", "value")));
+            assert!(schema.contains(&("--reveal", "flag")));
+            assert!(schema.contains(&("--screenshot", "native")));
             [
                 "--renderer",
                 "3d-walls",
@@ -293,8 +313,8 @@ mod option_tests {
                 "--portal-view",
                 "north",
             ]
-            .map(String::from),
-        );
+            .map(String::from)
+        });
         assert_eq!(options.renderer, Renderer::Walls3d);
         assert_eq!(options.motion, MotionStyle::Snap);
         assert!(options.reveal);

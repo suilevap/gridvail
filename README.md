@@ -332,6 +332,11 @@ are rejected; unrelated parameters are ignored.
 Run URL tests with `node --test web/options.test.mjs` (Node 22+), and shared
 parser/map tests with `cargo test --bin pav_ecs_game_bevy_port`.
 
+Declare new options in the `parse_options!` invocation in `Options::parse_with`:
+use `value` for an option with a value, `flag` for a boolean, or `native` for
+an operation unavailable in the browser. The macro generates the browser schema
+from those same parser arms; there is no JavaScript option list to update.
+
 ## Agent runtime API
 
 Start the game with Bevy Remote enabled on its loopback-only default address:
