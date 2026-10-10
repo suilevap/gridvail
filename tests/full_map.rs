@@ -98,7 +98,13 @@ fn every_bundled_map_boots_and_portal_faces_reach_the_grid() {
             assert_eq!(face.side, portal.side, "{name}");
         }
         if name == "portals" {
-            assert_eq!(portals.len(), 6);
+            assert_eq!(portals.len(), 10);
+            // Portal 4 turns the view a quarter turn, portal 5 a half turn.
+            let turns = |at: IVec2| grid.portal_at(at).unwrap().through.quarters;
+            assert_eq!(turns(IVec2::new(26, 7)), 0);
+            assert_eq!(turns(IVec2::new(17, 3)), 1);
+            assert_eq!(turns(IVec2::new(54, 14)), 3);
+            assert_eq!(turns(IVec2::new(15, 11)), 2);
         }
     }
 }
