@@ -406,7 +406,13 @@ fn a_turning_portal_turns_the_movers_speed_and_facing() {
     let mut app = test_app::headless();
     turning_portal(&mut app);
     let mover = stepper(&mut app, IVec2::new(2, 1), IVec2::X);
-    app.world_mut().entity_mut(mover).insert(Facing(IVec2::X));
+    let held = HeldMove {
+        screen: IVec2::X,
+        map: IVec2::X,
+    };
+    app.world_mut()
+        .entity_mut(mover)
+        .insert((Facing(IVec2::X), MoveIntent { held: Some(held) }));
     app.world_mut()
         .resource_mut::<MapGrid>()
         .set(IVec2::new(2, 1), mover);
@@ -415,6 +421,9 @@ fn a_turning_portal_turns_the_movers_speed_and_facing() {
     assert_eq!(world.get::<Pos>(mover).unwrap().0, IVec2::new(6, 5));
     assert_eq!(world.get::<Speed>(mover).unwrap().0, IVec2::Y);
     assert_eq!(world.get::<Facing>(mover).unwrap().0, IVec2::Y);
+    // The key still held goes on through, the way the mover now goes.
+    let held = world.get::<MoveIntent>(mover).unwrap().held.unwrap();
+    assert_eq!((held.screen, held.map), (IVec2::X, IVec2::Y));
 }
 
 #[test]

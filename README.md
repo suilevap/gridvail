@@ -104,7 +104,9 @@ next to this file.
   both eased. While turning, the text view rotates as one picture, glyphs
   included; at rest it is upright again, with wall shapes and facing markers
   drawn turned so they keep matching the map. Arrow keys follow the turned
-  view. `PORTALS.md`
+  view, as pressed: a key held while the view turns keeps walking the way
+  it meant when pressed (`MoveIntent`), until it is let go or another is
+  pressed. `PORTALS.md`
   describes the portal view built on it.
 - Renderer-neutral frame composition with depth merge, hex fill, `?` unknown
   borders, and previous-frame diffing. The default `TextRendererPlugin`
@@ -179,7 +181,7 @@ cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
-cargo test --workspace   # 195 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 197 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

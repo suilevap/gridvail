@@ -121,7 +121,9 @@ and renderers must not import it.
   or target with a `Tween` (a retargetable value on Bevy's `EasingCurve`;
   all easing uses Bevy's `EaseFunction`). Q/E turn the view a quarter turn
   and Z/X zoom;
-  movement keys are read as screen directions. Renderers only read the
+  movement keys are read as screen directions, latched when pressed
+  (`MoveIntent`): a held key keeps its map direction while the view turns,
+  and a portal that turns the player turns it too. Renderers only read the
   camera. `PORTALS.md` builds the portal view on it: when the target goes
   through a portal that turns, the operator turns the view with it so the
   picture stays, and with `PortalTurn::KeepNorth` (N) then eases it back.

@@ -77,6 +77,7 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
                         (
                             Speed::default(),
                             MoveCommand::default(),
+                            MoveIntent::default(),
                             PendingPos::default(),
                             PrevPos(cell.pos),
                         ),
