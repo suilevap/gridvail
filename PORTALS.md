@@ -121,10 +121,29 @@ can be seen (optional step 8).
    map coordinates, following the player, so renderers place frame cells
    like map cells. The window may extend past the map's edge, where cells
    seen through a portal are drawn too.
-5. The 3D renderer in view space.
-6. 90° rotations: rotated transforms, facing, and a view frame that turns
-   with the player.
-7. Optional: light through portals.
+5. The 3D renderer in view space. Deprioritised for now.
+6. 90° rotations: portals whose faces point different ways turn the view
+   by quarter turns. **Done.** The field of view and the frame already
+   worked through any `CellTransform`; on top of that:
+   - a mover that comes out of a turning portal has its speed and facing
+     turned (`turn_portal_crossers`), so it goes on the way it was going;
+   - its animation, its children's offsets (the direction marker) and the
+     camera are carried through: the camera turns by the portal's turn the
+     other way, the shorter way round, so the picture on screen does not
+     change and arrow keys go on meaning the same screen directions;
+   - objects seen through a turning portal are drawn turned
+     (`ObjectCell::quarters`, added to the view's own turn when the text
+     renderer picks wall shapes and facing markers).
+
+   `portals.txt` has portal 4 (a quarter turn, room A's north wall to room
+   B's east wall) and portal 5 (a half turn, between the rooms' south
+   walls).
+7. Optional: light through portals. Deprioritised for now.
 8. Optional, after trying portals on screen: wall shapes joined across
    portal edges, by autotiling walls from the neighbours seen in the view
    instead of their map neighbours. Skipped unless the seams look wrong.
+9. Later: enemies plan paths and look through portals, behind a setting.
+   A step through a portal is a jump, which makes the path search's
+   distance heuristic unreliable (`gridvail-path` ignores it for searches
+   with jumps), so it stays opt-in. Today enemies only cross a portal when
+   they happen to step into one.

@@ -136,7 +136,8 @@ and renderers must not import it.
   one world unit per screen pixel), so the turn is rigid; for a non-square
   cell font the spacing would ease between cell width and height. Glyphs
   are drawn for the nearest quarter turn (wall and facing
-  glyphs swapped for their turned versions) and tilted by the rest, so at
+  glyphs swapped for their turned versions, plus the turn of any portal an
+  object is seen through, `ObjectCell::quarters`) and tilted by the rest, so at
   rest they are upright and crisp. Glyphs sample nearest (pixel-exact)
   at rest and linearly while tilted, which smooths their edges mid-turn.
   Wall

@@ -1,11 +1,13 @@
 //! Walking through a portal on the bundled `portals.txt` map, with animation.
 
+use std::f32::consts::{FRAC_PI_2, PI};
 use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::animation::ObjectAnimationPlugin;
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
+use pav_ecs_game_bevy_port::foundation::portal::CellTransform;
 use pav_ecs_game_bevy_port::model::*;
 
 /// The player starts at (19, 7) in room A. The portal in A's east wall at
@@ -98,4 +100,181 @@ fn walking_east_through_the_portal_comes_out_in_the_other_room() {
     // Holding right keeps walking east inside room B.
     assert!(player(&mut app).0.x >= ARRIVAL.x + 3);
     assert_eq!(player(&mut app).0.y, ARRIVAL.y);
+}
+
+/// Walks from the start along row 7 to the column of the portal wall at
+/// `entry`, then holds `forward` into it and on for three cells beyond its
+/// exit, checking every frame that the picture never jumps: the player
+/// stays in the centre of the screen, `mark` (a point beyond the exit)
+/// glides across it, and the direction marker stays in front of the player
+/// through the crossing. Returns the app and the portal's transform.
+fn walk_through_turning_portal(
+    entry: IVec2,
+    approach: KeyCode,
+    forward: KeyCode,
+    mark: Vec2,
+) -> (App, CellTransform) {
+    let mut app = boot();
+    let through = app
+        .world()
+        .resource::<MapGrid>()
+        .portal_at(entry)
+        .expect("a portal face")
+        .through;
+    let exit_floor = through.apply(entry);
+
+    let press = |app: &mut App, key: KeyCode| {
+        let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+        keys.release_all();
+        keys.press(key);
+    };
+    press(&mut app, approach);
+    for _ in 0..200 {
+        app.update();
+        if player(&mut app).0.x == entry.x {
+            break;
+        }
+    }
+    assert_eq!(player(&mut app).0.x, entry.x, "never reached the portal");
+    press(&mut app, forward);
+
+    // Where things are on screen: the player, the mark and the player's
+    // direction marker. Before the crossing the mark is seen through the
+    // portal, at the inverse of its own position.
+    let on_screen = |app: &mut App, crossed: bool| {
+        let camera = *app.world().resource::<ViewCamera>();
+        let (_, shown) = player(app);
+        let world = app.world_mut();
+        let marker = world
+            .query_filtered::<&AnimatedPos, With<BoundTo>>()
+            .single(world)
+            .unwrap()
+            .position;
+        let mark = if crossed {
+            mark
+        } else {
+            through.inverse().apply_point(mark)
+        };
+        (
+            camera.to_view(shown),
+            camera.to_view(mark),
+            camera.to_view(marker),
+        )
+    };
+
+    let mut crossed = false;
+    let mut previous = on_screen(&mut app, crossed);
+    for _ in 0..400 {
+        app.update();
+        let (pos, _) = player(&mut app);
+        let crossing = !crossed && pos == exit_floor;
+        crossed |= crossing;
+        let now = on_screen(&mut app, crossed);
+        assert!(
+            now.0.length() < 1e-3,
+            "the player left the centre: {}",
+            now.0
+        );
+        assert!(
+            now.1.distance(previous.1) < 0.3,
+            "the picture jumped from {} to {}",
+            previous.1,
+            now.1
+        );
+        // The marker swings round the player as they turn; through the
+        // portal it stays in front of them on screen.
+        if crossing {
+            assert!(
+                now.2.distance(previous.2) < 0.3,
+                "the marker jumped from {} to {}",
+                previous.2,
+                now.2
+            );
+        }
+        previous = now;
+        if crossed && (pos - exit_floor).abs().max_element() >= 3 {
+            break;
+        }
+    }
+    assert!(crossed, "the player never came out of the exit");
+    (app, through)
+}
+
+fn facing(app: &mut App) -> IVec2 {
+    let world = app.world_mut();
+    world
+        .query_filtered::<&Facing, With<Player>>()
+        .single(world)
+        .unwrap()
+        .0
+}
+
+/// Portal 4 leads from room A's north wall at (17, 3), open to the south,
+/// out of room B's east wall at (54, 14), open to the west: walking north
+/// into it comes out walking west, a quarter turn counter-clockwise.
+#[test]
+fn walking_through_a_quarter_turning_portal_turns_the_view_without_a_jump() {
+    let (mut app, through) = walk_through_turning_portal(
+        IVec2::new(17, 3),
+        KeyCode::ArrowLeft,
+        KeyCode::ArrowUp,
+        Vec2::new(50.0, 14.0),
+    );
+    assert_eq!(through.quarters, 1);
+    // Holding up keeps walking up the screen: west in room B.
+    let (pos, _) = player(&mut app);
+    assert_eq!(pos, IVec2::new(50, 14));
+    assert_eq!(facing(&mut app), IVec2::NEG_X);
+    let camera = *app.world().resource::<ViewCamera>();
+    assert_eq!(camera.map_direction(IVec2::NEG_Y), IVec2::NEG_X);
+    assert!((camera.rotation + FRAC_PI_2).abs() < 1e-5);
+}
+
+/// Portal 5 leads from room A's south wall at (15, 11) out of room B's
+/// south wall at (44, 21), both open to the north: walking south into it
+/// comes out walking north, a half turn.
+#[test]
+fn walking_through_a_half_turning_portal_turns_the_view_without_a_jump() {
+    let (mut app, through) = walk_through_turning_portal(
+        IVec2::new(15, 11),
+        KeyCode::ArrowLeft,
+        KeyCode::ArrowDown,
+        Vec2::new(44.0, 15.0),
+    );
+    assert_eq!(through.quarters, 2);
+    // Holding down keeps walking down the screen: north in room B.
+    let (pos, _) = player(&mut app);
+    assert_eq!(pos, IVec2::new(44, 17));
+    assert_eq!(facing(&mut app), IVec2::NEG_Y);
+    let camera = *app.world().resource::<ViewCamera>();
+    assert_eq!(camera.map_direction(IVec2::Y), IVec2::NEG_Y);
+    assert!((camera.rotation + PI).abs() < 1e-5);
+}
+
+/// Holds `key` until the player reaches `cell`, for at most 400 frames.
+fn hold_until(app: &mut App, key: KeyCode, cell: IVec2) {
+    let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+    keys.release_all();
+    keys.press(key);
+    for _ in 0..400 {
+        app.update();
+        if player(app).0 == cell {
+            return;
+        }
+    }
+    panic!("never reached {cell}, stopped at {}", player(app).0);
+}
+
+#[test]
+fn going_back_through_a_turning_portal_turns_the_view_back() {
+    let mut app = boot();
+    hold_until(&mut app, KeyCode::ArrowLeft, IVec2::new(17, 7));
+    // Up through portal 4 and one step on, west in room B...
+    hold_until(&mut app, KeyCode::ArrowUp, IVec2::new(52, 14));
+    let camera = *app.world().resource::<ViewCamera>();
+    assert!((camera.rotation + FRAC_PI_2).abs() < 1e-5);
+    // ...then down the screen, east in room B, back through it.
+    hold_until(&mut app, KeyCode::ArrowDown, IVec2::new(17, 6));
+    let camera = *app.world().resource::<ViewCamera>();
+    assert!(camera.rotation.abs() < 1e-5, "{}", camera.rotation);
 }
