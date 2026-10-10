@@ -2,8 +2,15 @@ use bevy::prelude::*;
 
 use super::DynamicLight;
 use crate::foundation::portal::CellTransform;
-use crate::lighting::{dimmed, light_to_palette, DARK_RED};
+use crate::lighting::{dimmed, light_to_palette, DARK_MAGENTA, DARK_RED, MAGENTA};
 use crate::model::*;
+
+/// Colour of a portal's threshold and of portal walls seen from behind or
+/// side-on; remembered ones are dimmer.
+pub const PORTAL_COLOR: u8 = MAGENTA;
+pub const REMEMBERED_PORTAL_COLOR: u8 = DARK_MAGENTA;
+/// What an empty threshold shows instead of the floor's dot.
+pub const PORTAL_GLYPH: char = '░';
 
 /// Composes the frame the player sees.
 ///
@@ -13,6 +20,11 @@ use crate::model::*;
 /// portal is somewhere else on the map, even past its edge; objects there
 /// are drawn once per frame cell showing their cell. Frame cells not seen
 /// now show the map as remembered at their own position, in dimmer colours.
+///
+/// Portals show in `PORTAL_COLOR`: the threshold (the floor where the view
+/// passes through a portal face, drawn as `PORTAL_GLYPH` when empty) and a
+/// portal's wall seen from behind or side-on, so a portal stands out from
+/// any side.
 ///
 /// Two indexes are kept apart: map data (visibility, light) is indexed by
 /// `MapGrid::idx`, frame data by `RenderBuffers::idx`.
@@ -151,14 +163,26 @@ pub fn compose_frame(
         };
         if let Some(seen) = buffers.seen[index] {
             let light = light_at(seen.world);
-            shade(&mut buffers.current[index], true, light_to_palette(&light));
+            let cell = &mut buffers.current[index];
+            shade(cell, true, light_to_palette(&light));
+            // The threshold's floor, or the portal's own wall when the view
+            // does not pass through it.
+            if seen.portal && !occupied {
+                *cell = RenderCell {
+                    ch: PORTAL_GLYPH,
+                    color: PORTAL_COLOR,
+                    depth: 0,
+                };
+            } else if occupied && grid.portal_at(seen.world).is_some() {
+                cell.color = PORTAL_COLOR;
+            }
         } else if known(position) {
             let light = light_at(position);
-            shade(
-                &mut buffers.current[index],
-                is_hex_pos(position),
-                dimmed(light_to_palette(&light)),
-            );
+            let cell = &mut buffers.current[index];
+            shade(cell, is_hex_pos(position), dimmed(light_to_palette(&light)));
+            if occupied && grid.portal_at(position).is_some() {
+                cell.color = REMEMBERED_PORTAL_COLOR;
+            }
         } else if borders_known_background(&buffers, &known, position) {
             buffers.current[index] = RenderCell {
                 ch: '?',
@@ -217,6 +241,7 @@ fn mark_seen(
     let directly = |p: IVec2| SeenCell {
         world: p,
         transform: CellTransform::IDENTITY,
+        portal: false,
     };
     match view {
         Some(view) => {
@@ -225,6 +250,7 @@ fn mark_seen(
                     let seen = SeenCell {
                         world: sample.world,
                         transform: sample.transform,
+                        portal: sample.portal,
                     };
                     mark(buffers, view.pos + sample.delta, seen);
                 }

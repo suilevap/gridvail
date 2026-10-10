@@ -146,6 +146,7 @@ fn objects_behind_a_portal_are_drawn_where_they_are_seen() {
         world: transform.apply(IVec2::new(1, 1) + delta),
         transform,
         value: 1.0,
+        portal: false,
     };
     let mut view = PlayerView::with_radius(4);
     view.pos = IVec2::new(1, 1);
@@ -204,6 +205,7 @@ fn objects_behind_a_portal_are_drawn_where_they_are_seen() {
         Some(SeenCell {
             world: IVec2::new(4, 5),
             transform: through,
+            portal: false,
         })
     );
 }
@@ -230,6 +232,7 @@ fn objects_behind_a_turning_portal_are_drawn_turned() {
         world: transform.apply(IVec2::new(1, 1) + delta),
         transform,
         value: 1.0,
+        portal: false,
     };
     let mut view = PlayerView::with_radius(4);
     view.pos = IVec2::new(1, 1);
@@ -292,12 +295,14 @@ fn an_object_seen_twice_is_drawn_twice() {
             world: IVec2::new(2, 1),
             transform: CellTransform::IDENTITY,
             value: 1.0,
+            portal: false,
         },
         ViewSample {
             delta: IVec2::new(4, 0),
             world: IVec2::new(2, 1),
             transform: back,
             value: 1.0,
+            portal: false,
         },
     ];
     app.world_mut().spawn((
@@ -369,12 +374,14 @@ fn a_child_goes_with_its_parent_even_into_a_portal_wall() {
             world: IVec2::new(2, 1),
             transform: CellTransform::IDENTITY,
             value: 1.0,
+            portal: false,
         },
         ViewSample {
             delta: IVec2::X,
             world: IVec2::new(5, 5),
             transform: through,
             value: 1.0,
+            portal: false,
         },
     ];
     let seen = Vis::VISIBLE | Vis::KNOWN;
@@ -448,6 +455,7 @@ fn what_is_seen_past_the_map_edge_is_drawn() {
         world: IVec2::new(5, 5),
         transform: through,
         value: 1.0,
+        portal: false,
     }];
     app.world_mut()
         .spawn((Player(0), Pos(IVec2::new(1, 1)), view, visibility(&[])));
@@ -463,4 +471,101 @@ fn what_is_seen_past_the_map_edge_is_drawn() {
     assert_eq!(buffers.current[off_map].ch, 'e');
     let drawn = buffers.objects.iter().find(|o| o.cell.ch == 'e').unwrap();
     assert_eq!(drawn.pos, IVec2::new(-2, 1));
+}
+
+#[test]
+fn portals_show_their_threshold_and_their_walls() {
+    use super::frame::{PORTAL_COLOR, PORTAL_GLYPH, REMEMBERED_PORTAL_COLOR};
+    use crate::foundation::fov::ViewSample;
+    use crate::foundation::portal::{CellTransform, PortalFace};
+
+    let mut app = test_app::headless();
+    app.insert_resource(DynamicLight::sized(64))
+        .insert_resource(RenderBuffers::new(8, 8));
+    // Portal walls at (3, 1), open to the west, and at (5, 4), whose open
+    // side the player does not see; a plain wall at (3, 2). The player at
+    // (1, 1) looks through (3, 1) onto map cells 4 rows down, sees the wall
+    // at (5, 4) side-on, and only remembers a third portal wall at (6, 6).
+    let through = CellTransform::translation(IVec2::new(0, 4));
+    let face = PortalFace {
+        side: IVec2::NEG_X,
+        through,
+    };
+    for p in [IVec2::new(3, 1), IVec2::new(5, 4), IVec2::new(6, 6)] {
+        app.world_mut()
+            .resource_mut::<MapGrid>()
+            .set_portal(p, Some(face));
+    }
+    let walls: Vec<Entity> = [
+        IVec2::new(3, 1),
+        IVec2::new(3, 2),
+        IVec2::new(5, 4),
+        IVec2::new(6, 6),
+    ]
+    .into_iter()
+    .map(|p| {
+        app.world_mut()
+            .spawn((Pos(p), Glyph::new('#', 1, GRAY)))
+            .id()
+    })
+    .collect();
+    let sample = |delta: IVec2, transform: CellTransform, portal: bool| ViewSample {
+        delta,
+        world: transform.apply(IVec2::new(1, 1) + delta),
+        transform,
+        value: 1.0,
+        portal,
+    };
+    let mut view = PlayerView::with_radius(6);
+    view.pos = IVec2::new(1, 1);
+    view.samples = vec![
+        sample(IVec2::ZERO, CellTransform::IDENTITY, false),
+        sample(IVec2::new(1, 0), CellTransform::IDENTITY, false),
+        // The threshold: the portal wall's cell, showing (3, 5).
+        sample(IVec2::new(2, 0), through, true),
+        sample(IVec2::new(3, 0), through, false),
+        sample(IVec2::new(2, 1), CellTransform::IDENTITY, false),
+        sample(IVec2::new(4, 3), CellTransform::IDENTITY, false),
+    ];
+    let seen = Vis::VISIBLE | Vis::KNOWN;
+    app.world_mut().spawn((
+        Player(0),
+        Pos(IVec2::new(1, 1)),
+        Speed::default(),
+        view,
+        visibility(&[
+            (IVec2::new(1, 1), seen),
+            (IVec2::new(2, 1), seen),
+            (IVec2::new(3, 2), seen),
+            (IVec2::new(5, 4), seen),
+            (IVec2::new(6, 6), Vis::KNOWN),
+        ]),
+    ));
+    app.world_mut().run_system_once(compose_frame).unwrap();
+    let buffers = app.world().resource::<RenderBuffers>();
+    let cell = |p: IVec2| buffers.current[buffers.idx(p).unwrap()];
+
+    let threshold = cell(IVec2::new(3, 1));
+    assert_eq!(
+        (threshold.ch, threshold.color),
+        (PORTAL_GLYPH, PORTAL_COLOR)
+    );
+    assert_eq!(cell(IVec2::new(4, 1)).ch, '.', "the floor beyond it");
+    assert_eq!(cell(IVec2::new(5, 4)).color, PORTAL_COLOR, "seen side-on");
+    assert_eq!(
+        cell(IVec2::new(6, 6)).color,
+        REMEMBERED_PORTAL_COLOR,
+        "remembered"
+    );
+    assert_ne!(cell(IVec2::new(3, 2)).color, PORTAL_COLOR, "a plain wall");
+    // The wall objects carry the colour their cell got.
+    let color_of = |wall: Entity| {
+        buffers
+            .objects
+            .iter()
+            .find(|object| object.entity == wall)
+            .map(|object| object.cell.color)
+    };
+    assert_eq!(color_of(walls[2]), Some(PORTAL_COLOR));
+    assert_eq!(color_of(walls[0]), None, "looked through, not drawn");
 }
