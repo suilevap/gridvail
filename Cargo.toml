@@ -11,7 +11,37 @@ rust-version = "1.95"
 members = ["crates/gridvail-path"]
 
 [dependencies]
-bevy = { version = "0.19.1", features = ["bevy_remote"] }
+# Only the Bevy parts the game uses, so the web download stays small: no
+# audio, glTF, scenes, picking, gizmos, animation clips, gamepads or extra
+# image codecs.
+bevy = { version = "0.19.1", default-features = false, features = [
+    # App, windowing and input.
+    "default_app",
+    "std",
+    "multi_threaded",
+    "bevy_winit",
+    "x11",
+    "wayland",
+    "webgl2",
+    "keyboard",
+    "mouse",
+    "touch",
+    # Rendering: the text map (Text2d), the HUD (UI) and the 3D walls.
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_text",
+    "default_font",
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_sprite_render",
+    "bevy_pbr",
+    # The 3D walls camera tonemaps with Bevy's default lookup tables.
+    "tonemapping_luts",
+    "zstd_rust",
+    # Debug panel and the agent API.
+    "sysinfo_plugin",
+    "bevy_remote",
+] }
 rand = "0.10"
 bitflags = "2"
 serde = { version = "1", features = ["derive"] }
