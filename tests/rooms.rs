@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
+use pav_ecs_game_bevy_port::animation::ObjectAnimationPlugin;
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::model::*;
 
@@ -24,6 +25,17 @@ const RIGHT: IVec2 = IVec2::new(5, 1);
 const BELOW: IVec2 = IVec2::new(4, 2);
 
 fn boot() -> App {
+    boot_with(|_| {})
+}
+
+/// Boots with the animation step, which shows walls rising and sinking.
+fn boot_animated() -> App {
+    boot_with(|app| {
+        app.add_plugins(ObjectAnimationPlugin);
+    })
+}
+
+fn boot_with(extra: impl FnOnce(&mut App)) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .init_resource::<ButtonInput<KeyCode>>()
@@ -32,6 +44,7 @@ fn boot() -> App {
         )))
         .insert_resource(MapText(MAP))
         .add_plugins(GamePlugin);
+    extra(&mut app);
     app.update();
     app.update();
     app
@@ -128,4 +141,56 @@ fn a_room_waits_while_something_stands_where_a_wall_goes() {
     step(&mut app, KeyCode::ArrowDown);
     assert!(wall_at(&mut app, LEFT).is_none(), "and switches once clear");
     assert!(wall_at(&mut app, RIGHT).is_some());
+}
+
+fn height(app: &mut App, entity: Entity) -> f32 {
+    app.world().get::<AnimatedPos>(entity).unwrap().height
+}
+
+#[test]
+fn with_animation_new_walls_rise_and_old_ones_sink_away() {
+    let mut app = boot_animated();
+    let old = app.world().resource::<MapGrid>().get(LEFT).unwrap();
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::ArrowRight);
+    for _ in 0..200 {
+        app.update();
+        if player(&mut app) == PLATE {
+            break;
+        }
+    }
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(KeyCode::ArrowRight);
+    app.update();
+
+    // The switch is done in the world at once.
+    let new = app
+        .world()
+        .resource::<MapGrid>()
+        .get(RIGHT)
+        .expect("new wall");
+    assert!(app.world().get::<Wall>(new).is_some());
+    assert!(app.world().resource::<MapGrid>().get(LEFT).is_none());
+    assert!(
+        app.world().get::<Wall>(old).is_none(),
+        "the old wall is no wall"
+    );
+    assert!(app.world().get::<Sinking>(old).is_some());
+    // Only how they are shown takes time.
+    let (rising, sinking) = (height(&mut app, new), height(&mut app, old));
+    assert!(rising > 0.0 && rising < 1.0, "rising: {rising}");
+    assert!(sinking > 0.0 && sinking < 1.0, "sinking: {sinking}");
+    let waits = app.world().resource::<TurnPacing>().animation().unwrap();
+    assert!(
+        waits > Duration::from_millis(100),
+        "the next turn waits for them: {waits:?}"
+    );
+
+    for _ in 0..40 {
+        app.update();
+    }
+    assert_eq!(height(&mut app, new), 1.0, "the new wall stands");
+    assert!(app.world().get_entity(old).is_err(), "the old one is gone");
 }

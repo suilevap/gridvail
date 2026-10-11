@@ -425,7 +425,8 @@ pub(super) fn place_object_sprites(
             text.0.clear();
             text.0.push_str(&drawn);
         }
-        let desired = palette_color(object.cell.color);
+        // Rising out of the floor or sinking into it, it fades.
+        let desired = palette_color(object.cell.color).with_alpha(object.height);
         if color.0 != desired {
             color.0 = desired;
         }

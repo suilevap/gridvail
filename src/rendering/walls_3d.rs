@@ -316,7 +316,8 @@ fn extruded_wall(
 }
 
 /// Keeps a mesh for every wall as walls come, go and are autotiled again
-/// (a room switching layouts).
+/// (a room switching layouts). A wall that goes keeps its mesh while it is
+/// shown sinking, until it is despawned.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn follow_wall_changes(
     mut commands: Commands,
@@ -326,7 +327,7 @@ fn follow_wall_changes(
     materials: Res<WallMaterials>,
     mut extruded: ResMut<ExtrudedWalls>,
     changed: Query<(Entity, &Pos, &Glyph), (With<Wall>, Changed<Glyph>)>,
-    mut removed: RemovedComponents<Wall>,
+    mut removed: RemovedComponents<Glyph>,
     mut walls: Query<(&mut ExtrudedWall, &mut Mesh3d)>,
 ) {
     for source in removed.read() {
@@ -404,8 +405,10 @@ fn sync_walls(
         if material.0 != *desired {
             material.0 = desired.clone();
         }
+        // A rising or sinking wall stands partly below the floor, which
+        // hides that part.
         let translation = grid_to_world_f(animated.position, grid.width, grid.height)
-            + Vec3::Z * animated.lift * CELL_SIZE.y;
+            + Vec3::Z * (animated.lift * CELL_SIZE.y - (1.0 - animated.height) * WALL_HEIGHT);
         if transform.translation != translation {
             transform.translation = translation;
         }

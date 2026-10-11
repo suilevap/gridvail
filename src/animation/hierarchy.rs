@@ -92,6 +92,7 @@ pub fn animate_children(
             shown.set_if_neq(AnimatedPos {
                 position: parent.position + animation.state.position,
                 lift: parent.lift + animation.state.lift,
+                height: parent.height,
             });
         }
     }

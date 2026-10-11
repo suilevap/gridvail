@@ -53,8 +53,10 @@ and renderers must not import it.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
   `rooms.rs` switches `Room`s to the layout asked for (`Room::advance`),
-  despawning and spawning walls and marking their neighbours with `Tile`,
-  which `tile_system` autotiles again. It does not know what asked:
+  spawning `Rising` walls, taking the walls that go off the map and leaving
+  them `Sinking` (despawned at once without the animation step), and
+  marking their neighbours with `Tile`, which `tile_system` autotiles
+  again. It does not know what asked:
   `plates.rs` is a stand-in trigger (`PressurePlate`) until a trigger/action
   system, where a room switch is one kind of action.
 - `vision/` converts sensors and blocker state into cached FOV and visibility
@@ -117,7 +119,11 @@ and renderers must not import it.
   their parent's shown position plus their animated offset from it: the
   same `ObjectAnimation` and per-frame step as any object, but following
   `rotate(offset, facing)` instead of the cell, along `Path::Orbit` around
-  the parent, so a turn swings them around it rather than through it. `ObjectAnimationPlugin` picks the
+  the parent, so a turn swings them around it rather than through it.
+  `Rising` objects come up out of the floor and `Sinking` ones go down into
+  it (`AnimatedPos::height`, eased by a `Tween`); sunk objects are
+  despawned. Renderers lower a wall's mesh into the floor or fade its
+  glyph, and the frame shows the floor under an object partly sunk. `ObjectAnimationPlugin` picks the
   timing from `MotionStyle` (per-entity `ObjectMotion` overrides), writes the
   shown position to `AnimatedPos`, and reports how long unfinished moves
   still run to `TurnPacing`, which holds the next turn until they have nearly

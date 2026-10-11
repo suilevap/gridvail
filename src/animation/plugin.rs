@@ -5,7 +5,10 @@ use bevy::prelude::*;
 use crate::model::*;
 use crate::schedule::GamePhase;
 
-use super::{animate_children, MotionState, MotionStyle, MovePath, ObjectMotion, Path};
+use super::{animate_children, MotionState, MotionStyle, MovePath, ObjectMotion, Path, Tween};
+
+/// How long an object takes to rise out of the floor or sink into it.
+const RISE_SECONDS: f32 = 0.4;
 
 /// Marks an object whose animation never holds back the next turn, for
 /// decorative or ambient motion. Children (`BoundTo`, such as the player's
@@ -15,24 +18,39 @@ use super::{animate_children, MotionState, MotionStyle, MovePath, ObjectMotion, 
 pub struct NonBlockingAnimation;
 
 /// Animation state of one positioned object.
-#[derive(Component, Clone, Copy, Debug)]
+#[derive(Component, Clone, Debug)]
 pub struct ObjectAnimation {
     pub state: MotionState,
+    /// How far it stands out of the floor (`AnimatedPos::height`).
+    pub height: Tween<f32>,
+}
+
+impl ObjectAnimation {
+    fn remaining(&self) -> f32 {
+        self.state.remaining().max(self.height.remaining())
+    }
 }
 
 /// Animates every positioned object (actors, walls, decor) between the
 /// cells the simulation moves it through, places children relative to their
-/// animated parents, and holds the next turn until those animations have
-/// finished.
+/// animated parents, raises [`Rising`] objects out of the floor and sinks
+/// [`Sinking`] ones into it (despawning them once sunk), and holds the next
+/// turn until those animations have finished.
 pub struct ObjectAnimationPlugin;
 
 impl Plugin for ObjectAnimationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MotionStyle>()
             .add_observer(start_animation)
+            .add_observer(start_sinking)
             .add_systems(
                 Update,
-                (bump_blocked_movers, animate_objects, animate_children)
+                (
+                    bump_blocked_movers,
+                    animate_objects,
+                    animate_children,
+                    remove_sunk,
+                )
                     .chain()
                     .in_set(GamePhase::Animation),
             );
@@ -41,26 +59,69 @@ impl Plugin for ObjectAnimationPlugin {
 
 /// Objects get their animation state when they are first placed, so steady
 /// frames never queue commands. A child's state lives in its parent's frame:
-/// it animates its offset from the parent, not its cell.
+/// it animates its offset from the parent, not its cell. A [`Rising`]
+/// object starts sunk into the floor and rises.
+#[allow(clippy::type_complexity)]
 fn start_animation(
     add: On<Add, Pos>,
-    objects: Query<(&Pos, Option<&BoundTo>)>,
+    style: Res<MotionStyle>,
+    objects: Query<(&Pos, Option<&BoundTo>, Option<&ObjectMotion>, Has<Rising>)>,
     facings: Query<&Facing>,
     mut commands: Commands,
 ) {
-    let Ok((pos, bound)) = objects.get(add.entity) else {
+    let Ok((pos, bound, own_style, rising)) = objects.get(add.entity) else {
         return;
     };
     let start = match bound {
         Some(bound) => rotate(bound.offset, facing_of(bound.parent, &facings)),
         None => pos.0,
     };
+    let mut height = Tween::at(1.0);
+    if rising {
+        height.snap(0.0);
+        ease_height(&mut height, 1.0, style_of(own_style, *style));
+    }
+    let shown = AnimatedPos {
+        height: height.value(),
+        ..AnimatedPos::at(pos.0)
+    };
     commands.entity(add.entity).insert((
         ObjectAnimation {
             state: MotionState::at(start.as_vec2()),
+            height,
         },
-        AnimatedPos::at(pos.0),
+        shown,
     ));
+}
+
+/// A [`Sinking`] object starts going down into the floor.
+fn start_sinking(
+    add: On<Add, Sinking>,
+    style: Res<MotionStyle>,
+    mut objects: Query<(Option<&ObjectMotion>, &mut ObjectAnimation)>,
+) {
+    if let Ok((own_style, mut animation)) = objects.get_mut(add.entity) {
+        ease_height(&mut animation.height, 0.0, style_of(own_style, *style));
+    }
+}
+
+/// Rising and sinking take [`RISE_SECONDS`], or no time when objects snap.
+fn ease_height(height: &mut Tween<f32>, to: f32, style: MotionStyle) {
+    let seconds = if style == MotionStyle::Snap {
+        0.0
+    } else {
+        RISE_SECONDS
+    };
+    height.ease_to(to, seconds, EaseFunction::SmoothStep);
+}
+
+/// Despawns [`Sinking`] objects once they have sunk.
+fn remove_sunk(mut commands: Commands, sinking: Query<(Entity, &ObjectAnimation), With<Sinking>>) {
+    for (entity, animation) in &sinking {
+        if animation.height.done() {
+            commands.entity(entity).despawn();
+        }
+    }
 }
 
 pub(super) fn facing_of(entity: Entity, facings: &Query<&Facing>) -> IVec2 {
@@ -187,12 +248,14 @@ pub fn animate_objects(
             |from, to| wrapped(from, to, &grid),
             dt,
         );
+        animation.height.advance(dt);
         if !non_blocking {
-            blocking = blocking.max(animation.state.remaining());
+            blocking = blocking.max(animation.remaining());
         }
         shown.set_if_neq(AnimatedPos {
             position: animation.state.position,
             lift: animation.state.lift,
+            height: animation.height.value(),
         });
     }
     // The next turn waits until every blocking animation has (nearly)

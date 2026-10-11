@@ -66,6 +66,7 @@ fn locked_camera_sits_on_the_shown_position() {
     let shown = AnimatedPos {
         position: Vec2::new(3.4, 2.0),
         lift: 0.2,
+        ..AnimatedPos::default()
     };
     app.world_mut().entity_mut(player).insert(shown);
     app.update();
