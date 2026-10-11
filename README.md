@@ -106,6 +106,14 @@ next to this file.
   where the view passes through it (its threshold), and a portal's wall
   seen from behind or side-on is magenta too (dark magenta when
   remembered). The 3D renderer does not show portals yet.
+- Rooms that change shape (an addition, in progress): `_` in a map is a
+  pressure plate, and `@room <x> <y>` blocks after the map give other
+  layouts of a rectangle of it (`X` wall, anything else floor). Stepping
+  onto a plate switches every room to its next layout, cycling back to the
+  map's own: walls the new layout lacks go, the ones it adds come, and the
+  walls around them join up again. Sight, light and paths follow at once.
+  A room waits while anything stands where a new wall goes. The switch is
+  instant for now; `rooms.txt` has a room whose gaps swap sides.
 - Settings (an addition): Esc opens a small menu to choose how the view
   behaves through portals that turn (turn with the player or keep north
   up), when the compass shows (when the view is turned, always or off) and
@@ -204,8 +212,9 @@ cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk through portals too
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
+cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 234 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 238 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

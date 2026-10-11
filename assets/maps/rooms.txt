@@ -1,0 +1,25 @@
+XXXXXXXXXXXXXXXXXXXXXXXXX
+X.......................X
+X..p..._................X
+X.......................X
+X...XXXXXXXXXXXXXXXXX...X
+X...X...............X...X
+X...X..XXXXX.XXXXX..X...X
+X...X..X.........X..X...X
+X......X....i._..X......X
+X...X..X.........X..X...X
+X...X..XXXXX.XXXXX..X...X
+X...X...............X...X
+X...XXXXXXXXXXXXXXXXX...X
+X.......................X
+XXXXXXXXXXXXXXXXXXXXXXXXX
+@room 4 4
+XXXXXXXX.XXXXXXXX
+X...............X
+X..XXXXXXXXXXX..X
+X..X.........X..X
+X...............X
+X..X.........X..X
+X..XXXXXXXXXXX..X
+X...............X
+XXXXXXXX.XXXXXXXX

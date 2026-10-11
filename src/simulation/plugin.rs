@@ -2,8 +2,8 @@ use bevy::prelude::*;
 use rand::SeedableRng;
 
 use crate::model::{
-    CollisionBuffer, ControlScheme, MapGrid, PortalCrossings, SharedRng, TokenTimer, TurnPacing,
-    TurnState,
+    CollisionBuffer, ControlScheme, MapGrid, PortalCrossings, SharedRng, Tile, TokenTimer,
+    TurnPacing, TurnState,
 };
 use crate::schedule::{GamePhase, StartupPhase};
 
@@ -56,6 +56,12 @@ impl Plugin for SimulationPlugin {
                     verify_map,
                     open_doors,
                     pick_up_items,
+                    (
+                        press_plates,
+                        transform_rooms,
+                        tile_system.run_if(any_with_component::<Tile>),
+                    )
+                        .chain(),
                     drop_items.run_if(has_destroy_requests),
                     destroy_entities.run_if(has_destroy_requests),
                     direction_tiles,
