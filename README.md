@@ -318,7 +318,9 @@ on every push to `main` and publishes it to GitHub Pages, served from the
 `gh-pages`, `/ (root)`). Each pull request from this repository also gets a
 preview at `https://suilevap.github.io/gridvail/pr/<number>/`, linked in a
 comment on the pull request, rebuilt on every push, and removed when the
-pull request closes. `gh-pages` is kept to a single commit. The page's bottom-right corner shows
+pull request closes. Changes that only touch docs (`**.md`), `tests/`,
+`tools/` or `.claude/` build nothing, and the `no-preview` label skips a
+pull request's build. `gh-pages` is kept to a single commit. The page's bottom-right corner shows
 the commit and UTC time of the build it serves ("dev" for a local build). To build locally:
 
 ```sh

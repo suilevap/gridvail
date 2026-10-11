@@ -4,11 +4,24 @@ name: Web build
 # repository gets its own preview under pr/<number>/, linked in a comment and
 # removed when the pull request closes. Both live in the gh-pages branch,
 # which GitHub Pages serves (Settings → Pages → Deploy from a branch).
+#
+# Changes that cannot alter the game (docs, tests, tools) build nothing, and
+# a pull request labelled no-preview skips its build too.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'tests/**'
+      - 'tools/**'
+      - '.claude/**'
   pull_request:
     types: [opened, synchronize, reopened, closed]
+    paths-ignore:
+      - '**.md'
+      - 'tests/**'
+      - 'tools/**'
+      - '.claude/**'
   workflow_dispatch:
 
 permissions:
@@ -21,7 +34,9 @@ concurrency:
 
 jobs:
   build:
-    if: github.event.action != 'closed'
+    if: >-
+      github.event.action != 'closed'
+      && !contains(github.event.pull_request.labels.*.name, 'no-preview')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
