@@ -5,18 +5,25 @@ name: Web build
 # removed when the pull request closes. Both live in the gh-pages branch,
 # which GitHub Pages serves (Settings → Pages → Deploy from a branch).
 #
+# Previews are built from the branch's own commit. Plain pull_request events
+# would build GitHub's trial merge with main instead, and GitHub runs nothing
+# at all for a pull request with merge conflicts. So pushes to any branch
+# update its pull request's preview, and pull_request_target (which runs
+# main's copy of this workflow and needs no trial merge) covers opening,
+# reopening and closing.
+#
 # Changes that cannot alter the game (docs, tests, tools) build nothing, and
 # a pull request labelled no-preview skips its build too.
 on:
   push:
-    branches: [main]
+    branches: ['**', '!gh-pages']
     paths-ignore:
       - '**.md'
       - 'tests/**'
       - 'tools/**'
       - '.claude/**'
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
+  pull_request_target:
+    types: [opened, reopened, closed]
     paths-ignore:
       - '**.md'
       - 'tests/**'
@@ -25,21 +32,49 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
-  group: web-${{ github.event.pull_request.number || github.ref }}
+  # One run per branch, whichever event started it; a newer one cancels it.
+  group: web-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    if: >-
-      github.event.action != 'closed'
-      && !contains(github.event.pull_request.labels.*.name, 'no-preview')
+  target:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      dest: ${{ steps.target.outputs.dest }}
+      sha: ${{ steps.target.outputs.sha }}
+      pr: ${{ steps.target.outputs.pr }}
+      remove: ${{ steps.target.outputs.remove }}
+    steps:
+      # The default checkout: main for pull_request_target, the pushed
+      # branch otherwise. Only the script is used from it.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - id: target
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const target = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/preview-target.js`);
+            await target({ github, context, core });
+
+  build:
+    needs: target
+    if: needs.target.outputs.dest != ''
+    runs-on: ubuntu-latest
+    # Runs the branch's code (build.rs, cargo), so it gets no write access.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.target.outputs.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -48,6 +83,10 @@ jobs:
       - name: Install Rust (rust-toolchain.toml) with the wasm target
         run: rustup target add wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+        with:
+          # pull_request_target saves under main's cache scope; keep branch
+          # builds from writing there.
+          save-if: ${{ github.event_name != 'pull_request_target' }}
       - name: Build
         run: cargo build --profile web --target wasm32-unknown-unknown
       - name: Install wasm-bindgen (must match Cargo.lock)
@@ -64,13 +103,13 @@ jobs:
           ./binaryen-version_123/bin/wasm-opt -Os --all-features -o dist/gridvail_bg.wasm dist/gridvail_bg.wasm
       - name: Assemble site
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ needs.target.outputs.pr }}
+          BUILD_SHA: ${{ needs.target.outputs.sha }}
         run: |
           # Stamp the page with the commit and build time shown in its corner;
-          # a preview names its pull request and the branch's own commit.
-          label=${GITHUB_SHA::7}
-          if [ -n "$PR_NUMBER" ]; then label="PR #$PR_NUMBER · ${PR_SHA::7}"; fi
+          # a preview names its pull request too.
+          label=${BUILD_SHA::7}
+          if [ -n "$PR_NUMBER" ]; then label="PR #$PR_NUMBER · $label"; fi
           sed -e "s/__BUILD_SHA__/$label/" \
               -e "s/__BUILD_TIME__/$(date -u '+%Y-%m-%d %H:%M UTC')/" \
               web/index.html > dist/index.html
@@ -82,14 +121,15 @@ jobs:
           retention-days: 3
 
   publish:
-    needs: build
-    # Fork pull requests get no write token, so they build without a preview.
-    if: >-
-      (github.event_name == 'pull_request'
-        && github.event.pull_request.head.repo.full_name == github.repository)
-      || github.ref == 'refs/heads/main'
+    needs: [target, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
+      # Default checkout (main for pull_request_target), for the scripts only;
+      # nothing from the built branch runs here. Not sparse: publish-pages.sh
+      # stages the whole site through this repository's index.
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
@@ -97,42 +137,51 @@ jobs:
           path: ${{ runner.temp }}/site
       - name: Publish to gh-pages
         env:
-          DEST: ${{ github.event.pull_request.number && format('pr/{0}', github.event.pull_request.number) || '.' }}
+          DEST: ${{ needs.target.outputs.dest }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           .github/scripts/publish-pages.sh "$DEST" "$RUNNER_TEMP/site"
       - name: Link the preview from the pull request
-        if: github.event_name == 'pull_request'
+        if: needs.target.outputs.pr != ''
         uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.target.outputs.pr }}
+          BUILD_SHA: ${{ needs.target.outputs.sha }}
         with:
           script: |
             const comment = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/preview-comment.js`);
             const { owner, repo } = context.repo;
-            const pr = context.payload.pull_request;
-            const url = `https://${owner}.github.io/${repo}/pr/${pr.number}/`;
-            await comment({ github, context },
+            const pr = Number(process.env.PR_NUMBER);
+            const url = `https://${owner}.github.io/${repo}/pr/${pr}/`;
+            await comment({ github, context }, pr,
               `**Web preview:** ${url}\n\n` +
-              `Built from ${pr.head.sha.slice(0, 7)}; updated on every push and ` +
-              `removed when this pull request closes. GitHub Pages can take a ` +
-              `minute after this comment to serve it.`);
+              `Built from the branch at ${process.env.BUILD_SHA.slice(0, 7)} (not merged ` +
+              `with main); updated on every push and removed when this pull request ` +
+              `closes. GitHub Pages can take a minute after this comment to serve it.`);
 
   remove-preview:
-    if: >-
-      github.event.action == 'closed'
-      && github.event.pull_request.head.repo.full_name == github.repository
+    needs: target
+    if: needs.target.outputs.remove == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - name: Remove the preview from gh-pages
+        env:
+          PR_NUMBER: ${{ needs.target.outputs.pr }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          .github/scripts/publish-pages.sh "pr/${{ github.event.pull_request.number }}"
+          .github/scripts/publish-pages.sh "pr/$PR_NUMBER"
       - name: Note the removal on the pull request
         uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.target.outputs.pr }}
         with:
           script: |
             const comment = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/preview-comment.js`);
-            await comment({ github, context },
+            await comment({ github, context }, Number(process.env.PR_NUMBER),
               '**Web preview:** removed now that this pull request is closed.');

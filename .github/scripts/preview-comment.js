@@ -2,9 +2,8 @@
 // updated in place instead of adding a comment on every push.
 const MARKER = '<!-- web-preview -->';
 
-module.exports = async ({ github, context }, body) => {
+module.exports = async ({ github, context }, issue_number, body) => {
   const { owner, repo } = context.repo;
-  const issue_number = context.payload.pull_request.number;
   const comments = await github.paginate(github.rest.issues.listComments, {
     owner,
     repo,
