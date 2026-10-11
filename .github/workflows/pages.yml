@@ -1,23 +1,27 @@
-name: Deploy web build to GitHub Pages
+name: Web build
 
+# main's build is served at the site root, and each pull request from this
+# repository gets its own preview under pr/<number>/, linked in a comment and
+# removed when the pull request closes. Both live in the gh-pages branch,
+# which GitHub Pages serves (Settings → Pages → Deploy from a branch).
 on:
   push:
     branches: [main]
-  # Pull requests build the bundle; only main deploys it.
   pull_request:
+    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
+  pull-requests: write
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: web-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,23 +48,76 @@ jobs:
           curl -sSL https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz | tar xz
           ./binaryen-version_123/bin/wasm-opt -Os --all-features -o dist/gridvail_bg.wasm dist/gridvail_bg.wasm
       - name: Assemble site
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          # Stamp the page with the commit and build time shown in its corner.
-          sed -e "s/__BUILD_SHA__/${GITHUB_SHA::7}/" \
+          # Stamp the page with the commit and build time shown in its corner;
+          # a preview names its pull request and the branch's own commit.
+          label=${GITHUB_SHA::7}
+          if [ -n "$PR_NUMBER" ]; then label="PR #$PR_NUMBER · ${PR_SHA::7}"; fi
+          sed -e "s/__BUILD_SHA__/$label/" \
               -e "s/__BUILD_TIME__/$(date -u '+%Y-%m-%d %H:%M UTC')/" \
               web/index.html > dist/index.html
           mkdir -p dist/assets && cp -r assets/shaders dist/assets/
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
+          name: site
           path: dist
+          retention-days: 3
 
-  deploy:
-    if: github.event_name != 'pull_request'
+  publish:
     needs: build
+    # Fork pull requests get no write token, so they build without a preview.
+    if: >-
+      (github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name == github.repository)
+      || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: ${{ runner.temp }}/site
+      - name: Publish to gh-pages
+        env:
+          DEST: ${{ github.event.pull_request.number && format('pr/{0}', github.event.pull_request.number) || '.' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          .github/scripts/publish-pages.sh "$DEST" "$RUNNER_TEMP/site"
+      - name: Link the preview from the pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/preview-comment.js`);
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const url = `https://${owner}.github.io/${repo}/pr/${pr.number}/`;
+            await comment({ github, context },
+              `**Web preview:** ${url}\n\n` +
+              `Built from ${pr.head.sha.slice(0, 7)}; updated on every push and ` +
+              `removed when this pull request closes. GitHub Pages can take a ` +
+              `minute after this comment to serve it.`);
+
+  remove-preview:
+    if: >-
+      github.event.action == 'closed'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove the preview from gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          .github/scripts/publish-pages.sh "pr/${{ github.event.pull_request.number }}"
+      - name: Note the removal on the pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/preview-comment.js`);
+            await comment({ github, context },
+              '**Web preview:** removed now that this pull request is closed.');

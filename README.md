@@ -311,8 +311,12 @@ environmental symbols remain single-line billboards to avoid crowding.
 ## Web build (WebAssembly)
 
 The game also runs in the browser. `.github/workflows/pages.yml` builds it
-on every push to `main` and publishes it to GitHub Pages (enable it once
-under Settings → Pages → Source: GitHub Actions). The page's bottom-right corner shows
+on every push to `main` and publishes it to GitHub Pages, served from the
+`gh-pages` branch (Settings → Pages → Source: Deploy from a branch,
+`gh-pages`, `/ (root)`). Each pull request from this repository also gets a
+preview at `https://suilevap.github.io/gridvail/pr/<number>/`, linked in a
+comment on the pull request, rebuilt on every push, and removed when the
+pull request closes. `gh-pages` is kept to a single commit. The page's bottom-right corner shows
 the commit and UTC time of the build it serves ("dev" for a local build). To build locally:
 
 ```sh
