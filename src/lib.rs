@@ -1,5 +1,7 @@
 //! PavEcsGame Lite Bevy port (library root; the window binary is thin).
 
+// Desktop only: a browser page cannot serve the agent API.
+#[cfg(not(target_family = "wasm"))]
 pub mod agent_api;
 pub mod ai;
 pub mod animation;

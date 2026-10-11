@@ -12,7 +12,7 @@ use crate::model::*;
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::Rules;
 
-use super::walls_3d::{billboard_pattern, ExtrudedWalls};
+use super::extruded::{billboard_pattern, ExtrudedWalls};
 use crate::animation::MotionStyle;
 use crate::camera::{CameraOperator, ZOOM_RANGE};
 
@@ -48,11 +48,15 @@ pub(super) struct ObjectSprite {
 
 impl ObjectSprite {
     /// Displayed position in grid cells.
+    // Used by the 3D walls renderer, which the web build leaves out.
+    #[cfg_attr(target_family = "wasm", allow(dead_code))]
     pub(super) fn position(&self) -> Vec2 {
         self.position
     }
 
     /// Hop height above the ground, in cells.
+    // Used by the 3D walls renderer, which the web build leaves out.
+    #[cfg_attr(target_family = "wasm", allow(dead_code))]
     pub(super) fn lift(&self) -> f32 {
         self.lift
     }
@@ -639,10 +643,13 @@ fn update_hud(
     }
 }
 
+// Used by the 3D walls renderer, which the web build leaves out.
+#[cfg_attr(target_family = "wasm", allow(dead_code))]
 pub(super) fn grid_to_world(position: IVec2, width: i32, height: i32) -> Vec3 {
     grid_to_world_f(position.as_vec2(), width, height)
 }
 
+#[cfg_attr(target_family = "wasm", allow(dead_code))]
 pub(super) fn grid_to_world_f(position: Vec2, width: i32, height: i32) -> Vec3 {
     Vec3::new(
         (position.x - width as f32 / 2.0 + 0.5) * CELL_SIZE.x,

@@ -2,11 +2,10 @@
 
 use std::fmt::Write;
 
+#[cfg(not(target_family = "wasm"))]
+use bevy::diagnostic::SystemInformationDiagnosticsPlugin;
 use bevy::{
-    diagnostic::{
-        DiagnosticsStore, EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin,
-        SystemInformationDiagnosticsPlugin,
-    },
+    diagnostic::{DiagnosticsStore, EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin},
     prelude::*,
 };
 
@@ -40,11 +39,13 @@ pub struct DebugPerformancePlugin;
 
 impl Plugin for DebugPerformancePlugin {
     fn build(&self, app: &mut App) {
+        // Desktop only: browsers expose no CPU or memory figures.
+        #[cfg(not(target_family = "wasm"))]
+        app.add_plugins(SystemInformationDiagnosticsPlugin);
         app.init_resource::<PerformancePanelState>()
             .add_plugins((
                 FrameTimeDiagnosticsPlugin::default(),
                 EntityCountDiagnosticsPlugin::default(),
-                SystemInformationDiagnosticsPlugin,
             ))
             .add_systems(Startup, setup.after(StartupPhase::Renderer))
             .add_systems(
@@ -123,22 +124,7 @@ fn update_panel(
     let fps = smoothed(&diagnostics, &FrameTimeDiagnosticsPlugin::FPS);
     let frame_ms = smoothed(&diagnostics, &FrameTimeDiagnosticsPlugin::FRAME_TIME);
     let entities = latest(&diagnostics, &EntityCountDiagnosticsPlugin::ENTITY_COUNT);
-    let process_cpu = smoothed(
-        &diagnostics,
-        &SystemInformationDiagnosticsPlugin::PROCESS_CPU_USAGE,
-    );
-    let process_memory = smoothed(
-        &diagnostics,
-        &SystemInformationDiagnosticsPlugin::PROCESS_MEM_USAGE,
-    );
-    let system_cpu = smoothed(
-        &diagnostics,
-        &SystemInformationDiagnosticsPlugin::SYSTEM_CPU_USAGE,
-    );
-    let system_memory = smoothed(
-        &diagnostics,
-        &SystemInformationDiagnosticsPlugin::SYSTEM_MEM_USAGE,
-    );
+    let [process_cpu, process_memory, system_cpu, system_memory] = system_usage(&diagnostics);
 
     panel.0.clear();
     write!(
@@ -166,6 +152,26 @@ fn update_panel(
         None => write!(panel.0, "ready"),
     }
     .expect("writing to String cannot fail");
+}
+
+/// Process and system CPU and memory use, or zeros where the platform does
+/// not report them (the web build).
+fn system_usage(diagnostics: &DiagnosticsStore) -> [f64; 4] {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        [
+            SystemInformationDiagnosticsPlugin::PROCESS_CPU_USAGE,
+            SystemInformationDiagnosticsPlugin::PROCESS_MEM_USAGE,
+            SystemInformationDiagnosticsPlugin::SYSTEM_CPU_USAGE,
+            SystemInformationDiagnosticsPlugin::SYSTEM_MEM_USAGE,
+        ]
+        .map(|path| smoothed(diagnostics, &path))
+    }
+    #[cfg(target_family = "wasm")]
+    {
+        let _ = diagnostics;
+        [0.0; 4]
+    }
 }
 
 fn smoothed(diagnostics: &DiagnosticsStore, path: &bevy::diagnostic::DiagnosticPath) -> f64 {
