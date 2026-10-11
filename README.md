@@ -108,7 +108,9 @@ next to this file.
   remembered). The 3D renderer does not show portals yet.
 - Rooms that change shape (an addition, in progress): `_` in a map is a
   pressure plate, and `@room <x> <y>` blocks after the map give other
-  layouts of a rectangle of it (`X` wall, anything else floor). Stepping
+  layouts of a rectangle of it (`X` wall, anything else floor). Plates are
+  a stand-in trigger for trying rooms out until a trigger/action system,
+  where switching a room is one kind of action, replaces them. Stepping
   onto a plate switches every room to its next layout, cycling back to the
   map's own: walls the new layout lacks go, the ones it adds come, and the
   walls around them join up again. Sight, light and paths follow at once.

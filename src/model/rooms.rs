@@ -2,6 +2,8 @@ use bevy::prelude::*;
 
 /// A floor cell that presses when an actor steps onto it and springs back
 /// when it leaves. Each press switches every [`Room`] to its next layout.
+/// It is a stand-in for trying rooms out until a trigger/action system,
+/// where switching a room is one kind of action, replaces it.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PressurePlate {
     pub pressed: bool,
@@ -13,7 +15,8 @@ impl PressurePlate {
 
 /// A rectangle of the map whose walls switch between layouts. It is not
 /// placed on the map itself: its walls are ordinary `Wall` entities, spawned
-/// and despawned as the layout changes.
+/// and despawned as the layout changes. Rooms know nothing of what asks
+/// them to switch: anything may call [`Room::advance`] or set `target`.
 #[derive(Component, Clone, Debug, PartialEq, Eq)]
 pub struct Room {
     pub origin: IVec2,

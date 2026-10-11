@@ -52,9 +52,11 @@ and renderers must not import it.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
-  `rooms.rs` presses `PressurePlate`s and switches `Room`s between wall
-  layouts, despawning and spawning walls and marking their neighbours with
-  `Tile`, which `tile_system` autotiles again.
+  `rooms.rs` switches `Room`s to the layout asked for (`Room::advance`),
+  despawning and spawning walls and marking their neighbours with `Tile`,
+  which `tile_system` autotiles again. It does not know what asked:
+  `plates.rs` is a stand-in trigger (`PressurePlate`) until a trigger/action
+  system, where a room switch is one kind of action.
 - `vision/` converts sensors and blocker state into cached FOV and visibility
   components. Every field of view sees through portals: lights' and
   sensors' `FovResult` (its samples for lights, which fade by the way the
