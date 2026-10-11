@@ -31,7 +31,7 @@ use bevy::prelude::{Entity, IVec2};
 use flatbt::goal_match;
 use flatbt_bevy::prelude::*;
 
-use super::tree::{attack, hold, pursue};
+use super::tree::{attack, hold, plan_path, pursue, walk_on};
 use crate::model::{EnemyAct, EnemyMind, Mood};
 use crate::navigation::Path;
 
@@ -50,6 +50,16 @@ pub enum Goal {
     GetKey,
     /// Pick up this key.
     FetchKey(Entity),
+}
+
+impl Goal {
+    /// The key to fetch, for `FetchKey`.
+    fn key(&self) -> Option<Entity> {
+        match *self {
+            Goal::FetchKey(key) => Some(key),
+            _ => None,
+        }
+    }
 }
 
 /// Attack a player in reach; otherwise work through the goal stack; hold
@@ -84,10 +94,20 @@ pub fn hunter_tree() -> impl BehaviorNode<EnemyMind, EnemyAct> {
                     seq((need(fetch_key_in::<2>), leaf(carrying_key))),
                     seq((need(fetch_key_in::<3>), leaf(carrying_key))),
                 )),
-                // Aim at the key while it lies on the map, and walk there.
-                Goal::FetchKey(_) => seq((
-                    with_goal(leaf_with(aim_at_key)),
-                    no_params(pursue(Mood::Fetch, |mind| mind.target, |_, _| true)),
+                // Walk to the goal's key, planning again whenever a walk
+                // ends short of it, while the key lies on the map.
+                Goal::FetchKey(_) => with_goal(repeat_while(
+                    |_: &EnemyMind| true,
+                    scope! {
+                        let key: Option<Entity> = |_: &mut EnemyMind, goal: &Goal| goal.key();
+                        let target: IVec2;
+                        let path: Path;
+                        sequence {
+                            leaf_with(key_on_map).with(key, out target);
+                            plan_path(Mood::Fetch).with(target, out path);
+                            walk_on(Mood::Fetch, |_, _| true).with(path);
+                        }
+                    },
                 )),
             }),
         )
@@ -117,13 +137,13 @@ fn carrying_key(mind: &mut EnemyMind) -> NodeResult<EnemyAct> {
     }
 }
 
-/// Make the key the walk's target; fail once it is gone from the map.
-fn aim_at_key(mind: &mut EnemyMind, goal: &Goal) -> NodeResult<EnemyAct> {
-    let Goal::FetchKey(key) = *goal else {
-        return NodeResult::Failure;
-    };
-    mind.target = mind.key_at(key);
-    if mind.target.is_some() {
+/// Where the key lies, while it is on the map; fails once it is gone.
+fn key_on_map(
+    mind: &mut EnemyMind,
+    (key, target): (&Option<Entity>, &mut Option<IVec2>),
+) -> NodeResult<EnemyAct> {
+    *target = key.and_then(|key| mind.key_at(key));
+    if target.is_some() {
         NodeResult::Success
     } else {
         NodeResult::Failure

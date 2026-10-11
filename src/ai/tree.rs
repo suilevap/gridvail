@@ -2,8 +2,7 @@ use bevy::math::IVec2;
 use flatbt_bevy::prelude::*;
 
 use crate::model::{EnemyAct, EnemyMind, Mood};
-use crate::navigation::Path;
-use crate::service::Promise;
+use crate::navigation::{Path, PathPromise};
 
 /// Turns an idle stroll lasts at most.
 const PATROL_TURNS: u8 = 10;
@@ -124,7 +123,7 @@ pub(super) fn plan_path(
     mood: Mood,
 ) -> ActionNode<
     AwaitFuture<
-        impl Fn(&mut EnemyMind, &IVec2) -> Option<Promise<Option<Path>>>,
+        impl Fn(&mut EnemyMind, &IVec2) -> Option<PathPromise>,
         impl Fn(&EnemyMind) -> EnemyAct,
     >,
 > {
@@ -152,6 +151,18 @@ pub(super) fn follow(
     })
 }
 
+/// Walk the path a step per turn while `keep` holds, for as long as it takes.
+/// A blocked step ends the walk without failing it, so a walk that repeats
+/// plans again around whoever is in the way.
+pub(super) fn walk_on(mood: Mood, keep: fn(&EnemyMind, &Path) -> bool) -> ActionNode<Follow> {
+    action(Follow {
+        mood,
+        keep,
+        turns: u8::MAX,
+        blocked_fails: false,
+    })
+}
+
 /// Walk to the target `pick` chooses, however long it takes: whenever a walk
 /// ends short of it (the target moved, a step was blocked) pick and plan
 /// again at once. Fails only when there is no target, or no way there.
@@ -168,7 +179,7 @@ pub(super) fn pursue(
             sequence {
                 perceived(pick).with(out target);
                 plan_path(mood).with(target, out path);
-                action(Follow { mood, keep, turns: u8::MAX, blocked_fails: false }).with(path);
+                walk_on(mood, keep).with(path);
             }
         },
     )
