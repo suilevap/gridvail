@@ -10,21 +10,33 @@ pub struct Rules {
     pub v: DirectionTileRule,
 }
 
-/// Startup-only wall autotiling. Its temporary collections are deliberately
-/// outside the steady gameplay path.
+/// A wall as the map spawns it; `tile_system` gives it its glyph.
+pub fn wall_bundle(pos: IVec2) -> impl Bundle {
+    (
+        Active,
+        Collider,
+        Wall,
+        Pos(pos),
+        Glyph::new('#', 1, crate::lighting::GRAY),
+        Tile::wall(),
+    )
+}
+
+/// Wall autotiling: every wall marked with a `Tile` gets the glyph that
+/// joins it to its neighbours, at startup and when walls change (a room
+/// switching layouts). Its temporary collections are deliberately outside
+/// the steady gameplay path; it runs only while a wall is marked.
 pub fn tile_system(
     mut commands: Commands,
     grid: Res<MapGrid>,
     rules: Res<Rules>,
     tiles: Query<(Entity, &Pos, &Tile)>,
+    walls: Query<&Pos, With<Wall>>,
     doors: Query<&Pos, With<Door>>,
 ) {
     // Walls connect to doors set into them.
-    let present: std::collections::HashSet<IVec2> = tiles
-        .iter()
-        .map(|(_, pos, _)| pos.0)
-        .chain(doors.iter().map(|pos| pos.0))
-        .collect();
+    let present: std::collections::HashSet<IVec2> =
+        walls.iter().chain(doors.iter()).map(|pos| pos.0).collect();
     let mut masks = Vec::new();
     for (entity, pos, tile) in tiles.iter() {
         if tile.rule != "wall_rule" {

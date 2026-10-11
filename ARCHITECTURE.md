@@ -33,7 +33,8 @@ and renderers must not import it.
   pathfinding is one level lower still, in its own workspace crate,
   `crates/gridvail-path`, with no dependencies: its core searches any graph
   (`Space`), and its `grid` feature adds the grid the game uses.
-- `content/` parses external map and tile-rule formats. It does not spawn ECS
+- `content/` parses external map and tile-rule formats (and the `@room`
+  layout blocks after a map). It does not spawn ECS
   entities or decide which map is active.
 - `model/` contains ECS data, split into actors, spatial state, vision,
   lighting, world resources, and presentation buffers. It contains no systems.
@@ -51,6 +52,9 @@ and renderers must not import it.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
+  `rooms.rs` presses `PressurePlate`s and switches `Room`s between wall
+  layouts, despawning and spawning walls and marking their neighbours with
+  `Tile`, which `tile_system` autotiles again.
 - `vision/` converts sensors and blocker state into cached FOV and visibility
   components. Every field of view sees through portals: lights' and
   sensors' `FovResult` (its samples for lights, which fade by the way the

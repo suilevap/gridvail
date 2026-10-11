@@ -82,7 +82,13 @@ impl Plugin for ExtrudedWallRendererPlugin {
             )
             .add_systems(
                 Update,
-                (move_camera, sync_walls, sync_floors, project_text_cells)
+                (
+                    move_camera,
+                    follow_wall_changes,
+                    sync_walls,
+                    sync_floors,
+                    project_text_cells,
+                )
                     .chain()
                     .in_set(GamePhase::Output)
                     .after(super::text::place_object_sprites),
@@ -94,6 +100,8 @@ impl Plugin for ExtrudedWallRendererPlugin {
 #[derive(Resource)]
 pub(super) struct ExtrudedWalls {
     symbols: EntityHashMap<char>,
+    /// The mesh entity of each wall object.
+    meshes: EntityHashMap<Entity>,
 }
 
 impl ExtrudedWalls {
@@ -104,6 +112,10 @@ impl ExtrudedWalls {
 
 #[derive(Resource)]
 struct WallMaterials(Vec<Handle<DungeonMaterial>>);
+
+/// One wall mesh per autotile mask.
+#[derive(Resource)]
+struct WallMeshes(Vec<Handle<Mesh>>);
 
 #[derive(Resource)]
 struct FloorTexture {
@@ -236,30 +248,29 @@ fn setup(
         Transform::from_xyz(0.0, 0.0, -(FLOOR_DEPTH * 0.5 + 0.05)),
     ));
 
-    let mut symbols = EntityHashMap::default();
+    let mut extruded = ExtrudedWalls {
+        symbols: EntityHashMap::default(),
+        meshes: EntityHashMap::default(),
+    };
     for (source, position, glyph) in &walls {
-        let Some(mask) = rules
-            .wall
-            .symbols
-            .iter()
-            .position(|symbol| *symbol == glyph.ch)
-        else {
+        let Some(mask) = mask_of(&rules, glyph.ch) else {
             continue;
         };
-        symbols.insert(source, glyph.ch);
-        commands.spawn((
-            ExtrudedWall {
+        let mesh = commands
+            .spawn(extruded_wall(
                 source,
-                symbol: glyph.ch,
-            },
-            Mesh3d(wall_meshes[mask].clone()),
-            MeshMaterial3d(wall_materials[0].clone()),
-            Transform::from_translation(grid_to_world(position.0, grid.width, grid.height)),
-            Visibility::Hidden,
-        ));
+                glyph.ch,
+                &wall_meshes[mask],
+                &wall_materials[0],
+                grid_to_world(position.0, grid.width, grid.height),
+            ))
+            .id();
+        extruded.symbols.insert(source, glyph.ch);
+        extruded.meshes.insert(source, mesh);
     }
 
-    commands.insert_resource(ExtrudedWalls { symbols });
+    commands.insert_resource(extruded);
+    commands.insert_resource(WallMeshes(wall_meshes));
     commands.insert_resource(WallMaterials(wall_materials));
     commands.insert_resource(FloorTexture {
         handle: light_map,
@@ -294,6 +305,80 @@ fn camera_transform(rig: &CameraRig) -> Transform {
         rig.distance * CAMERA_PITCH.sin(),
     );
     Transform::from_translation(rig.focus + offset).looking_at(rig.focus, Vec3::Z)
+}
+
+/// The autotile mask a wall glyph stands for.
+fn mask_of(rules: &Rules, symbol: char) -> Option<usize> {
+    rules.wall.symbols.iter().position(|&s| s == symbol)
+}
+
+fn extruded_wall(
+    source: Entity,
+    symbol: char,
+    mesh: &Handle<Mesh>,
+    material: &Handle<DungeonMaterial>,
+    translation: Vec3,
+) -> impl Bundle {
+    (
+        ExtrudedWall { source, symbol },
+        Mesh3d(mesh.clone()),
+        MeshMaterial3d(material.clone()),
+        Transform::from_translation(translation),
+        Visibility::Hidden,
+    )
+}
+
+/// Keeps a mesh for every wall as walls come, go and are autotiled again
+/// (a room switching layouts).
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn follow_wall_changes(
+    mut commands: Commands,
+    grid: Res<MapGrid>,
+    rules: Res<Rules>,
+    meshes: Res<WallMeshes>,
+    materials: Res<WallMaterials>,
+    mut extruded: ResMut<ExtrudedWalls>,
+    changed: Query<(Entity, &Pos, &Glyph), (With<Wall>, Changed<Glyph>)>,
+    mut removed: RemovedComponents<Wall>,
+    mut walls: Query<(&mut ExtrudedWall, &mut Mesh3d)>,
+) {
+    for source in removed.read() {
+        extruded.symbols.remove(&source);
+        if let Some(mesh) = extruded.meshes.remove(&source) {
+            commands.entity(mesh).despawn();
+        }
+    }
+    for (source, pos, glyph) in &changed {
+        if extruded.symbols.get(&source) == Some(&glyph.ch) {
+            continue;
+        }
+        let Some(mask) = mask_of(&rules, glyph.ch) else {
+            continue;
+        };
+        extruded.symbols.insert(source, glyph.ch);
+        match extruded
+            .meshes
+            .get(&source)
+            .and_then(|&mesh| walls.get_mut(mesh).ok())
+        {
+            Some((mut wall, mut mesh)) => {
+                wall.symbol = glyph.ch;
+                mesh.0 = meshes.0[mask].clone();
+            }
+            None => {
+                let mesh = commands
+                    .spawn(extruded_wall(
+                        source,
+                        glyph.ch,
+                        &meshes.0[mask],
+                        &materials.0[0],
+                        grid_to_world(pos.0, grid.width, grid.height),
+                    ))
+                    .id();
+                extruded.meshes.insert(source, mesh);
+            }
+        }
+    }
 }
 
 fn sync_walls(

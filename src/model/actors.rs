@@ -109,6 +109,16 @@ pub struct Tile {
     pub rule: String,
 }
 
+impl Tile {
+    /// Marks a wall to be autotiled (again) by the wall rule.
+    pub fn wall() -> Self {
+        Self {
+            mask: 0,
+            rule: "wall_rule".to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

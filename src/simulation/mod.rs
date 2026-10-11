@@ -9,6 +9,7 @@ mod motion;
 mod plugin;
 mod portals;
 mod resolution;
+mod rooms;
 mod tiles;
 mod turn;
 
@@ -19,6 +20,7 @@ pub use motion::*;
 pub use plugin::*;
 pub use portals::*;
 pub use resolution::*;
+pub use rooms::*;
 pub use tiles::*;
 pub use turn::*;
 

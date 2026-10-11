@@ -12,12 +12,12 @@ use bevy::prelude::*;
 use flatbt_bevy::prelude::Behavior;
 
 use crate::ai::{enemy_tree, hunter_tree};
-use crate::content::map::{parse_map, portal_links, SpawnKind};
+use crate::content::map::{parse_map, parse_rooms, portal_links, SpawnKind};
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::lighting::{GRAY, RED, WHITE, YELLOW};
 use crate::model::*;
 use crate::schedule::StartupPhase;
-use crate::simulation::Rules;
+use crate::simulation::{wall_bundle, Rules};
 
 const MAP_TEXT: &str = include_str!("../../assets/maps/map1.txt");
 const WALL_RULE_TEXT: &str = include_str!("../../assets/rules/wall_rule.txt");
@@ -48,6 +48,7 @@ impl Plugin for MapPlugin {
 fn construct_map(mut commands: Commands, map: Res<MapText>) {
     let (width, height, cells) = parse_map(map.0);
     let links = portal_links(width, height, &cells).unwrap_or_else(|error| panic!("map: {error}"));
+    let rooms = parse_rooms(map.0, &cells).unwrap_or_else(|error| panic!("map: {error}"));
     let cell_count = (width * height) as usize;
     let mut grid = MapGrid::new(width, height);
     let mut portal_walls = Vec::with_capacity(links.len());
@@ -55,19 +56,7 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
     for cell in cells {
         let entity = match cell.kind {
             // A portal is a wall; only its open face differs.
-            SpawnKind::Wall | SpawnKind::Portal(_) => commands
-                .spawn((
-                    Active,
-                    Collider,
-                    Wall,
-                    Pos(cell.pos),
-                    Glyph::new('#', 1, GRAY),
-                    Tile {
-                        mask: 0,
-                        rule: "wall_rule".to_string(),
-                    },
-                ))
-                .id(),
+            SpawnKind::Wall | SpawnKind::Portal(_) => commands.spawn(wall_bundle(cell.pos)).id(),
             SpawnKind::Player => {
                 let player = commands
                     .spawn((
@@ -183,6 +172,14 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
             SpawnKind::Key => commands
                 .spawn((Active, Item, Key, Pos(cell.pos), Glyph::new('♀', 0, YELLOW)))
                 .id(),
+            SpawnKind::Plate => commands
+                .spawn((
+                    Active,
+                    PressurePlate::default(),
+                    Pos(cell.pos),
+                    Glyph::new(PressurePlate::GLYPH, 0, YELLOW),
+                ))
+                .id(),
             SpawnKind::Door => commands
                 .spawn((
                     Active,
@@ -230,6 +227,10 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
             side: link.side,
             exit: wall_at(link.exit),
         });
+    }
+
+    for room in rooms {
+        commands.spawn(Room::new(room.origin, room.size, room.layouts));
     }
 
     commands.insert_resource(grid);
