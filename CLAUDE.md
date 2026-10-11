@@ -11,8 +11,12 @@ WebAssembly and publishes it to GitHub Pages from the `gh-pages` branch:
 - `main` is served at https://suilevap.github.io/gridvail/
 - each pull request from this repository gets a preview at
   `https://suilevap.github.io/gridvail/pr/<number>/`. The workflow posts the
-  link in a comment on the pull request, rebuilds it on every push (about
-  7–10 minutes) and removes it when the pull request closes.
+  link in a comment on the pull request, rebuilds it on every push to the
+  branch (about 7–10 minutes) and removes it when the pull request closes.
+
+A preview is built from the branch's own commit, not merged with `main`, so
+it shows exactly what the branch does, and a pull request with merge
+conflicts still gets one.
 
 The page's bottom-right corner names the build it serves (`PR #<n> · <sha>`
 for a preview), so a reviewer can tell whether the latest push is live yet.
