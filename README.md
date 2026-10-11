@@ -62,7 +62,7 @@ next to this file.
   (any key) tries `FetchKey` (one key) for each key it knows of, nearest
   first, and fails only when all have. A tree picks a
   target into a `scope!` local, asks the path service for a path to it (a
-  `service::Promise`, a plain future, waited on with the generic
+  flatbt-bevy `Promise`, a plain future, waited on with the generic
   flatbt `await_future` node, which writes the answer into another local),
   then reports `EnemyAct::Move(mood, path)`, which `ai::carry_out` turns
   into a step a turn. While the path is on its way the enemy thinks (`?`).
@@ -205,7 +205,7 @@ cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk through portals too
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 236 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 234 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

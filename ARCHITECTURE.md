@@ -40,11 +40,12 @@ and renderers must not import it.
 - `schedule.rs` defines startup and update phase sets. It contains no systems
   and lets plugins declare ordering without depending on `app`.
 - `service.rs` is for work that may take longer than a frame. A service
-  answers with a `Promise`, a plain `Future` its asker keeps and polls on
-  later frames; dropping it cancels the work. How a service runs its work
-  is its own `Runner`: inline (deterministic: tests), in the background on
-  the async compute pool (paths, in the game), or handed over a fixed number
-  of polls later (tests). `Services` is the one shared handle agents keep to
+  answers with flatbt-bevy's `Promise`, a plain `Future` its asker keeps
+  and polls on later frames; dropping it cancels the work. How a service
+  runs its work is its own flatbt-bevy `Runner`: inline (deterministic:
+  tests) or in the background on the async compute pool (paths, in the
+  game). `Delayed` holds an answer back a fixed number of polls, for
+  testing slow work (`PathService::delayed`). `Services` is the one shared handle agents keep to
   reach every service; `ServicesPlugin` provides it and keeps what the
   services know of the world current.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.

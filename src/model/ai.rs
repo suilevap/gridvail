@@ -59,8 +59,6 @@ pub struct EnemyMind {
     /// Keys lying on the map and where, nearest first (as the crow flies,
     /// so a near one may still be out of reach).
     pub keys: [Option<(Entity, IVec2)>; KNOWN_KEYS],
-    /// Where the goal being worked on leads, for a walk to it.
-    pub target: Option<IVec2>,
 }
 
 impl EnemyMind {

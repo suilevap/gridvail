@@ -132,10 +132,8 @@ mod trees {
         app
     }
 
-    fn services(runner: Runner) -> Services {
-        Services::new(ServiceSet {
-            paths: PathService::with_runner(runner),
-        })
+    fn services(paths: PathService) -> Services {
+        Services::new(ServiceSet { paths })
     }
 
     fn spawn_enemy(app: &mut App, tokens: i32) -> Entity {
@@ -253,7 +251,9 @@ mod trees {
     #[test]
     fn a_slow_path_is_thought_about_without_spending_the_turn() {
         let mut app = headless();
-        app.insert_resource(services(Runner::Deferred(3)));
+        app.insert_resource(services(
+            PathService::with_runner(Runner::Inline).delayed(3),
+        ));
         let enemy = spawn_enemy(&mut app, 1);
         app.update();
         assert_eq!(act_of(&app, enemy), Some(EnemyAct::Alert));

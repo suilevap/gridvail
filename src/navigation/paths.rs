@@ -17,7 +17,7 @@ use bevy::prelude::*;
 
 use super::{cell_of, Crowd, NavMap, OccupancyMap, PathPlanner, Terrain};
 use crate::model::{MapGrid, TraversalPrefs};
-use crate::service::{Promise, Runner, Services};
+use crate::service::{Delayed, Promise, Runner, Services};
 
 /// Buffers kept for reuse, enough for every enemy's path and a few in flight.
 const POOLED_PATHS: usize = 64;
@@ -109,11 +109,16 @@ impl Drop for Path {
     }
 }
 
+/// A path on its way: lands `None` when there is no way.
+pub type PathPromise = Delayed<Promise<Option<Path>>>;
+
 /// Plans paths, over copies of the map it keeps.
 pub struct PathService {
     map: RwLock<SharedMap>,
     pool: Arc<PathPool>,
     runner: Runner,
+    /// Polls each plan is held back by.
+    delay: u32,
 }
 
 /// The copies plans run over; each plan holds on to the ones it started with.
@@ -134,6 +139,7 @@ impl fmt::Debug for PathService {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PathService")
             .field("runner", &self.runner)
+            .field("delay", &self.delay)
             .finish_non_exhaustive()
     }
 }
@@ -152,20 +158,31 @@ impl PathService {
                 free: Mutex::new(Vec::with_capacity(POOLED_PATHS)),
             }),
             runner,
+            delay: 0,
         }
+    }
+
+    /// Holds each plan back by `polls` polls after it lands: deterministic
+    /// slow planning, for tests and tuning.
+    pub fn delayed(mut self, polls: u32) -> Self {
+        self.delay = polls;
+        self
     }
 
     /// The cheapest path from `from` to `goal` for a walker with `prefs`:
     /// what doors cost it, and what cells others stand on cost it. Lands
     /// `None` when there is no way.
-    pub fn plan(&self, from: IVec2, goal: IVec2, prefs: TraversalPrefs) -> Promise<Option<Path>> {
-        let (nav, occupancy) = match self.map.read() {
-            Ok(map) => (map.nav.clone(), map.occupancy.clone()),
-            Err(_) => return Promise::ready(None),
+    pub fn plan(&self, from: IVec2, goal: IVec2, prefs: TraversalPrefs) -> PathPromise {
+        let promise = match self.map.read() {
+            Ok(map) => {
+                let (nav, occupancy) = (map.nav.clone(), map.occupancy.clone());
+                let pool = self.pool.clone();
+                self.runner
+                    .run(move || plan_path(&nav, &occupancy, &pool, from, goal, prefs))
+            }
+            Err(_) => Promise::ready(None),
         };
-        let pool = self.pool.clone();
-        self.runner
-            .run(move || plan_path(&nav, &occupancy, &pool, from, goal, prefs))
+        Delayed::new(promise, self.delay)
     }
 
     /// Whether the service has a map to plan on yet: not on the very first

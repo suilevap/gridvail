@@ -68,22 +68,20 @@ struct Game {
 
 impl Game {
     fn new(map: &'static str) -> Self {
-        Self::with_paths(map, Runner::Inline)
+        Self::with_paths(map, PathService::with_runner(Runner::Inline))
     }
 
-    /// A game whose paths are planned as `runner` says.
-    fn with_paths(map: &'static str, runner: Runner) -> Self {
-        Self::with_policy(map, runner, PortalPolicy::default())
+    /// A game whose paths are planned by `paths`.
+    fn with_paths(map: &'static str, paths: PathService) -> Self {
+        Self::with_policy(map, paths, PortalPolicy::default())
     }
 
     /// A game whose enemies use portals as `portals` says.
-    fn with_policy(map: &'static str, runner: Runner, portals: PortalPolicy) -> Self {
+    fn with_policy(map: &'static str, paths: PathService, portals: PortalPolicy) -> Self {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .insert_resource(portals)
-            .insert_resource(Services::new(ServiceSet {
-                paths: PathService::with_runner(runner),
-            }))
+            .insert_resource(Services::new(ServiceSet { paths }))
             .init_resource::<ButtonInput<KeyCode>>()
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
                 16,
@@ -482,7 +480,7 @@ fn a_slow_plan_holds_the_enemy_not_the_game() {
          Xe......p..X\n\
          X..........X\n\
          XXXXXXXXXXXX\n",
-        Runner::Deferred(20),
+        PathService::with_runner(Runner::Inline).delayed(20),
     );
     use KeyCode::{ArrowLeft as L, ArrowRight as R};
     for key in [R, L].into_iter().cycle().take(30) {
@@ -521,7 +519,7 @@ fn an_enemy_planning_in_the_background_still_gets_there() {
          Xe......p..X\n\
          X..........X\n\
          XXXXXXXXXXXX\n",
-        Runner::Background,
+        PathService::with_runner(Runner::Background),
     );
     game.turns(16);
     let last = game.trace.last().unwrap();
@@ -813,7 +811,7 @@ fn a_hunter_planning_in_the_background_fetches_the_key() {
          X......D...p..X\n\
          X......X......X\n\
          XXXXXXXXXXXXXXX\n",
-        Runner::Background,
+        PathService::with_runner(Runner::Background),
     );
     game.turns(45);
     let last = game.trace.last().unwrap();
@@ -833,7 +831,11 @@ XXXXXXXXXXXXXXX\n";
 
 #[test]
 fn a_hunter_allowed_through_portals_reaches_the_player_through_one() {
-    let mut game = Game::with_policy(PORTAL_ROOMS, Runner::Inline, PortalPolicy { enemies: true });
+    let mut game = Game::with_policy(
+        PORTAL_ROOMS,
+        PathService::with_runner(Runner::Inline),
+        PortalPolicy { enemies: true },
+    );
     game.turns(30);
     game.print("hunter through a portal");
     // It walked to the portal in its own room, came out of the other one

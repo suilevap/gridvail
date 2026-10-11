@@ -1285,7 +1285,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-time",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2492,7 +2492,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2560,15 +2560,16 @@ checksum = "1d674e81391d1e1ab681a28d99df07927c6d4aa5b027d7da16ba32d1d21ecd99"
 [[package]]
 name = "flatbt"
 version = "0.1.0"
-source = "git+https://github.com/suilevap/flatbt?branch=main#a80ac006532276eb28afc89ae168f811f596f540"
+source = "git+https://github.com/suilevap/flatbt?branch=main#62b424701ef926c69b096220304f8d17706d732b"
 
 [[package]]
 name = "flatbt-bevy"
 version = "0.1.0"
-source = "git+https://github.com/suilevap/flatbt?branch=main#a80ac006532276eb28afc89ae168f811f596f540"
+source = "git+https://github.com/suilevap/flatbt?branch=main#62b424701ef926c69b096220304f8d17706d732b"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
+ "bevy_tasks",
  "bevy_time",
  "bevy_utils",
  "flatbt",
@@ -3708,7 +3709,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4692,7 +4693,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5796,7 +5797,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
