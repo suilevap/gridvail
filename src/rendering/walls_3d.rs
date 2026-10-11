@@ -25,6 +25,7 @@ use crate::presentation::DynamicLight;
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::Rules;
 
+use super::extruded::ExtrudedWalls;
 use super::text::{grid_to_world, grid_to_world_f, MapCell, ObjectSprite, CELL_SIZE};
 
 const WALL_STROKE: f32 = 3.5;
@@ -93,20 +94,6 @@ impl Plugin for ExtrudedWallRendererPlugin {
                     .in_set(GamePhase::Output)
                     .after(super::text::place_object_sprites),
             );
-    }
-}
-
-/// Wall objects drawn as meshes, with the glyph each mesh replaces.
-#[derive(Resource)]
-pub(super) struct ExtrudedWalls {
-    symbols: EntityHashMap<char>,
-    /// The mesh entity of each wall object.
-    meshes: EntityHashMap<Entity>,
-}
-
-impl ExtrudedWalls {
-    pub(super) fn symbol_of(&self, object: Entity) -> Option<char> {
-        self.symbols.get(&object).copied()
     }
 }
 
@@ -602,24 +589,11 @@ fn floor_color(index: u8) -> Color {
     )
 }
 
-pub(super) fn billboard_pattern(symbol: char) -> Option<&'static str> {
-    match symbol {
-        // A trailing hair space optically centers these asymmetric glyphs
-        // without moving the body or changing the billboard anchor.
-        '@' => Some("@ \n/|\\\n/ \\"),
-        'x' => Some("x \n/|\\\n/ \\"),
-        '>' => Some("> \n/|\\\n/ \\"),
-        '<' => Some("< \n/|\\\n/ \\"),
-        '^' => Some("^ \n/|\\\n/ \\"),
-        'V' => Some("V \n/|\\\n/ \\"),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{billboard_pattern, wall_arms};
+    use super::wall_arms;
     use crate::content::tile_rules::TileRule;
+    use crate::rendering::extruded::billboard_pattern;
 
     #[test]
     fn every_wall_symbol_selects_its_mask_mesh() {

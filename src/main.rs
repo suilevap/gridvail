@@ -14,6 +14,7 @@ use bevy::{
         view::screenshot::{Screenshot, ScreenshotCaptured},
     },
 };
+#[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::ai::PortalPolicy;
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
@@ -23,7 +24,9 @@ use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
     AnimatedPos, CompassMode, Player, Pos, RevealAll, SettingsMenu, ViewCamera, Vis, VisibilityMap,
 };
-use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, TextRendererPlugin};
+#[cfg(not(target_family = "wasm"))]
+use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
+use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
 use pav_ecs_game_bevy_port::touch::TouchControlPlugin;
 
@@ -86,7 +89,11 @@ fn main() -> AppExit {
             TouchControlPlugin,
         ));
     if renderer == Renderer::Walls3d {
+        #[cfg(not(target_family = "wasm"))]
         app.add_plugins(ExtrudedWallRendererPlugin);
+        // The page refuses native-only options before the game starts.
+        #[cfg(target_family = "wasm")]
+        unreachable!("the web build has no 3D renderer");
     }
     app.add_plugins(DebugPerformancePlugin);
     app.world_mut().resource_mut::<CameraOperator>().portal_turn = options.portal_turn;
@@ -99,8 +106,14 @@ fn main() -> AppExit {
         );
     }
     if let Some(port) = options.remote_port {
-        println!("Bevy Remote agent API: http://127.0.0.1:{port}");
-        app.add_plugins(AgentApiPlugin::new(port));
+        #[cfg(not(target_family = "wasm"))]
+        {
+            println!("Bevy Remote agent API: http://127.0.0.1:{port}");
+            app.add_plugins(AgentApiPlugin::new(port));
+        }
+        // The page refuses native-only options before the game starts.
+        #[cfg(target_family = "wasm")]
+        unreachable!("the web build has no agent API (port {port})");
     }
     if let Some(path) = capture {
         app.insert_resource(Capture {
@@ -170,6 +183,12 @@ enum Renderer {
     Text,
     Walls3d,
 }
+
+/// Bevy's default agent API port. The web build has no agent API, and the
+/// page refuses `--remote` before the game starts; this only lets the shared
+/// option parser compile.
+#[cfg(target_family = "wasm")]
+const DEFAULT_AGENT_PORT: u16 = 15702;
 
 // Each arm declares its URL shape alongside its CLI behavior. The browser
 // receives this schema, so adding an arm never needs a JavaScript allowlist edit.
@@ -265,7 +284,8 @@ impl Options {
                 let port = args.next().expect("--remote-port requires a port number");
                 remote_port = Some(port.parse().expect("--remote-port must be a valid u16"));
             },
-            "--renderer": value if renderer.is_none() => {
+            // Native only: the web build leaves 3D rendering out.
+            "--renderer": native if renderer.is_none() => {
                 renderer = Some(match args.next().as_deref() {
                     Some("text") => Renderer::Text,
                     Some("3d-walls") => Renderer::Walls3d,

@@ -355,19 +355,23 @@ the HUD shows the hints for whichever input was used last.
 Pass CLI options as URL parameters without `--`, for example:
 
 ```text
-https://suilevap.github.io/gridvail/?renderer=3d-walls&motion=overshoot
+https://suilevap.github.io/gridvail/?motion=overshoot
 https://suilevap.github.io/gridvail/?map=portals&portal-view=north&reveal
 ```
 
-Supported parameters are `renderer`, `motion`, `map`, `reveal`, `portal-view`,
-`compass` and `enemy-portals`,
+Supported parameters are `motion`, `map`, `reveal`, `portal-view`, `compass`
+and `enemy-portals`,
 with the same values and defaults as the CLI. `reveal` accepts a bare flag,
 `true`/`1`, or `false`/`0`. Options apply when the page loads.
 Maps are discovered from `assets/maps/*.txt` and embedded at build time;
 `map` accepts a stem, filename, or `assets/maps/` path. Arbitrary local files
-and remote map URLs are unavailable. Native-only options (`screenshot`,
-`record`, `walk`, `remote`, `remote-port`) and duplicate supported parameters
-are rejected; unrelated parameters are ignored.
+and remote map URLs are unavailable. Native-only options (`renderer`,
+`screenshot`, `record`, `walk`, `remote`, `remote-port`) and duplicate
+supported parameters are rejected; unrelated parameters are ignored.
+
+To keep the download small, the web build uses only the Bevy features the
+text renderer needs and leaves out the 3D walls renderer, the agent API and
+system diagnostics (see the target-specific `bevy` entry in `Cargo.toml`).
 
 Run URL tests with `node --test web/options.test.mjs` (Node 22+), and shared
 parser/map tests with `cargo test --bin pav_ecs_game_bevy_port`.

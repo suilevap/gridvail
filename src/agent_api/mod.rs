@@ -1,10 +1,12 @@
 //! Agent control and observation through the Bevy Remote Protocol (BRP).
 
-#[cfg(not(target_family = "wasm"))]
-use bevy::remote::http::{RemoteHttpPlugin, DEFAULT_PORT};
 use bevy::{
     prelude::*,
-    remote::{error_codes, BrpError, BrpResult, RemotePlugin},
+    remote::{
+        error_codes,
+        http::{RemoteHttpPlugin, DEFAULT_PORT},
+        BrpError, BrpResult, RemotePlugin,
+    },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -13,11 +15,7 @@ use crate::model::*;
 
 pub const STATE_METHOD: &str = "gridvail/state";
 pub const MOVE_METHOD: &str = "gridvail/move";
-#[cfg(not(target_family = "wasm"))]
 pub const DEFAULT_AGENT_PORT: u16 = DEFAULT_PORT;
-/// Bevy's default BRP port; the browser build has no HTTP server to bind it.
-#[cfg(target_family = "wasm")]
-pub const DEFAULT_AGENT_PORT: u16 = 15702;
 
 const PALETTE_NAMES: [&str; 16] = [
     "black",
@@ -39,8 +37,8 @@ const PALETTE_NAMES: [&str; 16] = [
 ];
 
 /// Loopback HTTP endpoint for agent control. It is installed only when the
-/// executable is launched with `--remote` or `--remote-port`. Browsers cannot
-/// listen on a port, so the web build registers the methods without it.
+/// executable is launched with `--remote` or `--remote-port`. Desktop only: a
+/// browser page cannot listen on a port.
 pub struct AgentApiPlugin {
     port: u16,
 }
@@ -63,11 +61,8 @@ impl Plugin for AgentApiPlugin {
             RemotePlugin::default()
                 .with_method_main(STATE_METHOD, get_state)
                 .with_method_main(MOVE_METHOD, move_player),
-        );
-        #[cfg(not(target_family = "wasm"))]
-        app.add_plugins(RemoteHttpPlugin::default().with_port(self.port));
-        #[cfg(target_family = "wasm")]
-        let _ = self.port;
+        )
+        .add_plugins(RemoteHttpPlugin::default().with_port(self.port));
     }
 }
 

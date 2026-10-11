@@ -13,20 +13,18 @@ members = ["crates/gridvail-path"]
 [dependencies]
 # Only the Bevy parts the game uses, so the web download stays small: no
 # audio, glTF, scenes, picking, gizmos, animation clips, gamepads or extra
-# image codecs.
+# image codecs. Desktop-only parts are added below.
 bevy = { version = "0.19.1", default-features = false, features = [
     # App, windowing and input.
     "default_app",
     "std",
     "multi_threaded",
     "bevy_winit",
-    "x11",
-    "wayland",
     "webgl2",
     "keyboard",
     "mouse",
     "touch",
-    # Rendering: the text map (Text2d), the HUD (UI) and the 3D walls.
+    # Rendering: the text map (Text2d) and the HUD (UI).
     "bevy_render",
     "bevy_core_pipeline",
     "bevy_text",
@@ -34,13 +32,6 @@ bevy = { version = "0.19.1", default-features = false, features = [
     "bevy_ui",
     "bevy_ui_render",
     "bevy_sprite_render",
-    "bevy_pbr",
-    # The 3D walls camera tonemaps with Bevy's default lookup tables.
-    "tonemapping_luts",
-    "zstd_rust",
-    # Debug panel and the agent API.
-    "sysinfo_plugin",
-    "bevy_remote",
 ] }
 rand = "0.10"
 bitflags = "2"
@@ -51,6 +42,20 @@ gridvail-path = { path = "crates/gridvail-path" }
 flatbt-bevy = { git = "https://github.com/suilevap/flatbt", branch = "main" }
 # For `goal_match!`, which the Bevy prelude does not re-export.
 flatbt = { git = "https://github.com/suilevap/flatbt", branch = "main" }
+
+# Desktop only: the 3D walls renderer (and the lookup tables its camera
+# tonemaps with), the agent API's HTTP server, system diagnostics and the
+# Linux window backends. The web build leaves them out.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bevy = { version = "0.19.1", default-features = false, features = [
+    "x11",
+    "wayland",
+    "bevy_pbr",
+    "tonemapping_luts",
+    "zstd_rust",
+    "bevy_remote",
+    "sysinfo_plugin",
+] }
 
 # The browser build: rand's OS entropy comes from the JS crypto API there.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
