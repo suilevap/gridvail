@@ -7,23 +7,23 @@ name: Web build
 #
 # Previews are built from the branch's own commit. Plain pull_request events
 # would build GitHub's trial merge with main instead, and GitHub runs nothing
-# at all for a pull request with merge conflicts. So pushes to any branch
-# update its pull request's preview, and pull_request_target (which runs
-# main's copy of this workflow and needs no trial merge) covers opening,
-# reopening and closing.
+# at all for a pull request with merge conflicts. pull_request_target needs
+# no trial merge (it runs main's copy of this workflow), so it drives
+# previews: opening, every push to the branch, reopening and closing. Only
+# branches with a pull request run anything; plain pushes build only main.
 #
 # Changes that cannot alter the game (docs, tests, tools) build nothing, and
 # a pull request labelled no-preview skips its build too.
 on:
   push:
-    branches: ['**', '!gh-pages']
+    branches: [main]
     paths-ignore:
       - '**.md'
       - 'tests/**'
       - 'tools/**'
       - '.claude/**'
   pull_request_target:
-    types: [opened, reopened, closed]
+    types: [opened, synchronize, reopened, closed]
     paths-ignore:
       - '**.md'
       - 'tests/**'
@@ -44,15 +44,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
     outputs:
       dest: ${{ steps.target.outputs.dest }}
       sha: ${{ steps.target.outputs.sha }}
       pr: ${{ steps.target.outputs.pr }}
       remove: ${{ steps.target.outputs.remove }}
     steps:
-      # The default checkout: main for pull_request_target, the pushed
-      # branch otherwise. Only the script is used from it.
+      # main's copy for pull requests and pushes; only the script is used.
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .github/scripts
@@ -61,7 +59,7 @@ jobs:
         with:
           script: |
             const target = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/preview-target.js`);
-            await target({ github, context, core });
+            await target({ context, core });
 
   build:
     needs: target
