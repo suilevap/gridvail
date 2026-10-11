@@ -15,6 +15,55 @@ fn visibility(cells: &[(IVec2, Vis)]) -> VisibilityMap {
 }
 
 #[test]
+fn the_floor_shows_under_a_wall_rising_or_sinking() {
+    let mut app = test_app::headless();
+    app.insert_resource(DynamicLight::sized(64))
+        .insert_resource(RenderBuffers::new(8, 8));
+    let seen = Vis::VISIBLE | Vis::KNOWN;
+    app.world_mut().spawn((
+        Player(0),
+        Pos(IVec2::ZERO),
+        Speed::default(),
+        visibility(&[
+            (IVec2::new(0, 0), seen),
+            (IVec2::new(1, 0), seen),
+            (IVec2::new(2, 0), seen),
+        ]),
+    ));
+    let standing = IVec2::new(1, 0);
+    let sinking = IVec2::new(2, 0);
+    app.world_mut()
+        .spawn((Pos(standing), Glyph::new('#', 1, GRAY)));
+    let wall = app
+        .world_mut()
+        .spawn((
+            Pos(sinking),
+            Glyph::new('#', 1, GRAY),
+            AnimatedPos {
+                height: 0.5,
+                ..AnimatedPos::at(sinking)
+            },
+        ))
+        .id();
+    app.world_mut().run_system_once(compose_frame).unwrap();
+    let buffers = app.world().resource::<RenderBuffers>();
+
+    let ground = |p: IVec2| buffers.ground[buffers.idx(p).unwrap()].ch;
+    assert_eq!(
+        buffers.ground[buffers.idx(standing).unwrap()],
+        RenderCell::default(),
+        "a standing wall hides the floor"
+    );
+    assert_eq!(ground(sinking), '.', "a sinking one does not");
+    let drawn = buffers
+        .objects
+        .iter()
+        .find(|object| object.entity == wall)
+        .expect("the sinking wall is still drawn");
+    assert_eq!(drawn.height, 0.5);
+}
+
+#[test]
 fn static_decor_renders_when_known_but_unseen() {
     let mut app = test_app::headless();
     app.insert_resource(DynamicLight::sized(64))
@@ -186,7 +235,7 @@ fn objects_behind_a_portal_are_drawn_where_they_are_seen() {
             Glyph::new('e', 1, 12),
             AnimatedPos {
                 position: Vec2::new(4.0, 4.5),
-                lift: 0.0,
+                ..AnimatedPos::default()
             },
         ))
         .id();
@@ -266,7 +315,7 @@ fn objects_behind_a_turning_portal_are_drawn_turned() {
             Glyph::new('e', 1, 12),
             AnimatedPos {
                 position: Vec2::new(5.0, 4.5),
-                lift: 0.0,
+                ..AnimatedPos::default()
             },
         ))
         .id();

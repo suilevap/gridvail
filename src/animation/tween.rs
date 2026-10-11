@@ -45,6 +45,11 @@ impl<T: Ease + Clone> Tween<T> {
         self.elapsed >= self.duration
     }
 
+    /// Seconds until it ends.
+    pub fn remaining(&self) -> f32 {
+        (self.duration - self.elapsed).max(0.0)
+    }
+
     /// Eases from the shown value to `to` over `duration` seconds; zero
     /// jumps there.
     pub fn ease_to(&mut self, to: T, duration: f32, easing: EaseFunction) {

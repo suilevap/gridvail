@@ -89,6 +89,7 @@ pub fn compose_frame(
                 instance,
                 inverse.apply_point(shown.position),
                 shown.lift,
+                shown.height,
                 inverse.quarters,
                 drawn,
             );
@@ -107,6 +108,7 @@ pub fn compose_frame(
                         0,
                         shown.position,
                         shown.lift,
+                        shown.height,
                         0,
                         drawn,
                     );
@@ -146,43 +148,26 @@ pub fn compose_frame(
                 parent.instance,
                 position,
                 shown.lift,
+                shown.height,
                 inverse.quarters,
                 drawn,
             );
         }
     }
 
+    let light_at = |p: IVec2| {
+        grid.idx(p)
+            .and_then(|i| dynamic.data.get(i))
+            .copied()
+            .unwrap_or_default()
+    };
     for index in 0..buffers.current.len() {
         let position = buffers.pos_of(index);
         let occupied = !matches!(buffers.current[index].ch, ' ' | '\0');
-        let light_at = |p: IVec2| {
-            grid.idx(p)
-                .and_then(|i| dynamic.data.get(i))
-                .copied()
-                .unwrap_or_default()
-        };
-        if let Some(seen) = buffers.seen[index] {
-            let light = light_at(seen.world);
+        let seen = buffers.seen[index];
+        if seen.is_some() || known(position) {
             let cell = &mut buffers.current[index];
-            shade(cell, true, light_to_palette(&light));
-            // The threshold's floor, or the portal's own wall when the view
-            // does not pass through it.
-            if seen.portal && !occupied {
-                *cell = RenderCell {
-                    ch: PORTAL_GLYPH,
-                    color: PORTAL_COLOR,
-                    depth: 0,
-                };
-            } else if occupied && grid.portal_at(seen.world).is_some() {
-                cell.color = PORTAL_COLOR;
-            }
-        } else if known(position) {
-            let light = light_at(position);
-            let cell = &mut buffers.current[index];
-            shade(cell, is_hex_pos(position), dimmed(light_to_palette(&light)));
-            if occupied && grid.portal_at(position).is_some() {
-                cell.color = REMEMBERED_PORTAL_COLOR;
-            }
+            light_cell(cell, seen, position, &grid, &light_at);
         } else if borders_known_background(&buffers, &known, position) {
             buffers.current[index] = RenderCell {
                 ch: '?',
@@ -199,6 +184,7 @@ pub fn compose_frame(
     }
 
     // Keep only objects that won their cell, and give them its lit color.
+    // One partly sunk into the floor (rising or sinking) does not hide it.
     let buffers = &mut *buffers;
     let mut objects = std::mem::take(&mut buffers.objects);
     objects.retain_mut(|object| {
@@ -208,9 +194,48 @@ pub fn compose_frame(
         let cell = buffers.current[index];
         let shown = cell.ch == object.cell.ch && cell.depth == object.cell.depth;
         object.cell.color = cell.color;
+        if shown && object.height < 1.0 {
+            let mut floor = RenderCell::default();
+            let position = buffers.pos_of(index);
+            light_cell(&mut floor, buffers.seen[index], position, &grid, &light_at);
+            buffers.ground[index] = floor;
+        }
         shown
     });
     buffers.objects = objects;
+}
+
+/// Lights frame cell `cell` at `position`, seen now through `seen` or else
+/// remembered: an empty one becomes floor (or a portal's threshold), and an
+/// object's glyph takes the light's colour (or a portal's).
+fn light_cell(
+    cell: &mut RenderCell,
+    seen: Option<SeenCell>,
+    position: IVec2,
+    grid: &MapGrid,
+    light_at: &impl Fn(IVec2) -> LightCell,
+) {
+    let occupied = !matches!(cell.ch, ' ' | '\0');
+    if let Some(seen) = seen {
+        shade(cell, true, light_to_palette(&light_at(seen.world)));
+        // The threshold's floor, or the portal's own wall when the view
+        // does not pass through it.
+        if seen.portal && !occupied {
+            *cell = RenderCell {
+                ch: PORTAL_GLYPH,
+                color: PORTAL_COLOR,
+                depth: 0,
+            };
+        } else if occupied && grid.portal_at(seen.world).is_some() {
+            cell.color = PORTAL_COLOR;
+        }
+    } else {
+        let light = light_at(position);
+        shade(cell, is_hex_pos(position), dimmed(light_to_palette(&light)));
+        if occupied && grid.portal_at(position).is_some() {
+            cell.color = REMEMBERED_PORTAL_COLOR;
+        }
+    }
 }
 
 /// Fills `seen` and the lists of frame cells showing each map cell, from
@@ -287,6 +312,7 @@ fn draw(
     instance: u16,
     position: Vec2,
     lift: f32,
+    height: f32,
     quarters: u8,
     drawn: RenderCell,
 ) {
@@ -300,6 +326,7 @@ fn draw(
         pos,
         position,
         lift,
+        height,
         quarters,
         cell: drawn,
     });

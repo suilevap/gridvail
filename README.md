@@ -114,8 +114,11 @@ next to this file.
   onto a plate switches every room to its next layout, cycling back to the
   map's own: walls the new layout lacks go, the ones it adds come, and the
   walls around them join up again. Sight, light and paths follow at once.
-  A room waits while anything stands where a new wall goes. The switch is
-  instant for now; `rooms.txt` has a room whose gaps swap sides.
+  A room waits while anything stands where a new wall goes. The switch
+  happens in the world at once and is shown over 0.4s: new walls rise out
+  of the floor and old ones sink into it (they fade in and out in the text
+  view), and the next turn waits for them. `rooms.txt` has a room whose
+  gaps swap sides.
 - Settings (an addition): Esc opens a small menu to choose how the view
   behaves through portals that turn (turn with the player or keep north
   up), when the compass shows (when the view is turned, always or off) and
@@ -216,7 +219,7 @@ cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk throu
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 238 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 240 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
