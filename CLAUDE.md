@@ -16,7 +16,10 @@ WebAssembly and publishes it to GitHub Pages from the `gh-pages` branch:
 
 A preview is built from the branch's own commit, not merged with `main`, so
 it shows exactly what the branch does, and a pull request with merge
-conflicts still gets one.
+conflicts still gets one. Previews run `main`'s copy of the workflow
+(`pull_request_target`), so a pull request that changes
+`.github/workflows/pages.yml` or `.github/scripts/` only affects previews once
+it is merged.
 
 The page's bottom-right corner names the build it serves (`PR #<n> · <sha>`
 for a preview), so a reviewer can tell whether the latest push is live yet.
