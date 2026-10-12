@@ -115,10 +115,14 @@ next to this file.
   map's own: walls the new layout lacks go, the ones it adds come, and the
   walls around them join up again. Sight, light and paths follow at once.
   A room waits while anything stands where a new wall goes. The switch
-  happens in the world at once and is shown over 0.4s: new walls rise out
-  of the floor and old ones sink into it (they fade in and out in the text
-  view), and the next turn waits for them. `rooms.txt` has a room whose
-  gaps swap sides.
+  happens in the world at once and is shown over a moment, and the next
+  turn waits for it. A wall slides to its new cell when one the layout
+  loses and one it gains are in the same row or column with empty floor
+  between them (it glides across), or with wall in both layouts between
+  them (the stretch shifts one cell, as a gap moving along a wall). Other
+  new walls rise out of the floor and other old ones sink into it (they
+  fade in and out in the text view). In `rooms.txt` the room's walls slide
+  to move its gaps, and pillars rise in its corners.
 - Settings (an addition): Esc opens a small menu to choose how the view
   behaves through portals that turn (turn with the player or keep north
   up), when the compass shows (when the view is turned, always or off) and
@@ -219,7 +223,7 @@ cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk throu
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 240 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 244 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

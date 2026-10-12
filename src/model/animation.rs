@@ -39,3 +39,8 @@ pub struct Rising;
 /// sinking, and the animation step despawns it once it has sunk.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Sinking;
+
+/// An object that slides when it moves (a wall a room shifts), at a steady
+/// pace, rather than stepping the way actors walk.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Sliding;

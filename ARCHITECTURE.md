@@ -52,9 +52,11 @@ and renderers must not import it.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
-  `rooms.rs` switches `Room`s to the layout asked for (`Room::advance`),
-  spawning `Rising` walls, taking the walls that go off the map and leaving
-  them `Sinking` (despawned at once without the animation step), and
+  `rooms.rs` switches `Room`s to the layout asked for (`Room::advance`):
+  `plan_switch` picks the walls that slide (moved, marked `Sliding`); it
+  spawns the other new walls `Rising`, takes the other walls that go off
+  the map and leaves them `Sinking` (despawned at once without the
+  animation step), and
   marking their neighbours with `Tile`, which `tile_system` autotiles
   again. It does not know what asked:
   `plates.rs` is a stand-in trigger (`PressurePlate`) until a trigger/action
@@ -120,7 +122,8 @@ and renderers must not import it.
   same `ObjectAnimation` and per-frame step as any object, but following
   `rotate(offset, facing)` instead of the cell, along `Path::Orbit` around
   the parent, so a turn swings them around it rather than through it.
-  `Rising` objects come up out of the floor and `Sinking` ones go down into
+  `Sliding` objects move at a steady pace instead of in the actors'
+  style. `Rising` objects come up out of the floor and `Sinking` ones go down into
   it (`AnimatedPos::height`, eased by a `Tween`); sunk objects are
   despawned. Renderers lower a wall's mesh into the floor or fade its
   glyph, and the frame shows the floor under an object partly sunk. `ObjectAnimationPlugin` picks the
