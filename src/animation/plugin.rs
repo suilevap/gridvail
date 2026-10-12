@@ -9,6 +9,8 @@ use super::{animate_children, MotionState, MotionStyle, MovePath, ObjectMotion, 
 
 /// How long an object takes to rise out of the floor or sink into it.
 const RISE_SECONDS: f32 = 0.4;
+/// How long a [`Sliding`] object takes per cell.
+const SLIDE_SECONDS: f32 = 0.2;
 
 /// Marks an object whose animation never holds back the next turn, for
 /// decorative or ambient motion. Children (`BoundTo`, such as the player's
@@ -133,6 +135,19 @@ pub(super) fn style_of(own: Option<&ObjectMotion>, global: MotionStyle) -> Motio
     own.map_or(global, |own| own.0)
 }
 
+/// A [`Sliding`] object without a style of its own glides at a steady pace,
+/// whatever the global style (only `snap` still snaps).
+fn slide_style(own: Option<&ObjectMotion>, global: MotionStyle) -> MotionStyle {
+    match (own, global) {
+        (Some(own), _) => own.0,
+        (None, MotionStyle::Snap) => MotionStyle::Snap,
+        (None, _) => MotionStyle::Tween {
+            duration: SLIDE_SECONDS,
+            easing: EaseFunction::SmoothStep,
+        },
+    }
+}
+
 /// One frame of an object's animation, shared by top-level objects (in map
 /// cells) and children (in their parent's frame): a changed target starts a
 /// move along `path`, or a jump when `jumps(from, to)`, and the animation
@@ -223,6 +238,7 @@ pub fn animate_objects(
             Option<&ObjectMotion>,
             Option<&MovePath>,
             Has<NonBlockingAnimation>,
+            Has<Sliding>,
             &mut ObjectAnimation,
             &mut AnimatedPos,
         ),
@@ -231,7 +247,9 @@ pub fn animate_objects(
 ) {
     let dt = time.delta_secs();
     let mut blocking = 0.0_f32;
-    for (entity, pos, own_style, path, non_blocking, mut animation, mut shown) in &mut objects {
+    for (entity, pos, own_style, path, non_blocking, sliding, mut animation, mut shown) in
+        &mut objects
+    {
         // A step through a portal carries on from the exit: the motion so
         // far is moved there first, so the step starts at the exit face.
         if let Some(through) = crossings
@@ -244,7 +262,11 @@ pub fn animate_objects(
             &mut animation.state,
             pos.0.as_vec2(),
             path.map(|path| path.0),
-            style_of(own_style, *style),
+            if sliding {
+                slide_style(own_style, *style)
+            } else {
+                style_of(own_style, *style)
+            },
             |from, to| wrapped(from, to, &grid),
             dt,
         );
