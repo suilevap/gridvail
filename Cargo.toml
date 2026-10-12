@@ -44,8 +44,9 @@ flatbt-bevy = { git = "https://github.com/suilevap/flatbt", branch = "main" }
 flatbt = { git = "https://github.com/suilevap/flatbt", branch = "main" }
 
 # Desktop only: the 3D walls renderer (and the lookup tables its camera
-# tonemaps with), the agent API's HTTP server, system diagnostics and the
-# Linux window backends. The web build leaves them out.
+# tonemaps with), the agent API's HTTP server, system diagnostics, PNG
+# saving for `--screenshot` and `--record`, and the Linux window backends.
+# The web build leaves them out.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 bevy = { version = "0.19.1", default-features = false, features = [
     "x11",
@@ -55,6 +56,7 @@ bevy = { version = "0.19.1", default-features = false, features = [
     "zstd_rust",
     "bevy_remote",
     "sysinfo_plugin",
+    "png",
 ] }
 
 # The browser build: rand's OS entropy comes from the JS crypto API there.
