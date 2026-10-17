@@ -117,6 +117,20 @@ fn waiting_for_input_does_not_spend_rounds_or_move_enemies() {
     assert_eq!(app.world().resource::<BattleState>().round, 0);
     assert_eq!(*app.world().get::<Pos>(entity).unwrap(), start);
     assert_eq!(enemy(&mut app).2.intent, intent);
+    let glyph = app.world().get::<Glyph>(entity).unwrap();
+    assert_eq!(glyph.ch, 'B');
+    let buffers = app.world().resource::<RenderBuffers>();
+    let sprite = buffers
+        .objects
+        .iter()
+        .find(|object| object.entity == entity)
+        .unwrap();
+    assert_eq!(sprite.cell.ch, 'B');
+    assert_eq!(sprite.cell.color, glyph.color);
+    assert_eq!(
+        buffers.current[buffers.idx(start.0).unwrap()].color,
+        glyph.color
+    );
 }
 
 #[test]

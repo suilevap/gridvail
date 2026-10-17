@@ -223,7 +223,13 @@ pub fn compose_frame(
         };
         let cell = buffers.current[index];
         let shown = cell.ch == object.cell.ch && cell.depth == object.cell.depth;
-        object.cell.color = cell.color;
+        if fighters.contains(object.entity) {
+            // Intent colors are information, so keep them readable under
+            // the map's ambient lighting as well as in the object sprite.
+            buffers.current[index].color = object.cell.color;
+        } else {
+            object.cell.color = cell.color;
+        }
         if shown && object.height < 1.0 {
             let mut floor = RenderCell::default();
             let position = buffers.pos_of(index);

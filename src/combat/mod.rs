@@ -76,6 +76,9 @@ fn prepare_fighters(
             BattleStart(pos.0),
         ));
         if !player {
+            // Battle roles own their glyph; the legacy directional enemy
+            // tile would replace it on the next idle frame.
+            commands.entity(entity).remove::<DirectionTile>();
             if role == Some(&BattleRole::ShieldBearer) {
                 commands.spawn((
                     Active,
