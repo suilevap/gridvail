@@ -4,8 +4,10 @@
 //! separately by the executable, so another renderer can consume the same
 //! `RenderBuffers` without changing the game.
 
+mod intro;
 mod map;
 
+pub use intro::{intro_scene, Intro, IntroClosing, IntroLayout, IntroRoom, IntroScene};
 pub use map::{MapPlugin, MapText};
 
 use bevy::prelude::*;
@@ -51,6 +53,7 @@ impl Plugin for GamePlugin {
         )
         .add_plugins((
             MapPlugin,
+            intro::IntroPlugin,
             SimulationPlugin::new(42),
             NavigationPlugin,
             ServicesPlugin,

@@ -196,7 +196,14 @@ and renderers must not import it.
   command components, keeping agent actions inside the gameplay pipeline.
 - `debug_ui.rs` contains optional runtime diagnostics and their UI. It reads
   public game/renderer statistics without owning simulation or rendering.
-- `app/` wires the concrete Gridvail/PavEcsLiteGame port together. The bundled
+- `app/` wires the concrete Gridvail/PavEcsLiteGame port together. `app/intro.rs`
+  plays the intro (`Intro`): `construct_map` leaves the map's plain walls
+  out and the intro spawns the title's walls and a room covering the map
+  that switches to the map's walls once the title has stood, as a
+  `Cutscene` (player input and new turns wait) with an oval around the
+  title in sight (`RevealArea`, which the frame marks as seen like
+  `RevealAll` but only within it) and the camera on it; afterwards the
+  oval closes onto the player. The bundled
   map choice and exact spawn bundles live in `app/map.rs`; domain composition,
   phase ordering, and compatibility decisions live in `app/mod.rs`.
 - `main.rs` installs the animation step, selects the text or hybrid 3D-wall

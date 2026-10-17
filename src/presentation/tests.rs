@@ -64,6 +64,33 @@ fn the_floor_shows_under_a_wall_rising_or_sinking() {
 }
 
 #[test]
+fn a_reveal_area_shows_only_the_cells_within_it() {
+    let mut app = test_app::headless();
+    app.insert_resource(DynamicLight::sized(64))
+        .insert_resource(RenderBuffers::new(8, 8))
+        .insert_resource(RevealArea {
+            centre: Vec2::new(5.0, 5.0),
+            radii: Vec2::new(2.0, 1.0),
+        });
+    app.world_mut().spawn((
+        Player(0),
+        Pos(IVec2::ZERO),
+        Speed::default(),
+        visibility(&[(IVec2::ZERO, Vis::VISIBLE | Vis::KNOWN)]),
+    ));
+    app.world_mut().run_system_once(compose_frame).unwrap();
+    let buffers = app.world().resource::<RenderBuffers>();
+    let seen = |p: IVec2| buffers.seen[buffers.idx(p).unwrap()].is_some();
+    assert!(seen(IVec2::ZERO), "what the player sees");
+    assert!(seen(IVec2::new(5, 5)) && seen(IVec2::new(7, 5)) && seen(IVec2::new(5, 4)));
+    assert!(
+        !seen(IVec2::new(5, 3)) && !seen(IVec2::new(7, 6)),
+        "outside the oval"
+    );
+    assert!(!seen(IVec2::new(2, 2)));
+}
+
+#[test]
 fn static_decor_renders_when_known_but_unseen() {
     let mut app = test_app::headless();
     app.insert_resource(DynamicLight::sized(64))
