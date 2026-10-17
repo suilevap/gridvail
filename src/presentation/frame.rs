@@ -41,6 +41,8 @@ pub fn compose_frame(
         Option<&Speed>,
         Option<&AnimatedPos>,
         Has<BoundTo>,
+        Option<&Health>,
+        Has<Enemy>,
     )>,
     children: Query<(Entity, &Pos, &Glyph, Option<&AnimatedPos>, &BoundTo)>,
     fighters: Query<(&Pos, &Fighter, &Health)>,
@@ -62,11 +64,11 @@ pub fn compose_frame(
     buffers.objects.clear();
     mark_seen(&mut buffers, &grid, visibility, view, reveal.is_some());
 
-    for (entity, pos, glyph, speed, shown, bound) in glyphs.iter() {
+    for (entity, pos, glyph, speed, shown, bound, health, enemy) in glyphs.iter() {
         let Some(world) = grid.idx(pos.0) else {
             continue;
         };
-        if bound {
+        if bound || (enemy && health.is_some_and(|health| health.current == 0)) {
             continue;
         }
         let drawn = RenderCell {

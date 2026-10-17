@@ -623,6 +623,12 @@ fn update_hud(
                 }
             )
             .unwrap();
+            write!(
+                text.0,
+                "S: spear | G: shield (arrow marks front) | B: brute"
+            )
+            .unwrap();
+            continue;
         } else {
             match scheme {
             ControlScheme::Keyboard => writeln!(
