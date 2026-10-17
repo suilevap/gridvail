@@ -21,7 +21,9 @@ pub fn recharge_tokens(
     if battle.is_none() {
         timer.0.tick(time.delta());
     }
-    let any_left = holders.iter().any(|(tokens, active)| tokens.count > 0 && (battle.is_none() || active));
+    let any_left = holders
+        .iter()
+        .any(|(tokens, active)| tokens.count > 0 && (battle.is_none() || active));
     // A new turn starts on the timeout, or once every token is spent and the
     // player's action has (almost) finished animating, if anything animates.
     if (battle.is_none() && timer.0.is_finished()) || (!any_left && pacing.can_advance()) {

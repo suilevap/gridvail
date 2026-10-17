@@ -1,8 +1,8 @@
 //! Swappable output backends for composed game frames.
 
+mod battle;
 mod extruded;
 mod settings;
-mod battle;
 mod text;
 // Desktop only: the web build leaves 3D rendering out to keep its download
 // small.
