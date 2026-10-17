@@ -200,8 +200,10 @@ and renderers must not import it.
   plays the intro (`Intro`): `construct_map` leaves the map's plain walls
   out and the intro spawns the title's walls and a room covering the map
   that switches to the map's walls once the title has stood, as a
-  `Cutscene` (player input and new turns wait) with the whole map in sight
-  and the camera on the title. The bundled
+  `Cutscene` (player input and new turns wait) with an oval around the
+  title in sight (`RevealArea`, which the frame marks as seen like
+  `RevealAll` but only within it) and the camera on it; afterwards the
+  oval closes onto the player. The bundled
   map choice and exact spawn bundles live in `app/map.rs`; domain composition,
   phase ordering, and compatibility decisions live in `app/mod.rs`.
 - `main.rs` installs the animation step, selects the text or hybrid 3D-wall

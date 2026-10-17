@@ -32,7 +32,8 @@ pub const PORTAL_GLYPH: char = '░';
 pub fn compose_frame(
     grid: Res<MapGrid>,
     dynamic: Res<DynamicLight>,
-    reveal: Option<Res<RevealAll>>,
+    // What is in sight beyond what the player sees: all, or an oval.
+    (reveal, area): (Option<Res<RevealAll>>, Option<Res<RevealArea>>),
     viewers: Query<(&Pos, &VisibilityMap, Option<&PlayerView>), With<Player>>,
     glyphs: Query<(
         Entity,
@@ -59,7 +60,14 @@ pub fn compose_frame(
     buffers.swap();
     buffers.current.fill(RenderCell::default());
     buffers.objects.clear();
-    mark_seen(&mut buffers, &grid, visibility, view, reveal.is_some());
+    mark_seen(
+        &mut buffers,
+        &grid,
+        visibility,
+        view,
+        reveal.is_some(),
+        area.as_deref(),
+    );
 
     for (entity, pos, glyph, speed, shown, bound) in glyphs.iter() {
         let Some(world) = grid.idx(pos.0) else {
@@ -241,13 +249,14 @@ fn light_cell(
 /// Fills `seen` and the lists of frame cells showing each map cell, from
 /// the player's view through portals. Without one (tests that build only a
 /// visibility map), visible cells are seen directly. With `reveal`, every
-/// other cell is seen directly too.
+/// other cell is seen directly too; with `area`, every other cell within it.
 fn mark_seen(
     buffers: &mut RenderBuffers,
     grid: &MapGrid,
     visibility: &VisibilityMap,
     view: Option<&PlayerView>,
     reveal: bool,
+    area: Option<&RevealArea>,
 ) {
     let map_cells = (grid.width * grid.height) as usize;
     if buffers.seen_first.len() != map_cells {
@@ -294,10 +303,10 @@ fn mark_seen(
             }
         }
     }
-    if reveal {
+    if reveal || area.is_some() {
         for index in 0..buffers.seen.len() {
-            if buffers.seen[index].is_none() {
-                let p = buffers.pos_of(index);
+            let p = buffers.pos_of(index);
+            if buffers.seen[index].is_none() && (reveal || area.is_some_and(|a| a.contains(p))) {
                 mark(buffers, p, directly(p));
             }
         }

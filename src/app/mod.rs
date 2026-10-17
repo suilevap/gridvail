@@ -7,7 +7,7 @@
 mod intro;
 mod map;
 
-pub use intro::{intro_walls, Intro, IntroLayout, IntroRoom};
+pub use intro::{intro_scene, Intro, IntroClosing, IntroLayout, IntroRoom, IntroScene};
 pub use map::{MapPlugin, MapText};
 
 use bevy::prelude::*;

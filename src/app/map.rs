@@ -49,12 +49,7 @@ impl Plugin for MapPlugin {
 
 /// Spawns the map. With an [`Intro`], its plain walls are not spawned but
 /// come together from the intro's.
-fn construct_map(
-    mut commands: Commands,
-    map: Res<MapText>,
-    intro: Option<Res<Intro>>,
-    reveal: Option<Res<RevealAll>>,
-) {
+fn construct_map(mut commands: Commands, map: Res<MapText>, intro: Option<Res<Intro>>) {
     let (width, height, cells) = parse_map(map.0);
     let links = portal_links(width, height, &cells).unwrap_or_else(|error| panic!("map: {error}"));
     let rooms = parse_rooms(map.0, &cells).unwrap_or_else(|error| panic!("map: {error}"));
@@ -247,14 +242,7 @@ fn construct_map(
         commands.spawn(Room::new(room.origin, room.size, room.layouts).with_planner(room.planner));
     }
     if let Some(intro) = intro {
-        begin_intro(
-            &mut commands,
-            &mut grid,
-            intro.0,
-            &cells,
-            map_walls,
-            reveal.is_some(),
-        );
+        begin_intro(&mut commands, &mut grid, intro.0, &cells, map_walls);
     }
 
     commands.insert_resource(grid);

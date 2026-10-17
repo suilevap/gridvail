@@ -6,12 +6,14 @@
 //! rises out of the floor and stands for [`HOLD_SECONDS`]; then the room
 //! switches, so its walls slide, rise and sink like any room's, with
 //! whatever room planner is the default. While it plays it is a
-//! [`Cutscene`], the whole map is in sight ([`RevealAll`]) and the camera
-//! looks at the title from as far out as it zooms; once every wall has
-//! settled, the room goes, the camera glides back to the player and the
-//! game starts.
+//! [`Cutscene`]; an oval around the title is in sight (a [`RevealArea`],
+//! nothing else of the map) and the camera looks at it from as far out as
+//! it zooms. Once every wall has settled the room goes and play starts:
+//! over [`CLOSE_SECONDS`] the oval closes onto the player, leaving what
+//! they see, while the camera glides back to them.
 
 use std::collections::HashSet;
+use std::f32::consts::SQRT_2;
 use std::time::Duration;
 
 use bevy::prelude::*;
@@ -25,6 +27,10 @@ use crate::simulation::wall_bundle;
 
 /// The title, as walls (`X`; anything else is floor).
 const TITLE: &str = include_str!("../../assets/intro.txt");
+/// Cells of map in sight around the title's oval, beyond its corners.
+const TITLE_MARGIN: f32 = 1.5;
+/// How far from the player noise reaches, in cells (also its oval).
+const NOISE_RADIUS: f32 = 10.0;
 /// Of the cells noise may use, the share that become walls.
 const NOISE_DENSITY: f64 = 0.3;
 /// Noise is the same every time.
@@ -32,8 +38,9 @@ const NOISE_SEED: u64 = 7;
 /// How long the title stands before the map comes together, rising
 /// included.
 pub const HOLD_SECONDS: f32 = 1.5;
-/// How long the camera takes to glide back to the player afterwards.
-const RETURN_SECONDS: f32 = 0.8;
+/// How long the oval takes to close onto the player afterwards, while the
+/// camera glides back to them.
+pub const CLOSE_SECONDS: f32 = 0.8;
 
 /// What the map's walls come together from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,7 +48,7 @@ pub enum IntroLayout {
     /// The game's title (`assets/intro.txt`), centred on the player; noise
     /// on a map too small for it.
     Title,
-    /// Walls scattered at random.
+    /// Walls scattered at random around the player.
     Noise,
 }
 
@@ -60,16 +67,28 @@ impl IntroLayout {
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Intro(pub IntroLayout);
 
-/// The room the intro switches. `revealed` is whether the intro put the
-/// whole map in sight, to take it away again; `hold` is how long the title
-/// still stands; `centre` is the title's middle, which the camera looks at,
-/// and `zoom` the camera's zoom before, to go back to.
+/// What the intro shows: its walls, and the oval of the map in sight
+/// around them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct IntroScene {
+    pub walls: Vec<IVec2>,
+    pub area: RevealArea,
+}
+
+/// The room the intro switches. `hold` is how long the title still stands;
+/// `zoom` is the camera's zoom before, to go back to.
 #[derive(Component, Clone, Debug)]
 pub struct IntroRoom {
-    revealed: bool,
     hold: Timer,
-    centre: Vec2,
     zoom: f32,
+}
+
+/// The oval closing onto the player once the intro is over: where it
+/// started and how far it has got.
+#[derive(Resource, Clone, Debug)]
+pub struct IntroClosing {
+    from: RevealArea,
+    timer: Timer,
 }
 
 pub(super) struct IntroPlugin;
@@ -78,31 +97,40 @@ impl Plugin for IntroPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, frame_intro.in_set(StartupPhase::Derive))
             .add_systems(Update, switch_intro.in_set(GamePhase::Simulation))
+            .add_systems(
+                Update,
+                close_intro
+                    .run_if(resource_exists::<IntroClosing>)
+                    .in_set(GamePhase::Animation),
+            )
             .add_systems(Update, end_intro.in_set(GamePhase::Finalize));
     }
 }
 
-/// The intro's walls on a `width` x `height` map: the title centred on
-/// `player` and kept inside the map (noise if it does not fit), or noise,
-/// never on a cell `blocked` says something else spawns on.
-pub fn intro_walls(
+/// The intro on a `width` x `height` map: the title centred on `player`
+/// and kept inside the map (noise if it does not fit), or noise around
+/// `player`; its walls never on a cell `blocked` says something else spawns
+/// on.
+pub fn intro_scene(
     layout: IntroLayout,
     width: i32,
     height: i32,
     player: IVec2,
     blocked: impl Fn(IVec2) -> bool,
-) -> Vec<IVec2> {
-    let walls = match layout {
-        IntroLayout::Title => title_walls(TITLE, width, height, player),
+) -> IntroScene {
+    let scene = match layout {
+        IntroLayout::Title => title_scene(TITLE, width, height, player),
         IntroLayout::Noise => None,
     };
-    let walls = walls.unwrap_or_else(|| noise_walls(width, height));
-    walls.into_iter().filter(|&p| !blocked(p)).collect()
+    let mut scene = scene.unwrap_or_else(|| noise_scene(width, height, player));
+    scene.walls.retain(|&p| !blocked(p));
+    scene
 }
 
-/// `art`'s walls centred on `centre`, moved to lie inside the map; `None`
-/// when it is larger than the map.
-fn title_walls(art: &str, width: i32, height: i32, centre: IVec2) -> Option<Vec<IVec2>> {
+/// `art`'s walls centred on `centre`, moved to lie inside the map, and the
+/// oval through its corners (plus a margin); `None` when it is larger than
+/// the map.
+fn title_scene(art: &str, width: i32, height: i32, centre: IVec2) -> Option<IntroScene> {
     let rows: Vec<&str> = art.lines().collect();
     let size = IVec2::new(
         rows.iter()
@@ -115,37 +143,48 @@ fn title_walls(art: &str, width: i32, height: i32, centre: IVec2) -> Option<Vec<
         return None;
     }
     let corner = (centre - size / 2).clamp(IVec2::ZERO, IVec2::new(width, height) - size);
-    Some(
-        rows.iter()
-            .enumerate()
-            .flat_map(|(y, row)| {
-                row.chars().enumerate().filter_map(move |(x, c)| {
-                    matches!(c, 'X' | 'x').then_some(corner + IVec2::new(x as i32, y as i32))
-                })
+    let walls = rows
+        .iter()
+        .enumerate()
+        .flat_map(|(y, row)| {
+            row.chars().enumerate().filter_map(move |(x, c)| {
+                matches!(c, 'X' | 'x').then_some(corner + IVec2::new(x as i32, y as i32))
             })
-            .collect(),
-    )
+        })
+        .collect();
+    // An oval through a rectangle's corners is √2 times its half size.
+    let area = RevealArea {
+        centre: corner.as_vec2() + (size - 1).as_vec2() / 2.0,
+        radii: size.as_vec2() / 2.0 * SQRT_2 + TITLE_MARGIN,
+    };
+    Some(IntroScene { walls, area })
 }
 
-fn noise_walls(width: i32, height: i32) -> Vec<IVec2> {
+/// Walls scattered within [`NOISE_RADIUS`] of `centre`, and that circle.
+fn noise_scene(width: i32, height: i32, centre: IVec2) -> IntroScene {
+    let area = RevealArea {
+        centre: centre.as_vec2(),
+        radii: Vec2::splat(NOISE_RADIUS),
+    };
     let mut rng = rand::rngs::StdRng::seed_from_u64(NOISE_SEED);
-    (0..height)
+    let walls = (0..height)
         .flat_map(|y| (0..width).map(move |x| IVec2::new(x, y)))
+        .filter(|&p| area.contains(p))
         .filter(|_| rng.random_bool(NOISE_DENSITY))
-        .collect()
+        .collect();
+    IntroScene { walls, area }
 }
 
 /// Sets the intro up in place of the map's plain walls (`map_walls`, not
 /// spawned): spawns the intro's walls, the room that switches them to the
-/// map's, and the cutscene. Portal walls and everything else are already
-/// in place; the intro keeps off their cells.
+/// map's, the cutscene and the oval in sight. Portal walls and everything
+/// else are already in place; the intro keeps off their cells.
 pub(super) fn begin_intro(
     commands: &mut Commands,
     grid: &mut MapGrid,
     layout: IntroLayout,
     cells: &[SpawnCell],
     map_walls: Vec<IVec2>,
-    already_revealed: bool,
 ) {
     let occupied: HashSet<IVec2> = cells
         .iter()
@@ -156,52 +195,42 @@ pub(super) fn begin_intro(
         .iter()
         .find(|cell| cell.kind == SpawnKind::Player)
         .map_or(IVec2::new(grid.width, grid.height) / 2, |cell| cell.pos);
-    let walls = intro_walls(layout, grid.width, grid.height, player, |p| {
+    let scene = intro_scene(layout, grid.width, grid.height, player, |p| {
         occupied.contains(&p)
     });
-    for &p in &walls {
+    for &p in &scene.walls {
         let wall = commands.spawn((wall_bundle(p), Rising { from: p })).id();
         grid.set(p, wall);
     }
-    let centre = match (
-        walls.iter().copied().reduce(IVec2::min),
-        walls.iter().copied().reduce(IVec2::max),
-    ) {
-        (Some(min), Some(max)) => (min + max).as_vec2() / 2.0,
-        _ => player.as_vec2(),
-    };
     let room = Room::new(
         IVec2::ZERO,
         IVec2::new(grid.width, grid.height),
-        vec![walls, map_walls],
+        vec![scene.walls, map_walls],
     );
     commands.spawn((
         room,
         IntroRoom {
-            revealed: !already_revealed,
             hold: Timer::from_seconds(HOLD_SECONDS, TimerMode::Once),
-            centre,
             zoom: 1.0,
         },
     ));
     commands.insert_resource(Cutscene);
-    if !already_revealed {
-        commands.insert_resource(RevealAll);
-    }
+    commands.insert_resource(scene.area);
 }
 
-/// Points the camera at the title, from as far out as it zooms.
+/// Points the camera at the oval in sight, from as far out as it zooms.
 fn frame_intro(
     camera: Option<Res<ViewCamera>>,
     operator: Option<ResMut<CameraOperator>>,
+    area: Option<Res<RevealArea>>,
     mut rooms: Query<&mut IntroRoom>,
 ) {
-    let (Some(camera), Some(mut operator)) = (camera, operator) else {
+    let (Some(camera), Some(mut operator), Some(area)) = (camera, operator, area) else {
         return;
     };
     for mut intro in &mut rooms {
         intro.zoom = operator.target_zoom();
-        operator.look_at(CameraTarget::Point(intro.centre), &camera);
+        operator.look_at(CameraTarget::Point(area.centre), &camera);
         operator.zoom_to(ZOOM_RANGE.0);
         operator.snap();
     }
@@ -217,11 +246,12 @@ fn switch_intro(time: Res<Time>, mut rooms: Query<(&mut Room, &mut IntroRoom)>) 
 }
 
 /// Ends the intro once its room has switched and nothing still animates:
-/// the room goes (no plate switches it back), the cutscene and the intro's
-/// view of the whole map end, and the camera goes back to the player.
+/// the room goes (no plate switches it back), the cutscene ends, the oval
+/// in sight starts closing and the camera goes back to the player.
 fn end_intro(
     mut commands: Commands,
     pacing: Res<TurnPacing>,
+    area: Option<Res<RevealArea>>,
     camera: Option<Res<ViewCamera>>,
     mut operator: Option<ResMut<CameraOperator>>,
     rooms: Query<(Entity, &Room, &IntroRoom)>,
@@ -235,16 +265,47 @@ fn end_intro(
         }
         commands.entity(entity).despawn();
         commands.remove_resource::<Cutscene>();
-        if intro.revealed {
-            commands.remove_resource::<RevealAll>();
+        if let Some(area) = area.as_deref() {
+            commands.insert_resource(IntroClosing {
+                from: *area,
+                timer: Timer::from_seconds(CLOSE_SECONDS, TimerMode::Once),
+            });
         }
         if let (Some(camera), Some(operator)) = (camera.as_deref(), operator.as_deref_mut()) {
             let transition = operator.transition;
-            operator.transition = RETURN_SECONDS;
+            operator.transition = CLOSE_SECONDS;
             operator.look_at(CameraTarget::Player, camera);
             operator.zoom_to(intro.zoom);
             operator.transition = transition;
         }
+    }
+}
+
+/// Closes the oval in sight onto the player (where they are shown, as they
+/// may already be walking) until nothing of it is left but what they see.
+fn close_intro(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut closing: ResMut<IntroClosing>,
+    area: Option<ResMut<RevealArea>>,
+    players: Query<(&Pos, Option<&AnimatedPos>), With<Player>>,
+) {
+    closing.timer.tick(time.delta());
+    if closing.timer.is_finished() {
+        commands.remove_resource::<RevealArea>();
+        commands.remove_resource::<IntroClosing>();
+        return;
+    }
+    let from = closing.from;
+    let player = players.single().map_or(from.centre, |(pos, shown)| {
+        shown.map_or(pos.0.as_vec2(), |shown| shown.position)
+    });
+    let t = EaseFunction::SmoothStep.sample_clamped(closing.timer.fraction());
+    if let Some(mut area) = area {
+        *area = RevealArea {
+            centre: from.centre.lerp(player, t),
+            radii: from.radii * (1.0 - t),
+        };
     }
 }
 
@@ -255,7 +316,7 @@ mod tests {
     #[test]
     fn the_title_is_centred_on_the_player_and_kept_inside_the_map() {
         let art = "X.X\n.X.";
-        let walls = |centre| title_walls(art, 10, 6, centre).unwrap();
+        let walls = |centre| title_scene(art, 10, 6, centre).unwrap().walls;
         assert_eq!(
             walls(IVec2::new(5, 3)),
             [IVec2::new(4, 2), IVec2::new(6, 2), IVec2::new(5, 3)]
@@ -265,23 +326,31 @@ mod tests {
             walls(IVec2::ZERO),
             [IVec2::new(0, 0), IVec2::new(2, 0), IVec2::new(1, 1)]
         );
-        assert!(title_walls(art, 2, 6, IVec2::ZERO).is_none(), "too small");
+        assert!(title_scene(art, 2, 6, IVec2::ZERO).is_none(), "too small");
     }
 
     #[test]
-    fn a_map_too_small_for_the_title_gets_noise_and_nothing_lands_on_spawns() {
-        let player = IVec2::new(2, 2);
-        let walls = intro_walls(IntroLayout::Title, 10, 5, player, |p| p == player);
-        assert!(!walls.is_empty());
-        assert!(!walls.contains(&player));
+    fn the_title_is_in_sight_and_little_else() {
+        let scene = title_scene(TITLE, 80, 24, IVec2::new(40, 12)).unwrap();
+        assert!(scene.walls.iter().all(|&p| scene.area.contains(p)));
+        let shown = (0..24)
+            .flat_map(|y| (0..80).map(move |x| IVec2::new(x, y)))
+            .filter(|&p| scene.area.contains(p))
+            .count();
+        assert!(shown < 80 * 24 / 2, "less than half the map: {shown}");
+    }
+
+    #[test]
+    fn a_map_too_small_for_the_title_gets_noise_around_the_player() {
+        let player = IVec2::new(10, 5);
+        let scene = intro_scene(IntroLayout::Title, 30, 10, player, |p| p == player);
+        assert!(!scene.walls.is_empty());
+        assert!(!scene.walls.contains(&player), "nothing lands on spawns");
+        assert!(scene.walls.iter().all(|&p| scene.area.contains(p)));
+        assert_eq!(scene.area.centre, player.as_vec2());
         assert_eq!(
-            walls,
-            intro_walls(IntroLayout::Noise, 10, 5, player, |p| p == player)
+            scene,
+            intro_scene(IntroLayout::Noise, 30, 10, player, |p| p == player)
         );
-    }
-
-    #[test]
-    fn the_bundled_title_fits_the_bundled_maps() {
-        assert!(title_walls(TITLE, 80, 24, IVec2::new(40, 12)).is_some());
     }
 }

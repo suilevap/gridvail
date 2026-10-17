@@ -5,7 +5,9 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::animation::ObjectAnimationPlugin;
-use pav_ecs_game_bevy_port::app::{GamePlugin, Intro, IntroLayout, IntroRoom, MapText};
+use pav_ecs_game_bevy_port::app::{
+    GamePlugin, Intro, IntroClosing, IntroLayout, IntroRoom, MapText,
+};
 use pav_ecs_game_bevy_port::content::map::{parse_map, SpawnKind};
 use pav_ecs_game_bevy_port::model::*;
 
@@ -94,16 +96,31 @@ fn without_animation_the_map_comes_together_after_the_title_has_stood() {
         "and no others"
     );
     assert!(!playing_intro(&mut app), "the intro is over");
-    assert!(!app.world().contains_resource::<RevealAll>());
+    // The oval in sight closes over 0.8 s.
+    for _ in 0..60 {
+        app.update();
+    }
+    assert!(!app.world().contains_resource::<RevealArea>());
+    assert!(!app.world().contains_resource::<IntroClosing>());
+    assert!(!app.world().contains_resource::<RevealAll>(), "never all");
 }
 
 #[test]
-fn the_intro_holds_the_player_and_shows_the_whole_map_until_the_walls_settle() {
+fn the_intro_holds_the_player_with_the_title_in_sight_then_closes_onto_them() {
     let mut app = boot(true, |_| {});
     app.update();
     assert!(playing_intro(&mut app));
-    assert!(app.world().contains_resource::<RevealAll>(), "all in sight");
+    assert!(
+        !app.world().contains_resource::<RevealAll>(),
+        "not all in sight"
+    );
+    let area = *app.world().resource::<RevealArea>();
     let title = walls(&mut app);
+    assert!(
+        title.iter().all(|&p| area.contains(p)),
+        "the title is in sight"
+    );
+    assert!(!area.contains(IVec2::new(79, 23)), "the far corner is not");
     assert!(!title.is_empty() && !all_walls_in_place(&mut app));
     let world = app.world_mut();
     let rising = world
@@ -137,21 +154,21 @@ fn the_intro_holds_the_player_and_shows_the_whole_map_until_the_walls_settle() {
         }
     }
     assert!(switched);
-    assert!(
-        !app.world().contains_resource::<RevealAll>(),
-        "sight is back"
-    );
     let world = app.world_mut();
     assert_eq!(world.query::<&Sinking>().iter(world).count(), 0);
     assert!(all_walls_in_place(&mut app));
 
-    // Now the held key walks.
-    for _ in 0..60 {
+    // The oval closes onto the player while the held key already walks.
+    let mut radii = area.radii;
+    while let Some(area) = app.world().get_resource::<RevealArea>().copied() {
+        assert!(area.radii.x <= radii.x, "it only shrinks");
+        radii = area.radii;
         app.update();
-        if player(&mut app) != start {
-            break;
-        }
+        frames += 1;
+        assert!(frames < 700, "it closes");
     }
+    assert!(radii.x < 2.0, "down to nothing: {radii}");
+    assert!(!app.world().contains_resource::<IntroClosing>());
     assert_ne!(player(&mut app), start, "the game has started");
 }
 
