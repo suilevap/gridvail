@@ -187,15 +187,25 @@ pub fn compose_frame(
     // Only advertise attacks by enemies the player can actually see. Use the
     // same world-to-frame lists as objects, so portals and both renderers agree.
     for (pos, fighter, health) in &fighters {
-        let visible = grid.idx(pos.0).is_some_and(|index| buffers.seen_first[index] != RenderBuffers::NO_CELL);
-        if health.current == 0 || !visible { continue; }
+        let visible = grid
+            .idx(pos.0)
+            .is_some_and(|index| buffers.seen_first[index] != RenderBuffers::NO_CELL);
+        if health.current == 0 || !visible {
+            continue;
+        }
         for threatened in fighter.intent.cells().into_iter().flatten() {
-            let Some(world) = grid.idx(threatened) else { continue; };
+            let Some(world) = grid.idx(threatened) else {
+                continue;
+            };
             let mut frame = buffers.seen_first[world];
             while frame != RenderBuffers::NO_CELL {
                 let index = frame as usize;
                 buffers.current[index].color = RED;
-                buffers.ground[index] = RenderCell { ch: '!', color: RED, depth: 0 };
+                buffers.ground[index] = RenderCell {
+                    ch: '!',
+                    color: RED,
+                    depth: 0,
+                };
                 frame = buffers.seen_next[index];
             }
         }

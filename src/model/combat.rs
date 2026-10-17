@@ -11,7 +11,11 @@ pub struct Health {
 
 impl Health {
     pub const fn new(maximum: i32) -> Self {
-        Self { current: maximum, maximum, guarded: false }
+        Self {
+            current: maximum,
+            maximum,
+            guarded: false,
+        }
     }
 
     /// Bracing absorbs one point of the next hit, then expires.
@@ -42,11 +46,18 @@ impl BattleRole {
     }
 
     pub const fn reach(self) -> i32 {
-        match self { Self::Spearman => 2, _ => 1 }
+        match self {
+            Self::Spearman => 2,
+            _ => 1,
+        }
     }
 
     pub const fn damage(self) -> i32 {
-        match self { Self::Spearman => 2, Self::Brute => 3, _ => 1 }
+        match self {
+            Self::Spearman => 2,
+            Self::Brute => 3,
+            _ => 1,
+        }
     }
 
     pub const fn glyph(self) -> char {
@@ -64,7 +75,12 @@ pub enum BattleIntent {
     #[default]
     Idle,
     Move(IVec2),
-    Strike { origin: IVec2, direction: IVec2, reach: i32, damage: i32 },
+    Strike {
+        origin: IVec2,
+        direction: IVec2,
+        reach: i32,
+        damage: i32,
+    },
     Recover,
 }
 
@@ -72,7 +88,12 @@ impl BattleIntent {
     /// At most two threatened cells; fixed storage avoids per-turn allocation.
     pub fn cells(self) -> [Option<IVec2>; 2] {
         match self {
-            Self::Strike { origin, direction, reach, .. } => [
+            Self::Strike {
+                origin,
+                direction,
+                reach,
+                ..
+            } => [
                 (reach > 0).then_some(origin + direction),
                 (reach > 1).then_some(origin + direction * 2),
             ],
@@ -115,7 +136,9 @@ pub struct WaitHold {
 impl WaitHold {
     pub const SECONDS: f32 = 0.6;
 
-    pub fn progress(&self) -> f32 { (self.elapsed / Self::SECONDS).clamp(0.0, 1.0) }
+    pub fn progress(&self) -> f32 {
+        (self.elapsed / Self::SECONDS).clamp(0.0, 1.0)
+    }
 
     pub fn update(&mut self, held: bool, ready: bool, seconds: f32) -> bool {
         if !held {
@@ -123,7 +146,9 @@ impl WaitHold {
             self.latched = false;
             return false;
         }
-        if self.latched { return false; }
+        if self.latched {
+            return false;
+        }
         if !ready {
             self.elapsed = 0.0;
             return false;

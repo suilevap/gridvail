@@ -38,10 +38,15 @@ impl Swipe {
 
     /// Holding still before any swipe is the touch equivalent of Space.
     pub fn waiting(&self, touches: &Touches) -> bool {
-        !self.cancelled && self.held.is_none() && self.pending.is_none()
+        !self.cancelled
+            && self.held.is_none()
+            && self.pending.is_none()
             && touches.iter().count() == 1
-            && self.origin.is_some_and(|(id, origin)| touches.get_pressed(id)
-                .is_some_and(|touch| touch.position().distance(origin) < SWIPE_THRESHOLD))
+            && self.origin.is_some_and(|(id, origin)| {
+                touches
+                    .get_pressed(id)
+                    .is_some_and(|touch| touch.position().distance(origin) < SWIPE_THRESHOLD)
+            })
     }
 }
 
@@ -114,7 +119,11 @@ pub fn swipe_commands(
     if turn.simulation || battle.as_ref().is_some_and(|battle| battle.defeated) {
         return;
     }
-    let Some(screen) = (if battle.is_some() { swipe.pending } else { swipe.direction() }) else {
+    let Some(screen) = (if battle.is_some() {
+        swipe.pending
+    } else {
+        swipe.direction()
+    }) else {
         return;
     };
     let target = camera.map_or(screen, |camera| camera.map_direction(screen));

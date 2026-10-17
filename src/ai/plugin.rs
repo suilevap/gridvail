@@ -3,9 +3,9 @@ use flatbt_bevy::prelude::*;
 
 use super::*;
 use crate::locomotion::follow_paths;
+use crate::model::BattleState;
 use crate::navigation::share_paths;
 use crate::schedule::GamePhase;
-use crate::model::BattleState;
 use crate::simulation::{direction_tiles, move_commands, player_input};
 
 /// Enemy decisions: behavior trees, wandering goals, random steps, and what

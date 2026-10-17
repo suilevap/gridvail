@@ -26,10 +26,17 @@ pub fn player_input(
     >,
 ) {
     // Tactical play takes one action per press, never repeats a held direction.
-    let pressed = |codes| if battle.is_some() { keys.any_just_pressed(codes) } else { keys.any_pressed(codes) };
+    let pressed = |codes| {
+        if battle.is_some() {
+            keys.any_just_pressed(codes)
+        } else {
+            keys.any_pressed(codes)
+        }
+    };
     // The settings menu takes the arrow keys while it is open.
     let screen = if SettingsMenu::is_open(menu.as_deref())
-        || battle.as_ref().is_some_and(|battle| battle.defeated) {
+        || battle.as_ref().is_some_and(|battle| battle.defeated)
+    {
         None
     } else if pressed([KeyCode::ArrowUp, KeyCode::KeyW]) {
         Some(IVec2::NEG_Y)

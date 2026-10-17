@@ -32,7 +32,12 @@ impl Plugin for TouchControlPlugin {
                     .after(bevy::input::InputSystems)
                     .run_if(resource_exists::<Touches>),
             )
-            .add_systems(PreUpdate, read_wait_touch.after(read_swipes).run_if(resource_exists::<Touches>))
+            .add_systems(
+                PreUpdate,
+                read_wait_touch
+                    .after(read_swipes)
+                    .run_if(resource_exists::<Touches>),
+            )
             .add_systems(
                 Update,
                 swipe_commands
