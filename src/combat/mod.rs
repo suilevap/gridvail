@@ -176,7 +176,7 @@ fn begin_action(
     }
     let open = fighter.intent == BattleIntent::Recover;
     if fighter.role == BattleRole::ShieldBearer && !open && pos.0 - enemy_pos.0 == facing.0 {
-        state.feedback = "Shield blocked - bait the bash, then hit while its shield is DOWN";
+        state.feedback = "BLOCKED: bait a bash; hit when shield DOWN";
         return;
     }
     let armoured = matches!(
@@ -201,7 +201,7 @@ fn begin_action(
     state.feedback = if enemy_health.current == 0 {
         "Enemy defeated"
     } else if armoured {
-        "Armoured wind-up: only 1 damage - leave the slam area, then punish"
+        "Armoured: 1 damage; slam still coming"
     } else if open {
         "Opening punished for 3 damage"
     } else {
@@ -281,13 +281,9 @@ fn resolve_attacks(
                 };
             } else if !hit {
                 state.feedback = match fighter.role {
-                    BattleRole::Spearman => {
-                        "Spear lunged and missed - EXTENDED for 2 actions: punish!"
-                    }
-                    BattleRole::ShieldBearer => {
-                        "Bash missed - shield DOWN for 2 actions: attack from any side!"
-                    }
-                    BattleRole::Brute => "Slam missed - brute OPEN for 3 actions: punish!",
+                    BattleRole::Spearman => "Spear MISSED - extended: punish!",
+                    BattleRole::ShieldBearer => "Bash MISSED - shield DOWN: punish!",
+                    BattleRole::Brute => "Slam MISSED - brute OPEN: punish!",
                     BattleRole::Skirmisher => "Attack missed - counter now",
                 };
             }

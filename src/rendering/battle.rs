@@ -167,7 +167,7 @@ pub(super) fn draw_battle_ui(
         }
         write!(
             text.0,
-            "\n{}\nYellow ?: wind-up | Red !: next action | Blue +: spent attack",
+            "\n{}\n?: wind-up | !: next action | +: spent attack",
             battle.feedback
         )
         .unwrap();
@@ -224,23 +224,17 @@ pub(super) fn draw_battle_ui(
 
 fn enemy_hint(fighter: &Fighter) -> &'static str {
     match (fighter.role, fighter.intent) {
-        (_, BattleIntent::WindUp { .. }) => {
-            "SLAM IN 2 ACTIONS - leave the marked area; armoured until slam"
-        }
-        (_, BattleIntent::Slam { .. }) => "SLAM NEXT - get outside red !, then counter while blue",
+        (_, BattleIntent::WindUp { .. }) => "SLAM IN 2 ACTIONS: leave yellow area (armoured)",
+        (_, BattleIntent::Slam { .. }) => "SLAM NEXT: get outside red !; counter after",
         (BattleRole::Spearman, BattleIntent::Strike { .. }) => {
-            "LUNGE NEXT - step sideways; it lunges even on a miss"
+            "LUNGE NEXT: sidestep, then punish the miss"
         }
         (BattleRole::ShieldBearer, BattleIntent::Strike { .. }) => {
-            "BASH NEXT - step aside; shield drops after the bash"
+            "BASH NEXT: sidestep; shield drops after"
         }
-        (BattleRole::Spearman, _) => "Bait a straight-line lunge, dodge sideways, then punish",
-        (BattleRole::ShieldBearer, _) => {
-            "Front blocks hits; bait a bash, then attack while shield is DOWN"
-        }
-        (BattleRole::Brute, _) => {
-            "Provoke the wind-up, leave the marked area, punish after the slam"
-        }
+        (BattleRole::Spearman, _) => "Bait its lane, sidestep, punish while EXTENDED",
+        (BattleRole::ShieldBearer, _) => "Bait its bash; attack any side while shield DOWN",
+        (BattleRole::Brute, _) => "Bait the slam, leave its area, then punish",
         _ => "Dodge red ! or bump to interrupt",
     }
 }
