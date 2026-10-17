@@ -236,9 +236,24 @@ direction, and where new foundational versus game-specific code belongs.
 The playable executable installs tactical battle rules: arrows/WASD move or
 attack by bumping into an enemy, with one action per press. Enemies act only
 after your action; taking time to think never spends a turn. Red `!` cells show
-where an enemy will strike next, and blue enemies are recovering. A successful
-bump deals 2 damage and interrupts the advertised strike; shield bearers block
-hits from their front, so circle them during recovery.
+where an enemy will strike on your next action. Yellow `?` cells give an extra
+action of warning; blue `+` cells show a spent attack. Recovering enemies turn
+blue and lowercase. The HUD names the nearest visible enemy's action, tells
+you how to counter it, and counts the actions left in its opening.
+
+- **Spear:** bait its two-cell lane, then step sideways. It lunges one cell
+  even on a miss and remains **EXTENDED for two actions**, letting you close
+  in and punish it. Try `?map=spear`.
+- **Shield:** its arrow marks the protected front. Bait its locked bash and
+  step aside; after the bash, its shield is **DOWN for two actions** and hits
+  from any side work, including the front. Try `?map=shield`.
+- **Brute:** provoke its **two-action wind-up**, then leave the marked 3x3
+  area before the slam. It finishes the slam even if you leave. The wind-up
+  is armoured and cannot be interrupted; after the slam it is **OPEN for
+  three actions**, enough to approach and counter twice. Try `?map=brute`.
+
+A normal bump deals 2 damage and interrupts; an opening hit deals **3**.
+Hitting the brute during its wind-up deals only 1 and does not stop the slam.
 
 Hold Space for **0.6 seconds** to wait and brace against the next hit. The
 bottom panel shows a filling meter, seconds remaining, and **WAIT COUNTED**

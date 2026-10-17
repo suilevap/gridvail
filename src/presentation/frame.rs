@@ -2,7 +2,9 @@ use bevy::prelude::*;
 
 use super::DynamicLight;
 use crate::foundation::portal::CellTransform;
-use crate::lighting::{dimmed, light_to_palette, DARK_MAGENTA, DARK_RED, MAGENTA, RED};
+use crate::lighting::{
+    dimmed, light_to_palette, CYAN, DARK_MAGENTA, DARK_RED, MAGENTA, RED, YELLOW,
+};
 use crate::model::*;
 
 /// Colour of a portal's threshold and of portal walls seen from behind or
@@ -195,17 +197,33 @@ pub fn compose_frame(
         if health.current == 0 || !visible {
             continue;
         }
-        for threatened in fighter.intent.cells().into_iter().flatten() {
+        let (footprint, symbol, color) = match fighter.intent {
+            BattleIntent::WindUp { .. } => (fighter.intent, '?', YELLOW),
+            BattleIntent::Recover => (fighter.last_attack, '+', CYAN),
+            _ => (fighter.intent, '!', RED),
+        };
+        for threatened in footprint.cells().into_iter().flatten() {
+            if grid.blocks_vision(threatened) {
+                continue;
+            }
             let Some(world) = grid.idx(threatened) else {
                 continue;
             };
             let mut frame = buffers.seen_first[world];
             while frame != RenderBuffers::NO_CELL {
                 let index = frame as usize;
-                buffers.current[index].color = RED;
+                // A spent attack must never make another enemy's live
+                // threat look safe, regardless of entity iteration order.
+                if (symbol == '+' && matches!(buffers.ground[index].ch, '!' | '?'))
+                    || (symbol == '?' && buffers.ground[index].ch == '!')
+                {
+                    frame = buffers.seen_next[index];
+                    continue;
+                }
+                buffers.current[index].color = color;
                 buffers.ground[index] = RenderCell {
-                    ch: '!',
-                    color: RED,
+                    ch: symbol,
+                    color,
                     depth: 0,
                 };
                 frame = buffers.seen_next[index];

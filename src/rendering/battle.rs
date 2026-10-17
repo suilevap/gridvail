@@ -92,8 +92,10 @@ pub(super) fn draw_battle_ui(
     turn: Res<TurnState>,
     menu: Option<Res<SettingsMenu>>,
     scheme: Option<Res<ControlScheme>>,
-    player: Query<(&Health, &Tokens), With<Player>>,
-    enemies: Query<&Health, (With<Enemy>, With<Active>)>,
+    grid: Res<MapGrid>,
+    frame: Res<RenderBuffers>,
+    player: Query<(&Pos, &Health, &Tokens), With<Player>>,
+    enemies: Query<(&Pos, &Health, &Fighter), (With<Enemy>, With<Active>)>,
     buttons: Query<&Interaction, (With<RestartBattle>, Changed<Interaction>)>,
     mut labels: Query<&mut Text, With<BattleLabel>>,
     mut panels: Query<&mut Visibility, With<BattlePanel>>,
@@ -117,7 +119,7 @@ pub(super) fn draw_battle_ui(
     {
         battle.restart_requested = true;
     }
-    let Ok((health, tokens)) = player.single() else {
+    let Ok((pos, health, tokens)) = player.single() else {
         return;
     };
     for mut text in &mut labels {
@@ -128,7 +130,10 @@ pub(super) fn draw_battle_ui(
             health.current,
             health.maximum,
             battle.round,
-            enemies.iter().filter(|health| health.current > 0).count(),
+            enemies
+                .iter()
+                .filter(|(_, health, _)| health.current > 0)
+                .count(),
             if health.guarded { "  |  BRACED" } else { "" }
         )
         .unwrap();
@@ -162,10 +167,50 @@ pub(super) fn draw_battle_ui(
         }
         write!(
             text.0,
-            "\n{}\nRed !: next attack | Blue enemy: recovering",
+            "\n{}\nYellow ?: wind-up | Red !: next action | Blue +: spent attack",
             battle.feedback
         )
         .unwrap();
+        if let Some((_, enemy_health, fighter)) = enemies
+            .iter()
+            .filter(|(enemy_pos, health, _)| {
+                health.current > 0
+                    && grid
+                        .idx(enemy_pos.0)
+                        .is_some_and(|index| frame.seen_first[index] != RenderBuffers::NO_CELL)
+            })
+            .min_by_key(|(enemy_pos, _, _)| (enemy_pos.0 - pos.0).abs().element_sum())
+        {
+            write!(
+                text.0,
+                "\n{} HP {}/{}: ",
+                match fighter.role {
+                    BattleRole::Skirmisher => "Skirmisher",
+                    BattleRole::Spearman => "Spear",
+                    BattleRole::ShieldBearer => "Shield",
+                    BattleRole::Brute => "Brute",
+                },
+                enemy_health.current,
+                enemy_health.maximum
+            )
+            .unwrap();
+            if fighter.intent == BattleIntent::Recover {
+                write!(
+                    text.0,
+                    "{} - {} action{} OPEN; bump for 3 damage",
+                    match fighter.role {
+                        BattleRole::Spearman => "EXTENDED",
+                        BattleRole::ShieldBearer => "SHIELD DOWN (any side)",
+                        _ => "RECOVERING",
+                    },
+                    fighter.recovery_left + 1,
+                    if fighter.recovery_left == 0 { "" } else { "s" }
+                )
+                .unwrap();
+            } else {
+                write!(text.0, "{}", enemy_hint(fighter)).unwrap();
+            }
+        }
     }
     for (mut node, mut color) in &mut fills {
         node.width = Val::Percent(wait.progress() * 100.0);
@@ -174,5 +219,28 @@ pub(super) fn draw_battle_ui(
         } else {
             Color::srgb(0.25, 0.75, 0.95)
         };
+    }
+}
+
+fn enemy_hint(fighter: &Fighter) -> &'static str {
+    match (fighter.role, fighter.intent) {
+        (_, BattleIntent::WindUp { .. }) => {
+            "SLAM IN 2 ACTIONS - leave the marked area; armoured until slam"
+        }
+        (_, BattleIntent::Slam { .. }) => "SLAM NEXT - get outside red !, then counter while blue",
+        (BattleRole::Spearman, BattleIntent::Strike { .. }) => {
+            "LUNGE NEXT - step sideways; it lunges even on a miss"
+        }
+        (BattleRole::ShieldBearer, BattleIntent::Strike { .. }) => {
+            "BASH NEXT - step aside; shield drops after the bash"
+        }
+        (BattleRole::Spearman, _) => "Bait a straight-line lunge, dodge sideways, then punish",
+        (BattleRole::ShieldBearer, _) => {
+            "Front blocks hits; bait a bash, then attack while shield is DOWN"
+        }
+        (BattleRole::Brute, _) => {
+            "Provoke the wind-up, leave the marked area, punish after the slam"
+        }
+        _ => "Dodge red ! or bump to interrupt",
     }
 }
