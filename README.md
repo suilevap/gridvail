@@ -132,6 +132,17 @@ next to this file.
   its own with `RoomPlanners::add` (see `simulation/room_plans/`). In
   `rooms.txt` the room's walls slide to move its gaps, and pillars rise in
   its corners.
+- Intro (an addition): when the game starts, the map's walls come
+  together from the game's title. The title (`assets/intro.txt`, walls as
+  `X`; edit it to change the text) rises out of the floor around the
+  player, stands for a moment with the whole map in sight, then the map's
+  own walls take over: it is a room switch covering the whole map, so its
+  walls slide, rise and sink with the default room planner. The player
+  waits until every wall has settled, then the camera glides back to them
+  and play starts. A map too small for the title comes together from
+  noise. `--intro noise` always uses noise and `--intro off` skips it
+  (`?intro=off` on the web); `--screenshot` and `--record` skip it unless
+  `--intro` is given, so their walks start on time.
 - Settings (an addition): Esc opens a small menu to choose how the view
   behaves through portals that turn (turn with the player or keep north
   up), when the compass shows (when the view is turned, always or off) and
@@ -232,8 +243,9 @@ cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk throu
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
+cargo run -- --intro noise   # the map comes together from noise instead of the title
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 252 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 260 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

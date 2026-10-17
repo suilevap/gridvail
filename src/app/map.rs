@@ -19,6 +19,8 @@ use crate::model::*;
 use crate::schedule::StartupPhase;
 use crate::simulation::{wall_bundle, Rules};
 
+use super::intro::{begin_intro, Intro};
+
 const MAP_TEXT: &str = include_str!("../../assets/maps/map1.txt");
 const WALL_RULE_TEXT: &str = include_str!("../../assets/rules/wall_rule.txt");
 const TRIANGLE_RULE_TEXT: &str = include_str!("../../assets/rules/direction_triangle_rule.txt");
@@ -45,15 +47,27 @@ impl Plugin for MapPlugin {
     }
 }
 
-fn construct_map(mut commands: Commands, map: Res<MapText>) {
+/// Spawns the map. With an [`Intro`], its plain walls are not spawned but
+/// come together from the intro's.
+fn construct_map(
+    mut commands: Commands,
+    map: Res<MapText>,
+    intro: Option<Res<Intro>>,
+    reveal: Option<Res<RevealAll>>,
+) {
     let (width, height, cells) = parse_map(map.0);
     let links = portal_links(width, height, &cells).unwrap_or_else(|error| panic!("map: {error}"));
     let rooms = parse_rooms(map.0, &cells).unwrap_or_else(|error| panic!("map: {error}"));
     let cell_count = (width * height) as usize;
     let mut grid = MapGrid::new(width, height);
     let mut portal_walls = Vec::with_capacity(links.len());
+    let mut map_walls = Vec::new();
 
-    for cell in cells {
+    for &cell in &cells {
+        if intro.is_some() && cell.kind == SpawnKind::Wall {
+            map_walls.push(cell.pos);
+            continue;
+        }
         let entity = match cell.kind {
             // A portal is a wall; only its open face differs.
             SpawnKind::Wall | SpawnKind::Portal(_) => commands.spawn(wall_bundle(cell.pos)).id(),
@@ -231,6 +245,16 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
 
     for room in rooms {
         commands.spawn(Room::new(room.origin, room.size, room.layouts).with_planner(room.planner));
+    }
+    if let Some(intro) = intro {
+        begin_intro(
+            &mut commands,
+            &mut grid,
+            intro.0,
+            &cells,
+            map_walls,
+            reveal.is_some(),
+        );
     }
 
     commands.insert_resource(grid);

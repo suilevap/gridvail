@@ -187,6 +187,11 @@ impl Default for TokenTimer {
     }
 }
 
+/// While present, the game plays something to watch (the intro): the
+/// player's keys move nothing and no new turn starts.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct Cutscene;
+
 /// Decides when a completed turn may refill action tokens.
 ///
 /// The simulation itself never waits: without an animation step the next

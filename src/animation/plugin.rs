@@ -9,8 +9,10 @@ use super::{animate_children, MotionState, MotionStyle, MovePath, ObjectMotion, 
 
 /// How long an object takes to rise out of the floor or sink into it.
 const RISE_SECONDS: f32 = 0.4;
-/// How long a [`Sliding`] object takes per cell.
+/// How long a [`Sliding`] object takes per cell...
 const SLIDE_SECONDS: f32 = 0.2;
+/// ...and at most for a whole move, so long slides go faster.
+const MAX_SLIDE_SECONDS: f32 = 0.8;
 
 /// Marks an object whose animation never holds back the next turn, for
 /// decorative or ambient motion. Children (`BoundTo`, such as the player's
@@ -135,13 +137,15 @@ pub(super) fn style_of(own: Option<&ObjectMotion>, global: MotionStyle) -> Motio
 }
 
 /// A [`Sliding`] object without a style of its own glides at a steady pace,
-/// whatever the global style (only `snap` still snaps).
-fn slide_style(own: Option<&ObjectMotion>, global: MotionStyle) -> MotionStyle {
+/// whatever the global style (only `snap` still snaps): [`SLIDE_SECONDS`]
+/// a cell for a move of `cells`, but no more than [`MAX_SLIDE_SECONDS`] in
+/// all.
+fn slide_style(own: Option<&ObjectMotion>, global: MotionStyle, cells: f32) -> MotionStyle {
     match (own, global) {
         (Some(own), _) => own.0,
         (None, MotionStyle::Snap) => MotionStyle::Snap,
         (None, _) => MotionStyle::Tween {
-            duration: SLIDE_SECONDS,
+            duration: SLIDE_SECONDS.min(MAX_SLIDE_SECONDS / cells.max(1.0)),
             easing: EaseFunction::SmoothStep,
         },
     }
@@ -266,7 +270,8 @@ pub fn animate_objects(
             animation.state.carry(&through);
         }
         let motion = if sliding {
-            slide_style(own_style, *style)
+            let cells = (pos.0.as_vec2() - animation.state.target()).length();
+            slide_style(own_style, *style, cells)
         } else {
             style_of(own_style, *style)
         };
