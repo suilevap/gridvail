@@ -30,13 +30,19 @@ impl Default for AnimatedPos {
 }
 
 /// An object that comes up out of the floor when it is placed (a wall a
-/// room raises). It is in the world at once; only how it is shown rises.
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct Rising;
+/// room raises): it rises at `from`, then moves to its cell (`Pos`). It is
+/// in the world at its cell at once; only how it is shown rises and moves.
+/// `from` is its own cell to rise in place.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rising {
+    pub from: IVec2,
+}
 
 /// An object going down into the floor and out of the world (a wall a room
 /// lowers). It is no longer on the map or in anyone's way; it is only shown
-/// sinking, and the animation step despawns it once it has sunk.
+/// moving to its `Pos` (anywhere: where it is shown going, not a place on
+/// the map) and then sinking there, and the animation step despawns it once
+/// it has sunk.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Sinking;
 

@@ -8,7 +8,7 @@ use pav_ecs_game_bevy_port::animation::ObjectAnimationPlugin;
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::model::*;
 use pav_ecs_game_bevy_port::simulation::room_plans::{
-    RoomPlanner, RoomPlanners, SwitchContext, SwitchPlan, WallChange,
+    RoomPlanner, RoomPlanners, SwitchContext, SwitchPlan, WallMove,
 };
 
 /// The player starts left of the plate. The room's first layout has walls
@@ -275,10 +275,7 @@ struct Wrong;
 impl RoomPlanner for Wrong {
     fn plan(&self, _: &SwitchContext) -> SwitchPlan {
         SwitchPlan {
-            changes: vec![WallChange::Slide {
-                from: LEFT,
-                to: FAR,
-            }],
+            moves: vec![WallMove::slide(LEFT, FAR)],
         }
     }
 }
@@ -309,4 +306,89 @@ fn planners_added_from_outside_are_used_and_bad_plans_fall_back() {
     assert!(wall_at(&mut app, LEFT).is_none() && wall_at(&mut app, BELOW).is_none());
     assert!(wall_at(&mut app, RIGHT).is_some() && wall_at(&mut app, FAR).is_some());
     assert!(app.world().get_entity(below).is_err());
+}
+
+/// Brings the new wall in from the floor below its cell and hides the wall
+/// that goes inside the outer wall under it, while the top wall slides.
+struct FromElsewhere;
+
+/// Where `FromElsewhere` raises the new wall: floor in both layouts.
+const ENTRY: IVec2 = IVec2::new(6, 2);
+
+impl RoomPlanner for FromElsewhere {
+    fn plan(&self, _: &SwitchContext) -> SwitchPlan {
+        SwitchPlan {
+            moves: vec![
+                WallMove::slide(LEFT, RIGHT),
+                WallMove::rise(ENTRY, FAR),
+                WallMove::sink(BELOW, BOTTOM),
+            ],
+        }
+    }
+}
+
+#[test]
+fn walls_can_rise_elsewhere_and_sink_elsewhere() {
+    let mut app = boot_with(|app| {
+        app.add_plugins(ObjectAnimationPlugin);
+        let mut planners = app.world_mut().resource_mut::<RoomPlanners>();
+        planners.add("elsewhere", FromElsewhere);
+        planners.default = "elsewhere".into();
+    });
+    let below = entity_at(&mut app, BELOW).unwrap();
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::ArrowRight);
+    for _ in 0..200 {
+        app.update();
+        if player(&mut app) == PLATE {
+            break;
+        }
+    }
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .release(KeyCode::ArrowRight);
+    app.update();
+
+    // In the world the new wall is at its cell and the old one gone...
+    let far = entity_at(&mut app, FAR).expect("new wall");
+    assert_eq!(entity_at(&mut app, BOTTOM).map(|e| e == below), Some(false));
+    assert!(entity_at(&mut app, BELOW).is_none());
+    // ...while the new one is shown rising where it comes from, and the old
+    // one sliding to where it goes, still standing.
+    assert_eq!(shown_at(&mut app, far), ENTRY.as_vec2());
+    assert!(height(&mut app, far) < 1.0);
+    let going = shown_at(&mut app, below).y;
+    assert!(
+        going > BELOW.y as f32 && going < BOTTOM.y as f32,
+        "going: {going}"
+    );
+    assert_eq!(height(&mut app, below), 1.0);
+
+    // Once risen the new wall slides to its cell; once there the old one
+    // sinks and goes. The turn waits for all of it.
+    let mut risen_then_slid = false;
+    for _ in 0..80 {
+        app.update();
+        let shown = shown_at(&mut app, far);
+        if height(&mut app, far) == 1.0 && shown != ENTRY.as_vec2() && shown != FAR.as_vec2() {
+            risen_then_slid = true;
+        }
+        if app.world().get_entity(below).is_err() {
+            break;
+        }
+        assert!(
+            app.world().resource::<TurnPacing>().animation().unwrap() > Duration::ZERO,
+            "the turn waits"
+        );
+    }
+    assert!(risen_then_slid, "the new wall rose before it slid");
+    for _ in 0..10 {
+        app.update();
+    }
+    assert_eq!(shown_at(&mut app, far), FAR.as_vec2());
+    assert!(
+        app.world().get_entity(below).is_err(),
+        "the old one sank and went"
+    );
 }

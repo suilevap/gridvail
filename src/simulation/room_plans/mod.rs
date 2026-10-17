@@ -20,58 +20,124 @@ use crate::model::*;
 pub use lines::LineSlides;
 pub use rise_sink::RiseAndSink;
 
-/// One wall's part in a switch.
+/// What happens at the ends of a [`WallMove`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WallChange {
-    /// A wall slides from one cell to another, keeping its entity.
-    Slide { from: IVec2, to: IVec2 },
-    /// A new wall rises out of the floor at its cell.
-    Rise { at: IVec2 },
-    /// A wall sinks into the floor at its cell and goes.
-    Sink { at: IVec2 },
+pub enum MoveKind {
+    /// A wall on the map slides from its cell to its new one.
+    Slide,
+    /// A new wall rises out of the floor at `from`, then slides to `to`,
+    /// where it is in the world from the start. `from == to` rises in place.
+    Rise,
+    /// A wall that goes slides from its cell to `to`, then sinks there; it
+    /// is out of the world from the start, so `to` may be anywhere (inside
+    /// another wall, say). `from == to` sinks in place.
+    Sink,
 }
 
-/// How a room's walls get from one layout to the next. The changes happen
+/// One wall's part in a switch: every wall slides, from `from` to `to`, and
+/// `kind` says whether it rises first or sinks after.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WallMove {
+    pub from: IVec2,
+    pub to: IVec2,
+    pub kind: MoveKind,
+}
+
+impl WallMove {
+    pub fn slide(from: IVec2, to: IVec2) -> Self {
+        Self {
+            from,
+            to,
+            kind: MoveKind::Slide,
+        }
+    }
+
+    /// A new wall that rises at `from` and slides to its cell, `to`.
+    pub fn rise(from: IVec2, to: IVec2) -> Self {
+        Self {
+            from,
+            to,
+            kind: MoveKind::Rise,
+        }
+    }
+
+    /// A wall that goes: it slides from its cell, `from`, to `to` and sinks.
+    pub fn sink(from: IVec2, to: IVec2) -> Self {
+        Self {
+            from,
+            to,
+            kind: MoveKind::Sink,
+        }
+    }
+
+    pub fn rise_at(at: IVec2) -> Self {
+        Self::rise(at, at)
+    }
+
+    pub fn sink_at(at: IVec2) -> Self {
+        Self::sink(at, at)
+    }
+
+    /// The move from `from` to `to`, its kind read from the layouts: a wall
+    /// of the old layout slides, and sinks after if `to` is not in the new
+    /// one; anything else rises first. It cannot tell a new wall coming out
+    /// of a wall that stays from that wall moving: say so with
+    /// [`WallMove::rise`] or [`WallMove::sink`].
+    pub fn between(switch: &SwitchContext, from: IVec2, to: IVec2) -> Self {
+        match (switch.from.contains(&from), switch.to.contains(&to)) {
+            (true, true) => Self::slide(from, to),
+            (true, false) => Self::sink(from, to),
+            (false, _) => Self::rise(from, to),
+        }
+    }
+
+    /// The map cell a wall leaves, if it is on the map before.
+    pub fn source(&self) -> Option<IVec2> {
+        (self.kind != MoveKind::Rise).then_some(self.from)
+    }
+
+    /// The map cell a wall takes, if it is on the map after.
+    pub fn target(&self) -> Option<IVec2> {
+        (self.kind != MoveKind::Sink).then_some(self.to)
+    }
+}
+
+/// How a room's walls get from one layout to the next. The moves happen
 /// together: every wall leaves its old cell before any reaches its new one,
 /// so walls can slide into each other's places.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SwitchPlan {
-    pub changes: Vec<WallChange>,
+    pub moves: Vec<WallMove>,
 }
 
 impl SwitchPlan {
-    /// Every wall that goes sinks and every new one rises: always valid.
+    /// Every wall that goes sinks and every new one rises, in place: always
+    /// valid.
     pub fn rise_and_sink(switch: &SwitchContext) -> Self {
         Self {
-            changes: switch
+            moves: switch
                 .removed()
-                .map(|at| WallChange::Sink { at })
-                .chain(switch.added().map(|at| WallChange::Rise { at }))
+                .map(WallMove::sink_at)
+                .chain(switch.added().map(WallMove::rise_at))
                 .collect(),
         }
     }
 
-    /// Cells walls leave: where they slide from or sink.
+    /// Map cells walls leave: where walls on the map slide or sink from.
     pub fn sources(&self) -> impl Iterator<Item = IVec2> + '_ {
-        self.changes.iter().filter_map(|change| match *change {
-            WallChange::Slide { from, .. } => Some(from),
-            WallChange::Sink { at } => Some(at),
-            WallChange::Rise { .. } => None,
-        })
+        self.moves.iter().filter_map(WallMove::source)
     }
 
-    /// Cells walls reach: where they slide to or rise.
+    /// Map cells walls take: where they slide or rise to.
     pub fn targets(&self) -> impl Iterator<Item = IVec2> + '_ {
-        self.changes.iter().filter_map(|change| match *change {
-            WallChange::Slide { to, .. } => Some(to),
-            WallChange::Rise { at } => Some(at),
-            WallChange::Sink { .. } => None,
-        })
+        self.moves.iter().filter_map(WallMove::target)
     }
 
     /// Whether carrying the plan out turns the old layout into the new one:
     /// walls leave only cells that hold one (each once), reach each cell
     /// once, and what stays plus what arrives is exactly the new layout.
+    /// Where a rising wall starts and a sinking one ends are only shown, so
+    /// they may be anywhere.
     pub fn check(&self, switch: &SwitchContext) -> Result<(), String> {
         let mut left = Vec::new();
         for source in self.sources() {
@@ -253,13 +319,13 @@ mod tests {
         plan
     }
 
-    fn check(from: &[(i32, i32)], to: &[(i32, i32)], changes: &[WallChange]) -> Result<(), String> {
+    fn check(from: &[(i32, i32)], to: &[(i32, i32)], moves: &[WallMove]) -> Result<(), String> {
         let (from, to) = (cells(from), cells(to));
         let room = Room::new(IVec2::ZERO, IVec2::splat(8), vec![]);
         let wall = |p: IVec2| from.contains(&p);
         let switch = SwitchContext::new(&room, &from, &to, &|_| true, &wall);
         SwitchPlan {
-            changes: changes.to_vec(),
+            moves: moves.to_vec(),
         }
         .check(&switch)
     }
@@ -267,7 +333,7 @@ mod tests {
     #[test]
     fn plans_are_checked_against_both_layouts() {
         let (a, b, c) = (IVec2::new(0, 0), IVec2::new(1, 0), IVec2::new(2, 0));
-        let slide = |from, to| WallChange::Slide { from, to };
+        let slide = WallMove::slide;
         // Walls trading places along a line.
         assert!(check(
             &[(0, 0), (1, 0)],
@@ -281,22 +347,49 @@ mod tests {
             "slides from no wall"
         );
         assert!(
-            check(
-                &[(0, 0)],
-                &[(1, 0)],
-                &[slide(a, b), WallChange::Sink { at: a }]
-            )
-            .is_err(),
+            check(&[(0, 0)], &[(1, 0)], &[slide(a, b), WallMove::sink_at(a)]).is_err(),
             "one wall leaves twice"
         );
         assert!(
-            check(&[(0, 0)], &[(0, 0), (1, 0)], &[WallChange::Rise { at: a }]).is_err(),
+            check(&[(0, 0)], &[(0, 0), (1, 0)], &[WallMove::rise_at(a)]).is_err(),
             "rises onto a wall that stays"
         );
         assert!(
             check(&[(0, 0)], &[(1, 0)], &[slide(a, c)]).is_err(),
             "ends outside the new layout"
         );
+        // Where a rising wall starts and a sinking one ends are only shown:
+        // here out of and into the wall at (0, 0), which stays.
+        assert!(check(&[(0, 0)], &[(0, 0), (1, 0)], &[WallMove::rise(a, b)]).is_ok());
+        assert!(check(&[(0, 0), (1, 0)], &[(0, 0)], &[WallMove::sink(b, a)]).is_ok());
+    }
+
+    #[test]
+    fn moves_read_their_kind_from_the_layouts() {
+        let (from, to) = (cells(&[(0, 0), (1, 0)]), cells(&[(1, 0), (2, 0)]));
+        let room = Room::new(IVec2::ZERO, IVec2::splat(4), vec![]);
+        let wall = |p: IVec2| from.contains(&p);
+        let switch = SwitchContext::new(&room, &from, &to, &|_| true, &wall);
+        let kind = |a: (i32, i32), b: (i32, i32)| {
+            WallMove::between(&switch, IVec2::from(a), IVec2::from(b)).kind
+        };
+        assert_eq!(
+            kind((0, 0), (2, 0)),
+            MoveKind::Slide,
+            "old wall to a new cell"
+        );
+        assert_eq!(
+            kind((0, 0), (0, 3)),
+            MoveKind::Sink,
+            "old wall out of the room"
+        );
+        assert_eq!(
+            kind((0, 3), (2, 0)),
+            MoveKind::Rise,
+            "from nowhere to a new cell"
+        );
+        assert_eq!(kind((0, 0), (0, 0)), MoveKind::Sink, "sinking in place");
+        assert_eq!(kind((2, 0), (2, 0)), MoveKind::Rise, "rising in place");
     }
 
     #[test]
@@ -311,9 +404,9 @@ mod tests {
             planners
                 .for_room(room)
                 .plan(&switch)
-                .changes
+                .moves
                 .iter()
-                .any(|change| matches!(change, WallChange::Slide { .. }))
+                .any(|step| step.kind == MoveKind::Slide)
         };
         assert!(slides(&room), "the default slides");
         room.planner = Some(RoomPlanners::RISE_SINK.into());
