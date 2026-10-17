@@ -10,6 +10,7 @@ mod plates;
 mod plugin;
 mod portals;
 mod resolution;
+pub mod room_plans;
 mod rooms;
 mod tiles;
 mod turn;

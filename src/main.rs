@@ -28,6 +28,7 @@ use pav_ecs_game_bevy_port::model::{
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
 use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
+use pav_ecs_game_bevy_port::simulation::room_plans::RoomPlanners;
 use pav_ecs_game_bevy_port::touch::TouchControlPlugin;
 
 #[cfg(target_family = "wasm")]
@@ -81,6 +82,7 @@ fn main() -> AppExit {
         .insert_resource(PortalPolicy {
             enemies: options.enemy_portals,
         })
+        .insert_resource(RoomPlanners::default().with_default(&options.room_planner))
         .add_plugins(plugins)
         .add_plugins(GamePlugin)
         .add_plugins((
@@ -175,6 +177,8 @@ struct Options {
     portal_turn: PortalTurn,
     /// When the compass shows.
     compass: CompassMode,
+    /// How rooms that name no planner move their walls between layouts.
+    room_planner: String,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -236,6 +240,7 @@ impl Options {
         let mut enemy_portals = false;
         let mut portal_turn = None;
         let mut compass = None;
+        let mut room_planner = None;
         parse_options!(source, args;
             "--screenshot": native if capture.is_none() => {
                 capture = Some(
@@ -292,6 +297,15 @@ impl Options {
                     _ => panic!("--renderer must be text or 3d-walls"),
                 });
             },
+            "--room-planner": value if room_planner.is_none() => {
+                let name = args.next().expect("--room-planner requires a planner name");
+                let planners = RoomPlanners::default();
+                if planners.get(&name).is_none() {
+                    let names: Vec<_> = planners.names().collect();
+                    panic!("--room-planner must be one of: {}", names.join(", "));
+                }
+                room_planner = Some(name);
+            },
             "--motion": value if motion.is_none() => {
                 let name = args.next().expect("--motion requires a style name");
                 motion = Some(MotionStyle::from_name(&name).unwrap_or_else(|| {
@@ -322,6 +336,7 @@ impl Options {
             enemy_portals,
             portal_turn: portal_turn.unwrap_or_default(),
             compass: compass.unwrap_or_default(),
+            room_planner: room_planner.unwrap_or(RoomPlanners::default().default),
         }
     }
 }
@@ -359,6 +374,8 @@ mod option_tests {
                 "--reveal",
                 "--portal-view",
                 "north",
+                "--room-planner",
+                "rise-sink",
             ]
             .map(String::from)
         });
@@ -366,6 +383,7 @@ mod option_tests {
         assert_eq!(options.motion, MotionStyle::Snap);
         assert!(options.reveal);
         assert_eq!(options.portal_turn, PortalTurn::KeepNorth);
+        assert_eq!(options.room_planner, RoomPlanners::RISE_SINK);
     }
 
     #[test]

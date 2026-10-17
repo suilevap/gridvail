@@ -30,6 +30,7 @@ impl Plugin for SimulationPlugin {
             .init_resource::<CollisionBuffer>()
             .init_resource::<PortalCrossings>()
             .init_resource::<CommitBuffer>()
+            .init_resource::<super::room_plans::RoomPlanners>()
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(self.rng_seed)))
             .add_systems(
                 Startup,
