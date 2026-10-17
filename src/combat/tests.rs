@@ -5,21 +5,7 @@ use std::time::Duration;
 
 #[test]
 fn wait_meter_shows_remaining_time_and_confirms_commitment() {
-    let mut app = App::new();
-    app.add_plugins(MinimalPlugins)
-        .init_resource::<ButtonInput<KeyCode>>()
-        .insert_resource(MapText("XXXXXXXX\nXp    bX\nX      X\nXXXXXXXX"))
-        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
-            100,
-        )))
-        .add_plugins((
-            GamePlugin,
-            BattlePlugin,
-            crate::rendering::TextRendererPlugin,
-        ));
-    for _ in 0..4 {
-        app.update();
-    }
+    let mut app = game_with_ui("XXXXXXXX\nXp    bX\nX      X\nXXXXXXXX", true);
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
         .press(KeyCode::Space);
@@ -47,6 +33,10 @@ fn wait_meter_shows_remaining_time_and_confirms_commitment() {
 }
 
 fn game(map: &'static str) -> App {
+    game_with_ui(map, false)
+}
+
+fn game_with_ui(map: &'static str, ui: bool) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .init_resource::<ButtonInput<KeyCode>>()
@@ -55,6 +45,9 @@ fn game(map: &'static str) -> App {
             100,
         )))
         .add_plugins((GamePlugin, BattlePlugin));
+    if ui {
+        app.add_plugins(crate::rendering::TextRendererPlugin);
+    }
     for _ in 0..4 {
         app.update();
     }
@@ -218,6 +211,12 @@ fn bump_attack_spends_a_turn_and_interrupts_the_enemy() {
 fn bracing_reduces_one_hit_then_expires_and_brute_recovers() {
     let mut app = game("XXXXXXXX\nX pb   X\nX      X\nXXXXXXXX");
     wait_action(&mut app);
+    assert_eq!(player(&mut app).1.current, 12);
+    assert!(matches!(
+        enemy(&mut app).2.intent,
+        BattleIntent::Slam { .. }
+    ));
+    wait_action(&mut app);
     assert_eq!(player(&mut app).1.current, 10);
     assert!(!player(&mut app).1.guarded);
     assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
@@ -234,7 +233,7 @@ fn shield_blocks_front_but_a_flank_interrupts_it() {
     press(&mut app, KeyCode::ArrowDown);
     press(&mut app, KeyCode::ArrowRight);
     press(&mut app, KeyCode::ArrowUp);
-    assert_eq!(enemy(&mut app).1.current, 2);
+    assert_eq!(enemy(&mut app).1.current, 1);
     assert_eq!(player(&mut app).1.current, 12);
 }
 
@@ -266,7 +265,7 @@ fn defeated_enemies_release_their_cells_and_reset_restores_them() {
 #[test]
 fn defeat_stops_actions_and_can_be_reset() {
     let mut app = game("XXXXXXXX\nX pb   X\nX      X\nXXXXXXXX");
-    for _ in 0..15 {
+    for _ in 0..30 {
         wait_action(&mut app);
     }
     assert!(app.world().resource::<BattleState>().defeated);
@@ -278,4 +277,196 @@ fn defeat_stops_actions_and_can_be_reset() {
     press(&mut app, KeyCode::KeyR);
     assert_eq!(player(&mut app).1.current, 12);
     assert!(!app.world().resource::<BattleState>().defeated);
+}
+
+#[test]
+fn provoking_a_spear_makes_it_lunge_on_a_miss_and_leaves_time_to_punish() {
+    let mut app = game("XXXXXXXX\nX p s  X\nX      X\nX      X\nXXXXXXXX");
+    let entity = enemy(&mut app).0;
+    let attack = enemy(&mut app).2.intent;
+    press(&mut app, KeyCode::ArrowDown);
+    assert_eq!(app.world().get::<Pos>(entity).unwrap().0, IVec2::new(3, 1));
+    assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
+    assert_eq!(enemy(&mut app).2.recovery_left, 1);
+    assert_eq!(enemy(&mut app).2.last_attack, attack);
+    assert_eq!(player(&mut app).1.current, 12);
+    let frame = app.world().resource::<RenderBuffers>();
+    let spent = frame.ground[frame.idx(IVec2::new(2, 1)).unwrap()];
+    assert_eq!(spent.ch, '+');
+    assert_eq!(spent.color, CYAN);
+    press(&mut app, KeyCode::ArrowRight);
+    assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
+    press(&mut app, KeyCode::ArrowUp);
+    assert_eq!(enemy(&mut app).1.current, 0); // Opening deals 3, rather than 2.
+    assert_eq!(player(&mut app).1.current, 12);
+}
+
+#[test]
+fn a_spear_lunge_respects_walls_and_never_wraps_its_threat() {
+    let mut app = game("XXXXXXXX\nX p s  X\nX      X\nXXXXXXXX");
+    let entity = enemy(&mut app).0;
+    // Put a wall in the locked lane after it was planned (a changed room).
+    let wall = app.world_mut().spawn_empty().id();
+    app.world_mut()
+        .resource_mut::<MapGrid>()
+        .set_with_blocking(IVec2::new(3, 1), wall, true);
+    press(&mut app, KeyCode::ArrowDown);
+    assert_eq!(app.world().get::<Pos>(entity).unwrap().0, IVec2::new(4, 1));
+    assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
+    assert_eq!(player(&mut app).1.current, 12);
+}
+
+#[test]
+fn a_missed_bash_lowers_the_shield_even_for_a_frontal_counter() {
+    let mut app = game("XXXXXXXX\nX pg   X\nX      X\nXXXXXXXX");
+    let entity = enemy(&mut app).0;
+    press(&mut app, KeyCode::ArrowDown);
+    assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
+    assert_eq!(app.world().get::<Glyph>(entity).unwrap().ch, 'g');
+    let world = app.world_mut();
+    assert!(world
+        .query::<(&BoundTo, &Glyph)>()
+        .iter(world)
+        .any(|(bound, glyph)| bound.parent == entity && glyph.ch == ' '));
+    press(&mut app, KeyCode::ArrowUp);
+    press(&mut app, KeyCode::ArrowRight);
+    assert_eq!(enemy(&mut app).1.current, 1);
+    assert_eq!(player(&mut app).1.current, 12);
+}
+
+#[test]
+fn brute_finishes_the_original_area_slam_after_the_player_leaves() {
+    let mut app = game("XXXXXXXX\nX pb   X\nX      X\nX      X\nXXXXXXXX");
+    let intent = enemy(&mut app).2.intent;
+    assert!(matches!(intent, BattleIntent::WindUp { .. }));
+    assert_eq!(intent.cells().into_iter().flatten().count(), 8);
+    press(&mut app, KeyCode::ArrowDown);
+    assert!(matches!(
+        enemy(&mut app).2.intent,
+        BattleIntent::Slam { .. }
+    ));
+    assert_eq!(enemy(&mut app).2.intent.cells(), intent.cells());
+    press(&mut app, KeyCode::ArrowDown);
+    assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
+    assert!(matches!(
+        enemy(&mut app).2.last_attack,
+        BattleIntent::Slam { .. }
+    ));
+    assert_eq!(player(&mut app).1.current, 12);
+    wait_action(&mut app);
+    assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
+    assert_eq!(enemy(&mut app).2.recovery_left, 1);
+    wait_action(&mut app);
+    assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
+    assert_eq!(enemy(&mut app).2.recovery_left, 0);
+}
+
+#[test]
+fn brute_wind_up_is_armoured_but_recovery_can_be_punished() {
+    let mut app = game("XXXXXXXX\nX pb   X\nX      X\nXXXXXXXX");
+    press(&mut app, KeyCode::ArrowRight);
+    assert_eq!(enemy(&mut app).1.current, 4);
+    assert!(matches!(
+        enemy(&mut app).2.intent,
+        BattleIntent::Slam { .. }
+    ));
+    press(&mut app, KeyCode::ArrowRight);
+    assert_eq!(enemy(&mut app).1.current, 3);
+    assert_eq!(player(&mut app).1.current, 9);
+    assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
+    press(&mut app, KeyCode::ArrowRight);
+    assert_eq!(enemy(&mut app).1.current, 0);
+}
+
+#[test]
+fn baiting_a_brute_leaves_time_to_approach_and_land_two_opening_hits() {
+    let mut app = game("XXXXXXXXX\nX       X\nX p b   X\nX       X\nXXXXXXXXX");
+    wait_action(&mut app);
+    wait_action(&mut app);
+    assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
+    press(&mut app, KeyCode::ArrowRight);
+    press(&mut app, KeyCode::ArrowRight);
+    assert_eq!(enemy(&mut app).1.current, 2);
+    assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
+    press(&mut app, KeyCode::ArrowRight);
+    assert_eq!(enemy(&mut app).1.current, 0);
+    assert_eq!(player(&mut app).1.current, 12);
+}
+
+#[test]
+fn the_hud_explains_the_telegraph_and_counts_the_opening() {
+    for (map, next, opening, count) in [
+        (
+            "XXXXXXXX\nX ps   X\nX      X\nX      X\nXXXXXXXX",
+            "LUNGE NEXT",
+            "EXTENDED",
+            "2 actions OPEN",
+        ),
+        (
+            "XXXXXXXX\nX pg   X\nX      X\nX      X\nXXXXXXXX",
+            "BASH NEXT",
+            "SHIELD DOWN (any side)",
+            "2 actions OPEN",
+        ),
+        (
+            "XXXXXXXX\nX pb   X\nX      X\nX      X\nXXXXXXXX",
+            "SLAM IN 2 ACTIONS",
+            "RECOVERING",
+            "3 actions OPEN",
+        ),
+    ] {
+        let mut app = game_with_ui(map, true);
+        let has_text = |app: &mut App, expected: &str| {
+            let world = app.world_mut();
+            world
+                .query::<&Text>()
+                .iter(world)
+                .any(|text| text.0.contains(expected))
+        };
+        assert!(has_text(&mut app, next), "missing {next}");
+        press(&mut app, KeyCode::ArrowDown);
+        if next == "SLAM IN 2 ACTIONS" {
+            assert!(has_text(&mut app, "SLAM NEXT"));
+            press(&mut app, KeyCode::ArrowDown);
+        }
+        assert!(has_text(&mut app, opening), "missing {opening}");
+        assert!(has_text(&mut app, count), "missing {count}");
+        wait_action(&mut app);
+        assert!(has_text(
+            &mut app,
+            if count.starts_with('3') {
+                "2 actions OPEN"
+            } else {
+                "1 action OPEN"
+            }
+        ));
+    }
+}
+
+#[test]
+fn a_spent_attack_never_hides_another_enemys_live_threat() {
+    for spent_first in [false, true] {
+        let mut app = game("XXXXXXXX\nX  s   X\nX p g  X\nX      X\nXXXXXXXX");
+        let world = app.world_mut();
+        for (index, mut fighter) in world.query::<&mut Fighter>().iter_mut(world).enumerate() {
+            let strike = BattleIntent::Strike {
+                origin: IVec2::new(3, 2),
+                direction: IVec2::NEG_X,
+                reach: 1,
+                damage: 2,
+            };
+            fighter.needs_plan = false;
+            if (index == 0) == spent_first {
+                fighter.intent = BattleIntent::Recover;
+                fighter.last_attack = strike;
+            } else {
+                fighter.intent = strike;
+            }
+        }
+        app.update();
+        let frame = app.world().resource::<RenderBuffers>();
+        let cell = frame.ground[frame.idx(IVec2::new(2, 2)).unwrap()];
+        assert_eq!(cell.ch, '!');
+        assert_eq!(cell.color, RED);
+    }
 }

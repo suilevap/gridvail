@@ -5,6 +5,7 @@
 
 use bevy::prelude::*;
 
+use crate::animation::{MotionStyle, Move, ObjectAnimation, Path, Secondary};
 use crate::lighting::{CYAN, DARK_RED, RED, WHITE, YELLOW};
 use crate::model::*;
 use crate::navigation::{NavMap, PathPlanner};
@@ -49,7 +50,8 @@ impl Plugin for BattlePlugin {
             )
             .add_systems(
                 Update,
-                plan_intents
+                (plan_intents, show_guard)
+                    .chain()
                     .before(compose_frame)
                     .in_set(GamePhase::Presentation),
             );
@@ -100,7 +102,8 @@ fn prepare_fighters(
                 role: role.copied().unwrap_or_default(),
                 intent: BattleIntent::Idle,
                 needs_plan: true,
-                recovering: false,
+                recovery_left: 0,
+                last_attack: BattleIntent::Idle,
             });
         }
     }
@@ -171,16 +174,36 @@ fn begin_action(
     if enemy_health.current == 0 {
         return;
     }
-    if fighter.role == BattleRole::ShieldBearer && pos.0 - enemy_pos.0 == facing.0 {
-        state.feedback = "Shield blocked - attack from the side or behind";
+    let open = fighter.intent == BattleIntent::Recover;
+    if fighter.role == BattleRole::ShieldBearer && !open && pos.0 - enemy_pos.0 == facing.0 {
+        state.feedback = "Shield blocked - bait the bash, then hit while its shield is DOWN";
         return;
     }
-    enemy_health.hit(2);
+    let armoured = matches!(
+        fighter.intent,
+        BattleIntent::WindUp { .. } | BattleIntent::Slam { .. }
+    );
+    let damage = if armoured {
+        1
+    } else if open {
+        3
+    } else {
+        2
+    };
+    enemy_health.hit(damage);
     // A successful bump interrupts the currently advertised attack.
-    fighter.intent = BattleIntent::Recover;
-    fighter.recovering = false;
+    // The brute's wind-up is armoured: bait the slam instead of stunlocking it.
+    if !open && !armoured {
+        fighter.intent = BattleIntent::Recover;
+        fighter.recovery_left = 1;
+        fighter.last_attack = BattleIntent::Idle;
+    }
     state.feedback = if enemy_health.current == 0 {
         "Enemy defeated"
+    } else if armoured {
+        "Armoured wind-up: only 1 damage - leave the slam area, then punish"
+    } else if open {
+        "Opening punished for 3 damage"
     } else {
         "Hit for 2 - enemy interrupted"
     };
@@ -203,6 +226,9 @@ fn order_enemy_actions(
         *command = MoveCommand {
             target: match fighter.intent {
                 BattleIntent::Move(step) => step,
+                BattleIntent::Strike { direction, .. } if fighter.role == BattleRole::Spearman => {
+                    direction
+                }
                 _ => IVec2::ZERO,
             },
             relative: true,
@@ -214,8 +240,12 @@ fn order_enemy_actions(
 /// Resolve the advertised cells after movement, so dodging really avoids a hit.
 fn resolve_attacks(
     mut state: ResMut<BattleState>,
+    motion: Option<Res<MotionStyle>>,
     mut player: Query<(&Pos, &mut Health), With<Player>>,
-    mut enemies: Query<(&Health, &mut Fighter), (With<Enemy>, Without<Player>)>,
+    mut enemies: Query<
+        (&Pos, &Health, &mut Fighter, Option<&mut ObjectAnimation>),
+        (With<Enemy>, Without<Player>),
+    >,
 ) {
     if !state.committed {
         return;
@@ -223,12 +253,23 @@ fn resolve_attacks(
     let Ok((pos, mut health)) = player.single_mut() else {
         return;
     };
-    for (enemy_health, mut fighter) in &mut enemies {
+    let mut hit = false;
+    for (enemy_pos, enemy_health, mut fighter, animation) in &mut enemies {
         if enemy_health.current == 0 {
             continue;
         }
-        if let BattleIntent::Strike { damage, .. } = fighter.intent {
+        if let BattleIntent::WindUp { origin, damage } = fighter.intent {
+            fighter.intent = BattleIntent::Slam { origin, damage };
+            // Keep the original centre even if the player has left sight.
+            fighter.needs_plan = false;
+            continue;
+        }
+        if let BattleIntent::Strike { damage, .. } | BattleIntent::Slam { damage, .. } =
+            fighter.intent
+        {
+            let attack = fighter.intent;
             if fighter.intent.cells().contains(&Some(pos.0)) {
+                hit = true;
                 let guarded = health.guarded;
                 let dealt = health.hit(damage);
                 state.feedback = if guarded && dealt == 0 {
@@ -238,13 +279,55 @@ fn resolve_attacks(
                 } else {
                     "Hit - dodge red ! cells or interrupt the attacker"
                 };
+            } else if !hit {
+                state.feedback = match fighter.role {
+                    BattleRole::Spearman => {
+                        "Spear lunged and missed - EXTENDED for 2 actions: punish!"
+                    }
+                    BattleRole::ShieldBearer => {
+                        "Bash missed - shield DOWN for 2 actions: attack from any side!"
+                    }
+                    BattleRole::Brute => "Slam missed - brute OPEN for 3 actions: punish!",
+                    BattleRole::Skirmisher => "Attack missed - counter now",
+                };
             }
-            fighter.recovering = true;
+            // Movement animates the spear's lunge. Bashes and slams also play
+            // on a miss, using the existing renderer-neutral motion player.
+            if motion.as_deref() != Some(&MotionStyle::Snap) {
+                if let Some(mut animation) = animation {
+                    if matches!(attack, BattleIntent::Slam { .. }) {
+                        animation.state.play(Move {
+                            from: enemy_pos.0.as_vec2(),
+                            to: enemy_pos.0.as_vec2(),
+                            path: Path::Straight,
+                            duration: 0.35,
+                            easing: EaseFunction::CubicIn,
+                            secondary: Secondary {
+                                hop: 0.6,
+                                hops: 1.0,
+                            },
+                            coast: None,
+                        });
+                    } else if let BattleIntent::Strike { direction, .. } = attack {
+                        if fighter.role == BattleRole::ShieldBearer {
+                            animation.state.bump(
+                                direction.as_vec2(),
+                                MotionStyle::Tween {
+                                    duration: 0.3,
+                                    easing: EaseFunction::CubicIn,
+                                },
+                            );
+                        }
+                    }
+                }
+            }
+            fighter.last_attack = attack;
+            fighter.recovery_left = fighter.role.recovery_actions();
         }
         fighter.needs_plan = true;
     }
     state.defeated = health.current == 0;
-    state.won = enemies.iter().all(|(health, _)| health.current == 0);
+    state.won = enemies.iter().all(|(_, health, ..)| health.current == 0);
 }
 
 /// Keep defeated actors for an allocation-free encounter reset, but remove
@@ -311,8 +394,8 @@ fn plan_intents(
         fighter.needs_plan = false;
         let intent = if state.defeated || player_health.current == 0 {
             BattleIntent::Idle
-        } else if fighter.recovering {
-            fighter.recovering = false;
+        } else if fighter.recovery_left > 0 {
+            fighter.recovery_left -= 1;
             BattleIntent::Recover
         } else {
             let seen = grid.idx(player.0).is_some_and(|index| {
@@ -323,7 +406,12 @@ fn plan_intents(
             let delta = player.0 - pos.0;
             let distance = delta.abs().element_sum();
             let straight = delta.x == 0 || delta.y == 0;
-            if seen && straight && distance > 0 && distance <= fighter.role.reach() {
+            if seen && fighter.role == BattleRole::Brute && delta.abs().max_element() <= 2 {
+                BattleIntent::WindUp {
+                    origin: pos.0,
+                    damage: fighter.role.damage(),
+                }
+            } else if seen && straight && distance > 0 && distance <= fighter.role.reach() {
                 let direction = delta.signum();
                 // Stop the spear at a wall/closed door instead of threatening through it.
                 let reach = (1..=fighter.role.reach())
@@ -355,13 +443,30 @@ fn plan_intents(
             }
         };
         fighter.intent = intent;
-        glyph.ch = fighter.role.glyph();
+        glyph.ch = if intent == BattleIntent::Recover {
+            fighter.role.glyph().to_ascii_lowercase()
+        } else {
+            fighter.role.glyph()
+        };
         glyph.color = match intent {
-            BattleIntent::Strike { .. } => RED,
+            BattleIntent::Strike { .. } | BattleIntent::Slam { .. } => RED,
             BattleIntent::Recover => CYAN,
-            BattleIntent::Move(_) => YELLOW,
+            BattleIntent::Move(_) | BattleIntent::WindUp { .. } => YELLOW,
             BattleIntent::Idle => DARK_RED,
         };
+    }
+}
+
+/// The shield is lowered during recovery; don't show a protected front then.
+fn show_guard(fighters: Query<(&Facing, &Fighter)>, mut markers: Query<(&BoundTo, &mut Glyph)>) {
+    for (bound, mut glyph) in &mut markers {
+        if let Ok((facing, fighter)) = fighters.get(bound.parent) {
+            if fighter.role == BattleRole::ShieldBearer
+                && (facing.0 == IVec2::ZERO || fighter.intent == BattleIntent::Recover)
+            {
+                glyph.ch = ' ';
+            }
+        }
     }
 }
 
@@ -430,7 +535,8 @@ fn restart_battle(
         if let Some(mut fighter) = fighter {
             fighter.intent = BattleIntent::Idle;
             fighter.needs_plan = true;
-            fighter.recovering = false;
+            fighter.recovery_left = 0;
+            fighter.last_attack = BattleIntent::Idle;
         } else {
             glyph.color = WHITE;
         }

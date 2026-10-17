@@ -29,7 +29,7 @@ pub(super) fn billboard_pattern(symbol: char) -> Option<&'static str> {
         '<' => Some("< \n/|\\\n/ \\"),
         '^' => Some("^ \n/|\\\n/ \\"),
         'V' => Some("V \n/|\\\n/ \\"),
-        'e' | 'S' | 'G' | 'B' => Some("o\n/|\\\n/ \\"),
+        'e' | 'S' | 's' | 'G' | 'g' | 'B' | 'b' => Some("o\n/|\\\n/ \\"),
         _ => None,
     }
 }

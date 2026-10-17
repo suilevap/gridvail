@@ -68,6 +68,14 @@ impl BattleRole {
             Self::Brute => 'B',
         }
     }
+
+    pub const fn recovery_actions(self) -> u8 {
+        match self {
+            Self::Skirmisher => 1,
+            Self::Brute => 3,
+            _ => 2,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -81,24 +89,45 @@ pub enum BattleIntent {
         reach: i32,
         damage: i32,
     },
+    WindUp {
+        origin: IVec2,
+        damage: i32,
+    },
+    Slam {
+        origin: IVec2,
+        damage: i32,
+    },
     Recover,
 }
 
 impl BattleIntent {
-    /// At most two threatened cells; fixed storage avoids per-turn allocation.
-    pub fn cells(self) -> [Option<IVec2>; 2] {
+    /// A lane or the eight neighbours of a slam; no per-turn allocation.
+    pub fn cells(self) -> [Option<IVec2>; 8] {
+        let mut cells = [None; 8];
         match self {
             Self::Strike {
                 origin,
                 direction,
                 reach,
                 ..
-            } => [
-                (reach > 0).then_some(origin + direction),
-                (reach > 1).then_some(origin + direction * 2),
-            ],
-            _ => [None; 2],
+            } => {
+                cells[0] = (reach > 0).then_some(origin + direction);
+                cells[1] = (reach > 1).then_some(origin + direction * 2);
+            }
+            Self::WindUp { origin, .. } | Self::Slam { origin, .. } => {
+                let mut index = 0;
+                for y in -1..=1 {
+                    for x in -1..=1 {
+                        if x != 0 || y != 0 {
+                            cells[index] = Some(origin + IVec2::new(x, y));
+                            index += 1;
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
+        cells
     }
 }
 
@@ -107,7 +136,10 @@ pub struct Fighter {
     pub role: BattleRole,
     pub intent: BattleIntent,
     pub needs_plan: bool,
-    pub recovering: bool,
+    /// Future recovery actions, in addition to the currently advertised one.
+    pub recovery_left: u8,
+    /// The spent attack stays visible while recovering, including on a miss.
+    pub last_attack: BattleIntent,
 }
 
 #[derive(Component, Clone, Copy, Debug)]
