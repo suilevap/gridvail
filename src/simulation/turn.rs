@@ -10,17 +10,27 @@ pub fn turn_tick(mut turn: ResMut<TurnState>) {
 
 pub fn recharge_tokens(
     time: Res<Time>,
+    battle: Option<Res<BattleState>>,
     mut timer: ResMut<TokenTimer>,
     mut pacing: ResMut<TurnPacing>,
-    mut holders: Query<&mut Tokens, Or<(With<Player>, With<Enemy>)>>,
+    mut holders: Query<(&mut Tokens, Has<Active>), Or<(With<Player>, With<Enemy>)>>,
 ) {
-    timer.0.tick(time.delta());
-    let any_left = holders.iter().any(|tokens| tokens.count > 0);
+    if battle.as_ref().is_some_and(|battle| battle.defeated) {
+        return;
+    }
+    if battle.is_none() {
+        timer.0.tick(time.delta());
+    }
+    let any_left = holders
+        .iter()
+        .any(|(tokens, active)| tokens.count > 0 && (battle.is_none() || active));
     // A new turn starts on the timeout, or once every token is spent and the
     // player's action has (almost) finished animating, if anything animates.
-    if timer.0.is_finished() || (!any_left && pacing.can_advance()) {
-        for mut tokens in holders.iter_mut() {
-            tokens.count = tokens.recharge;
+    if (battle.is_none() && timer.0.is_finished()) || (!any_left && pacing.can_advance()) {
+        for (mut tokens, active) in holders.iter_mut() {
+            if battle.is_none() || active {
+                tokens.count = tokens.recharge;
+            }
         }
         timer.0.reset();
         pacing.started();

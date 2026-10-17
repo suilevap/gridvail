@@ -33,11 +33,23 @@ impl Plugin for TouchControlPlugin {
                     .run_if(resource_exists::<Touches>),
             )
             .add_systems(
+                PreUpdate,
+                read_wait_touch
+                    .after(read_swipes)
+                    .run_if(resource_exists::<Touches>),
+            )
+            .add_systems(
                 Update,
                 swipe_commands
                     .after(player_input)
                     .before(move_commands)
                     .in_set(GamePhase::Simulation),
             );
+    }
+}
+
+fn read_wait_touch(touches: Res<Touches>, swipe: Res<Swipe>, wait: Option<ResMut<WaitHold>>) {
+    if let Some(mut wait) = wait {
+        wait.touch_held = swipe.waiting(&touches);
     }
 }

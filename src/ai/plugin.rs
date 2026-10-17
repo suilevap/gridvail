@@ -3,6 +3,7 @@ use flatbt_bevy::prelude::*;
 
 use super::*;
 use crate::locomotion::follow_paths;
+use crate::model::BattleState;
 use crate::navigation::share_paths;
 use crate::schedule::GamePhase;
 use crate::simulation::{direction_tiles, move_commands, player_input};
@@ -31,6 +32,7 @@ impl Plugin for AiPlugin {
             .configure_sets(
                 Update,
                 BehaviorSystems
+                    .run_if(not(resource_exists::<BattleState>))
                     .in_set(GamePhase::Simulation)
                     .after(player_input)
                     .before(follow_paths),
@@ -54,12 +56,14 @@ impl Plugin for AiPlugin {
                     wait_if_idle.after(follow_paths),
                 )
                     .in_set(GamePhase::Simulation)
+                    .run_if(not(resource_exists::<BattleState>))
                     .after(player_input)
                     .before(move_commands),
             )
             .add_systems(
                 Update,
                 show_mood
+                    .run_if(not(resource_exists::<BattleState>))
                     .after(direction_tiles)
                     .in_set(GamePhase::Simulation),
             );

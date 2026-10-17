@@ -2,7 +2,9 @@ use bevy::prelude::*;
 
 use super::DynamicLight;
 use crate::foundation::portal::CellTransform;
-use crate::lighting::{dimmed, light_to_palette, DARK_MAGENTA, DARK_RED, MAGENTA};
+use crate::lighting::{
+    dimmed, light_to_palette, CYAN, DARK_MAGENTA, DARK_RED, MAGENTA, RED, YELLOW,
+};
 use crate::model::*;
 
 /// Colour of a portal's threshold and of portal walls seen from behind or
@@ -41,8 +43,11 @@ pub fn compose_frame(
         Option<&Speed>,
         Option<&AnimatedPos>,
         Has<BoundTo>,
+        Option<&Health>,
+        Has<Enemy>,
     )>,
     children: Query<(Entity, &Pos, &Glyph, Option<&AnimatedPos>, &BoundTo)>,
+    fighters: Query<(&Pos, &Fighter, &Health)>,
     mut buffers: ResMut<RenderBuffers>,
 ) {
     let Ok((player, visibility, view)) = viewers.single() else {
@@ -61,11 +66,11 @@ pub fn compose_frame(
     buffers.objects.clear();
     mark_seen(&mut buffers, &grid, visibility, view, reveal.is_some());
 
-    for (entity, pos, glyph, speed, shown, bound) in glyphs.iter() {
+    for (entity, pos, glyph, speed, shown, bound, health, enemy) in glyphs.iter() {
         let Some(world) = grid.idx(pos.0) else {
             continue;
         };
-        if bound {
+        if bound || (enemy && health.is_some_and(|health| health.current == 0)) {
             continue;
         }
         let drawn = RenderCell {
@@ -183,6 +188,49 @@ pub fn compose_frame(
         };
     }
 
+    // Only advertise attacks by enemies the player can actually see. Use the
+    // same world-to-frame lists as objects, so portals and both renderers agree.
+    for (pos, fighter, health) in &fighters {
+        let visible = grid
+            .idx(pos.0)
+            .is_some_and(|index| buffers.seen_first[index] != RenderBuffers::NO_CELL);
+        if health.current == 0 || !visible {
+            continue;
+        }
+        let (footprint, symbol, color) = match fighter.intent {
+            BattleIntent::WindUp { .. } => (fighter.intent, '?', YELLOW),
+            BattleIntent::Recover => (fighter.last_attack, '+', CYAN),
+            _ => (fighter.intent, '!', RED),
+        };
+        for threatened in footprint.cells().into_iter().flatten() {
+            if grid.blocks_vision(threatened) {
+                continue;
+            }
+            let Some(world) = grid.idx(threatened) else {
+                continue;
+            };
+            let mut frame = buffers.seen_first[world];
+            while frame != RenderBuffers::NO_CELL {
+                let index = frame as usize;
+                // A spent attack must never make another enemy's live
+                // threat look safe, regardless of entity iteration order.
+                if (symbol == '+' && matches!(buffers.ground[index].ch, '!' | '?'))
+                    || (symbol == '?' && buffers.ground[index].ch == '!')
+                {
+                    frame = buffers.seen_next[index];
+                    continue;
+                }
+                buffers.current[index].color = color;
+                buffers.ground[index] = RenderCell {
+                    ch: symbol,
+                    color,
+                    depth: 0,
+                };
+                frame = buffers.seen_next[index];
+            }
+        }
+    }
+
     // Keep only objects that won their cell, and give them its lit color.
     // One partly sunk into the floor (rising or sinking) does not hide it.
     let buffers = &mut *buffers;
@@ -193,7 +241,13 @@ pub fn compose_frame(
         };
         let cell = buffers.current[index];
         let shown = cell.ch == object.cell.ch && cell.depth == object.cell.depth;
-        object.cell.color = cell.color;
+        if fighters.contains(object.entity) {
+            // Intent colors are information, so keep them readable under
+            // the map's ambient lighting as well as in the object sprite.
+            buffers.current[index].color = object.cell.color;
+        } else {
+            object.cell.color = cell.color;
+        }
         if shown && object.height < 1.0 {
             let mut floor = RenderCell::default();
             let position = buffers.pos_of(index);

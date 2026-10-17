@@ -223,6 +223,45 @@ direction, and where new foundational versus game-specific code belongs.
 
 ## Run and verify
 
+The playable executable installs tactical battle rules: arrows/WASD move or
+attack by bumping into an enemy, with one action per press. Enemies act only
+after your action; taking time to think never spends a turn. Red `!` cells show
+where an enemy will strike on your next action. Yellow `?` cells give an extra
+action of warning; blue `+` cells show a spent attack. Recovering enemies turn
+blue and lowercase. The HUD names the nearest visible enemy's action, tells
+you how to counter it, and counts the actions left in its opening.
+
+- **Spear:** bait its two-cell lane, then step sideways. It lunges one cell
+  even on a miss and remains **EXTENDED for two actions**, letting you close
+  in and punish it. Try `?map=spear`.
+- **Shield:** its arrow marks the protected front. Bait its locked bash and
+  step aside; after the bash, its shield is **DOWN for two actions** and hits
+  from any side work, including the front. Try `?map=shield`.
+- **Brute:** provoke its **two-action wind-up**, then leave the marked 3x3
+  area before the slam. It finishes the slam even if you leave. The wind-up
+  is armoured and cannot be interrupted; after the slam it is **OPEN for
+  three actions**, enough to approach and counter twice. Try `?map=brute`.
+
+A normal bump deals 2 damage and interrupts; an opening hit deals **3**.
+Hitting the brute during its wind-up deals only 1 and does not stop the slam.
+
+Hold Space for **0.6 seconds** to wait and brace against the next hit. The
+bottom panel shows a filling meter, seconds remaining, and **WAIT COUNTED**
+when the turn commits. Releasing early cancels; keeping Space down never
+commits another turn until you release it. On touch screens, hold a finger
+still instead (swiping moves/attacks; two fingers still control the camera).
+Bracing absorbs one damage from the next hit. `R` or the reset button restores
+the encounter's actors; existing door/item changes remain.
+
+Try `cargo run -- --map assets/maps/battle.txt`, or `?map=battle` in the browser.
+Map glyphs `s`, `g`, and `b` spawn a spearman (two-cell strike), shield bearer,
+and brute (heavy strike), respectively. Existing `e` enemies are skirmishers.
+`BattlePlugin` adds these rules to the base `GamePlugin`, so the original
+simulation and AI remain available for existing library users.
+
+[Watch the browser demonstration](docs/media/tactical-battle.mp4): wait-meter
+cancellation and commitment, spear dodging, shield flanking, bracing, and reset.
+
 ```sh
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
