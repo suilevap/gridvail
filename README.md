@@ -116,13 +116,19 @@ next to this file.
   walls around them join up again. Sight, light and paths follow at once.
   A room waits while anything stands where a new wall goes. The switch
   happens in the world at once and is shown over a moment, and the next
-  turn waits for it. A wall slides to its new cell when one the layout
-  loses and one it gains are in the same row or column with empty floor
-  between them (it glides across), or with wall in both layouts between
-  them (the stretch shifts one cell, as a gap moving along a wall). Other
-  new walls rise out of the floor and other old ones sink into it (they
-  fade in and out in the text view). In `rooms.txt` the room's walls slide
-  to move its gaps, and pillars rise in its corners.
+  turn waits for it. How the walls get there is a replaceable strategy, a
+  room planner: walls slide to new cells, rise out of the floor or sink
+  into it (they fade in and out in the text view). `lines`, the default,
+  slides a wall when a cell the layout loses and one it gains are in the
+  same row or column with empty floor between them (it glides across), or
+  with wall in both layouts between them (the stretch shifts one cell, as
+  a gap moving along a wall), and raises and sinks the rest; `rise-sink`
+  only raises and sinks. `@room <x> <y> <planner>` picks a room's planner,
+  so strategies can be compared side by side in one map, and
+  `--room-planner NAME` picks the one for rooms that name none. Code adds
+  its own with `RoomPlanners::add` (see `simulation/room_plans/`). In
+  `rooms.txt` the room's walls slide to move its gaps, and pillars rise in
+  its corners.
 - Settings (an addition): Esc opens a small menu to choose how the view
   behaves through portals that turn (turn with the player or keep north
   up), when the compass shows (when the view is turned, always or off) and
@@ -222,8 +228,9 @@ cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk through portals too
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
+cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 244 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 250 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

@@ -7,6 +7,9 @@ use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::animation::ObjectAnimationPlugin;
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::model::*;
+use pav_ecs_game_bevy_port::simulation::room_plans::{
+    RoomPlanner, RoomPlanners, SwitchContext, SwitchPlan, WallChange,
+};
 
 /// The player starts left of the plate. The room's first layout has walls
 /// at (4, 1) and (4, 2); its second has them at (5, 1) and (6, 1). The top
@@ -222,4 +225,88 @@ fn with_animation_walls_slide_rise_and_sink() {
         app.world().get_entity(below).is_err(),
         "the old one is gone"
     );
+}
+
+/// `MAP` with the room naming the planner that only rises and sinks.
+const RISE_SINK_MAP: &str = "\
+XXXXXXXX
+Xp_.X..X
+X...X..X
+XXXXXXXX
+@room 4 1 rise-sink
+.XX
+...
+";
+
+#[test]
+fn a_room_can_name_its_planner() {
+    let mut app = boot_with(|app| {
+        app.insert_resource(MapText(RISE_SINK_MAP));
+    });
+    let top = entity_at(&mut app, LEFT).unwrap();
+    step(&mut app, KeyCode::ArrowRight);
+    assert!(wall_at(&mut app, LEFT).is_none());
+    let right = entity_at(&mut app, RIGHT).expect("a wall at the new cell");
+    assert_ne!(
+        right, top,
+        "a new wall rose rather than the old one sliding"
+    );
+    assert!(app.world().get_entity(top).is_err(), "the old one went");
+}
+
+/// A planner from outside the game: it counts its plans and carries out
+/// whatever `inner` would.
+struct Counting<P> {
+    inner: P,
+    plans: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl<P: RoomPlanner> RoomPlanner for Counting<P> {
+    fn plan(&self, switch: &SwitchContext) -> SwitchPlan {
+        self.plans
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.inner.plan(switch)
+    }
+}
+
+/// Plans one slide whatever the layouts, which does not give them.
+struct Wrong;
+
+impl RoomPlanner for Wrong {
+    fn plan(&self, _: &SwitchContext) -> SwitchPlan {
+        SwitchPlan {
+            changes: vec![WallChange::Slide {
+                from: LEFT,
+                to: FAR,
+            }],
+        }
+    }
+}
+
+#[test]
+fn planners_added_from_outside_are_used_and_bad_plans_fall_back() {
+    let plans = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = plans.clone();
+    let mut app = boot_with(move |app| {
+        let mut planners = app.world_mut().resource_mut::<RoomPlanners>();
+        planners.add(
+            "counting",
+            Counting {
+                inner: Wrong,
+                plans: counted,
+            },
+        );
+        planners.default = "counting".into();
+    });
+    let below = entity_at(&mut app, BELOW).unwrap();
+    step(&mut app, KeyCode::ArrowRight);
+    assert_eq!(
+        plans.load(std::sync::atomic::Ordering::Relaxed),
+        1,
+        "it was asked"
+    );
+    // Its plan would leave the room wrong, so the walls rise and sink.
+    assert!(wall_at(&mut app, LEFT).is_none() && wall_at(&mut app, BELOW).is_none());
+    assert!(wall_at(&mut app, RIGHT).is_some() && wall_at(&mut app, FAR).is_some());
+    assert!(app.world().get_entity(below).is_err());
 }

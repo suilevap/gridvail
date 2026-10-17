@@ -8,7 +8,9 @@
 //! block's lines are the walls (`X`/`x`; anything else is floor) of the
 //! rectangle they cover, with its top-left corner at `x`, `y`. The map
 //! itself holds the room's first layout; blocks for the same corner follow
-//! it in order.
+//! it in order. `@room <x> <y> <planner>` also names the strategy for how
+//! its walls get from one layout to the next (any of its blocks may name
+//! it, and they must agree).
 
 use bevy::prelude::*;
 
@@ -89,6 +91,8 @@ pub struct RoomSpec {
     pub origin: IVec2,
     pub size: IVec2,
     pub layouts: Vec<Vec<IVec2>>,
+    /// The planner its blocks name, if any.
+    pub planner: Option<String>,
 }
 
 /// Reads the `@room` blocks after the map. The map's `cells` (from
@@ -101,14 +105,16 @@ pub fn parse_rooms(text: &str, cells: &[SpawnCell]) -> Result<Vec<RoomSpec>, Str
         .peekable();
     while let Some(header) = lines.next() {
         let fields: Vec<&str> = header.split_whitespace().collect();
-        let origin = match fields[..] {
-            ["@room", x, y] => x
-                .parse()
-                .and_then(|x| Ok(IVec2::new(x, y.parse()?)))
-                .map_err(|_| format!("bad room corner in `{header}`"))?,
+        let (origin, planner) = match fields[..] {
+            ["@room", x, y, ref planner @ ..] if planner.len() <= 1 => (
+                x.parse()
+                    .and_then(|x| Ok(IVec2::new(x, y.parse()?)))
+                    .map_err(|_| format!("bad room corner in `{header}`"))?,
+                planner.first().map(|name| name.to_string()),
+            ),
             _ => {
                 return Err(format!(
-                    "unknown block `{header}`; expected `@room <x> <y>`"
+                    "unknown block `{header}`; expected `@room <x> <y> [planner]`"
                 ))
             }
         };
@@ -157,7 +163,19 @@ pub fn parse_rooms(text: &str, cells: &[SpawnCell]) -> Result<Vec<RoomSpec>, Str
                     room.size
                 ))
             }
-            Some(room) => room.layouts.push(walls),
+            Some(room)
+                if planner.is_some() && room.planner.is_some() && room.planner != planner =>
+            {
+                return Err(format!(
+                    "room at {origin} names two planners, {} and {}",
+                    room.planner.as_deref().unwrap_or_default(),
+                    planner.as_deref().unwrap_or_default()
+                ))
+            }
+            Some(room) => {
+                room.layouts.push(walls);
+                room.planner = room.planner.take().or(planner);
+            }
             None => {
                 let inside = |p: IVec2| p.cmpge(origin).all() && p.cmplt(origin + size).all();
                 let first = cells
@@ -169,6 +187,7 @@ pub fn parse_rooms(text: &str, cells: &[SpawnCell]) -> Result<Vec<RoomSpec>, Str
                     origin,
                     size,
                     layouts: vec![first, walls],
+                    planner,
                 });
             }
         }
@@ -338,8 +357,25 @@ mod tests {
                     vec![IVec2::new(2, 0), IVec2::new(1, 1)],
                     vec![],
                 ],
+                planner: None,
             }]
         );
+    }
+
+    #[test]
+    fn room_blocks_may_name_a_planner() {
+        let rooms = |text| parse_rooms(text, &parse_map(text).2);
+        let text = "X.\n@room 0 0\n.X\n@room 0 0 rise-sink\nX.\n";
+        assert_eq!(
+            rooms(text).unwrap()[0].planner.as_deref(),
+            Some("rise-sink")
+        );
+        assert!(rooms("X.\n@room 0 0 lines\n.X\n@room 0 0 rise-sink\nX.")
+            .unwrap_err()
+            .contains("two planners"));
+        assert!(rooms("X.\n@room 0 0 a b\n.X")
+            .unwrap_err()
+            .contains("unknown block"));
     }
 
     #[test]

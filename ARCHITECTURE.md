@@ -52,13 +52,15 @@ and renderers must not import it.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
   Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
   updates are separate files.
-  `rooms.rs` switches `Room`s to the layout asked for (`Room::advance`):
-  `plan_switch` picks the walls that slide (moved, marked `Sliding`); it
-  spawns the other new walls `Rising`, takes the other walls that go off
-  the map and leaves them `Sinking` (despawned at once without the
-  animation step), and
-  marking their neighbours with `Tile`, which `tile_system` autotiles
-  again. It does not know what asked:
+  `rooms.rs` switches `Room`s to the layout asked for (`Room::advance`).
+  It asks the room's planner how (`room_plans/`: the `RoomPlanner` trait,
+  one strategy per file, chosen by name from the `RoomPlanners` resource)
+  for a `SwitchPlan` of `WallChange`s, checks that the plan gives the new
+  layout (falling back to rising and sinking), and carries it out: a
+  sliding wall moves and is marked `Sliding`, a new one is spawned
+  `Rising`, one that goes leaves the map `Sinking` (despawned at once
+  without the animation step). It marks their neighbours with `Tile`,
+  which `tile_system` autotiles again. It does not know what asked:
   `plates.rs` is a stand-in trigger (`PressurePlate`) until a trigger/action
   system, where a room switch is one kind of action.
 - `vision/` converts sensors and blocker state into cached FOV and visibility

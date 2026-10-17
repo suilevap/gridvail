@@ -230,7 +230,7 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
     }
 
     for room in rooms {
-        commands.spawn(Room::new(room.origin, room.size, room.layouts));
+        commands.spawn(Room::new(room.origin, room.size, room.layouts).with_planner(room.planner));
     }
 
     commands.insert_resource(grid);

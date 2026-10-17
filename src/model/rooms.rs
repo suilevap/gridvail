@@ -28,6 +28,9 @@ pub struct Room {
     /// The layout asked for. It replaces `current` once nothing stands
     /// where its new walls go.
     pub target: usize,
+    /// The name of the strategy for how its walls get from one layout to
+    /// the next (`RoomPlanners`); `None` uses the default one.
+    pub planner: Option<String>,
 }
 
 impl Room {
@@ -38,7 +41,14 @@ impl Room {
             layouts,
             current: 0,
             target: 0,
+            planner: None,
         }
+    }
+
+    /// Uses the planner named `planner` (`RoomPlanners`) for its switches.
+    pub fn with_planner(mut self, planner: Option<String>) -> Self {
+        self.planner = planner;
+        self
     }
 
     /// Asks for the layout after the one asked for last.
