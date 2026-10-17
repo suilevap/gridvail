@@ -55,11 +55,14 @@ and renderers must not import it.
   `rooms.rs` switches `Room`s to the layout asked for (`Room::advance`).
   It asks the room's planner how (`room_plans/`: the `RoomPlanner` trait,
   one strategy per file, chosen by name from the `RoomPlanners` resource)
-  for a `SwitchPlan` of `WallChange`s, checks that the plan gives the new
-  layout (falling back to rising and sinking), and carries it out: a
-  sliding wall moves and is marked `Sliding`, a new one is spawned
-  `Rising`, one that goes leaves the map `Sinking` (despawned at once
-  without the animation step). It marks their neighbours with `Tile`,
+  for a `SwitchPlan` of `WallMove`s (every wall slides, `from` to `to`;
+  its `MoveKind` says whether it is a new wall that rises first or one
+  that goes and sinks after), checks that the plan gives the new layout
+  (falling back to rising and sinking in place), and carries it out.
+  Every wall is marked `Sliding`: one that moves keeps its entity, a new
+  one is spawned at its cell `Rising` from where its move starts, and one
+  that goes leaves the map `Sinking`, its `Pos` set to where its move
+  ends (despawned at once without the animation step). It marks their neighbours with `Tile`,
   which `tile_system` autotiles again. It does not know what asked:
   `plates.rs` is a stand-in trigger (`PressurePlate`) until a trigger/action
   system, where a room switch is one kind of action.
@@ -125,9 +128,10 @@ and renderers must not import it.
   `rotate(offset, facing)` instead of the cell, along `Path::Orbit` around
   the parent, so a turn swings them around it rather than through it.
   `Sliding` objects move at a steady pace instead of in the actors'
-  style. `Rising` objects come up out of the floor and `Sinking` ones go down into
-  it (`AnimatedPos::height`, eased by a `Tween`); sunk objects are
-  despawned. Renderers lower a wall's mesh into the floor or fade its
+  style. `Rising` objects come up out of the floor where they start and
+  then move to their cell; `Sinking` ones move to their `Pos` and then go
+  down into the floor (`AnimatedPos::height`, eased by a `Tween`); sunk
+  objects are despawned. Renderers lower a wall's mesh into the floor or fade its
   glyph, and the frame shows the floor under an object partly sunk. `ObjectAnimationPlugin` picks the
   timing from `MotionStyle` (per-entity `ObjectMotion` overrides), writes the
   shown position to `AnimatedPos`, and reports how long unfinished moves

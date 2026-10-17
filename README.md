@@ -117,8 +117,11 @@ next to this file.
   A room waits while anything stands where a new wall goes. The switch
   happens in the world at once and is shown over a moment, and the next
   turn waits for it. How the walls get there is a replaceable strategy, a
-  room planner: walls slide to new cells, rise out of the floor or sink
-  into it (they fade in and out in the text view). `lines`, the default,
+  room planner. Every wall slides from one cell to another; a new wall
+  rises out of the floor where its slide starts and a wall that goes
+  sinks into it where its slide ends (they fade in and out in the text
+  view), which can be anywhere, even inside another wall. Rising or
+  sinking in place is a slide of no length. `lines`, the default,
   slides a wall when a cell the layout loses and one it gains are in the
   same row or column with empty floor between them (it glides across), or
   with wall in both layouts between them (the stretch shifts one cell, as
@@ -230,7 +233,7 @@ cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up 
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 250 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 252 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

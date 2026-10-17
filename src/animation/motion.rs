@@ -162,7 +162,7 @@ impl MotionStyle {
     }
 
     /// Duration and easing of a one-cell move in this style.
-    fn timing(&self) -> (f32, EaseFunction) {
+    pub(super) fn timing(&self) -> (f32, EaseFunction) {
         match *self {
             Self::Snap => (0.0, EaseFunction::Linear),
             Self::Tween { duration, easing } => (duration, easing),

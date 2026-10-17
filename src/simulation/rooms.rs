@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::room_plans::{RoomPlanners, SwitchContext, SwitchPlan, WallChange};
+use super::room_plans::{MoveKind, RoomPlanners, SwitchContext, SwitchPlan};
 use super::wall_bundle;
 use crate::model::*;
 
@@ -10,13 +10,15 @@ use crate::model::*;
 ///
 /// How the walls get there is the room's planner's choice
 /// ([`RoomPlanners`]); a plan that would not give the new layout is
-/// replaced by rising and sinking. This carries the plan out:
+/// replaced by rising and sinking. This carries the plan out; every wall
+/// slides and is marked [`Sliding`]:
 ///
-/// - a sliding wall keeps its entity, is marked [`Sliding`] and only its
-///   `Pos` changes;
-/// - a rising wall is spawned [`Rising`];
-/// - a sinking wall stops being a wall at once and is left [`Sinking`] for
-///   the animation step to show going down and despawn; without one (no
+/// - a wall that moves keeps its entity and only its `Pos` changes;
+/// - a new wall is spawned at its cell, [`Rising`] from where its move
+///   starts;
+/// - a wall that goes stops being a wall at once, its `Pos` becomes where
+///   its move ends, and it is left [`Sinking`] for the animation step to
+///   show going there and down, and despawn; without one (no
 ///   `AnimatedPos`) it is despawned here.
 pub fn transform_rooms(
     mut commands: Commands,
@@ -75,44 +77,40 @@ fn carry_out(
     walls: &Query<Has<AnimatedPos>, With<Wall>>,
     plan: &SwitchPlan,
 ) {
-    let leaving: Vec<(WallChange, Entity, bool)> = plan
-        .changes
+    let leaving: Vec<_> = plan
+        .moves
         .iter()
-        .filter_map(|&change| {
-            let source = match change {
-                WallChange::Slide { from, .. } => from,
-                WallChange::Sink { at } => at,
-                WallChange::Rise { .. } => return None,
-            };
-            let wall = grid.get(source)?;
-            Some((change, wall, walls.get(wall).ok()?))
+        .filter_map(|&step| {
+            let wall = grid.get(step.source()?)?;
+            Some((step, wall, walls.get(wall).ok()?))
         })
         .collect();
     for source in plan.sources() {
         grid.clear(source);
     }
-    for &(change, wall, animated) in &leaving {
-        match change {
-            WallChange::Slide { to, .. } => {
-                grid.set(to, wall);
+    for &(step, wall, animated) in &leaving {
+        match step.kind {
+            MoveKind::Slide => {
+                grid.set(step.to, wall);
                 commands
                     .entity(wall)
-                    .insert((Pos(to), Sliding, Tile::wall()));
+                    .insert((Pos(step.to), Sliding, Tile::wall()));
             }
-            WallChange::Sink { .. } if animated => {
+            MoveKind::Sink if animated => {
                 commands
                     .entity(wall)
                     .remove::<(Wall, Collider, Active, Tile)>()
-                    .insert(Sinking);
+                    .insert((Pos(step.to), Sliding, Sinking));
             }
-            WallChange::Sink { .. } => commands.entity(wall).despawn(),
-            WallChange::Rise { .. } => {}
+            MoveKind::Sink => commands.entity(wall).despawn(),
+            MoveKind::Rise => {}
         }
     }
-    for change in &plan.changes {
-        if let WallChange::Rise { at } = *change {
-            let wall = commands.spawn((wall_bundle(at), Rising)).id();
-            grid.set(at, wall);
+    for step in &plan.moves {
+        if step.kind == MoveKind::Rise {
+            let rising = Rising { from: step.from };
+            let wall = commands.spawn((wall_bundle(step.to), rising, Sliding)).id();
+            grid.set(step.to, wall);
         }
     }
 }

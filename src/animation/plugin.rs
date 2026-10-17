@@ -44,7 +44,6 @@ impl Plugin for ObjectAnimationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MotionStyle>()
             .add_observer(start_animation)
-            .add_observer(start_sinking)
             .add_systems(
                 Update,
                 (
@@ -62,30 +61,37 @@ impl Plugin for ObjectAnimationPlugin {
 /// Objects get their animation state when they are first placed, so steady
 /// frames never queue commands. A child's state lives in its parent's frame:
 /// it animates its offset from the parent, not its cell. A [`Rising`]
-/// object starts sunk into the floor and rises.
+/// object starts sunk into the floor at its `from` and rises there; it
+/// moves to its cell once it stands.
 #[allow(clippy::type_complexity)]
 fn start_animation(
     add: On<Add, Pos>,
     style: Res<MotionStyle>,
-    objects: Query<(&Pos, Option<&BoundTo>, Option<&ObjectMotion>, Has<Rising>)>,
+    objects: Query<(
+        &Pos,
+        Option<&BoundTo>,
+        Option<&ObjectMotion>,
+        Option<&Rising>,
+    )>,
     facings: Query<&Facing>,
     mut commands: Commands,
 ) {
     let Ok((pos, bound, own_style, rising)) = objects.get(add.entity) else {
         return;
     };
-    let start = match bound {
-        Some(bound) => rotate(bound.offset, facing_of(bound.parent, &facings)),
-        None => pos.0,
+    let start = match (bound, rising) {
+        (Some(bound), _) => rotate(bound.offset, facing_of(bound.parent, &facings)),
+        (None, Some(rising)) => rising.from,
+        (None, None) => pos.0,
     };
     let mut height = Tween::at(1.0);
-    if rising {
+    if rising.is_some() {
         height.snap(0.0);
         ease_height(&mut height, 1.0, style_of(own_style, *style));
     }
     let shown = AnimatedPos {
         height: height.value(),
-        ..AnimatedPos::at(pos.0)
+        ..AnimatedPos::at(if bound.is_some() { pos.0 } else { start })
     };
     commands.entity(add.entity).insert((
         ObjectAnimation {
@@ -96,31 +102,24 @@ fn start_animation(
     ));
 }
 
-/// A [`Sinking`] object starts going down into the floor.
-fn start_sinking(
-    add: On<Add, Sinking>,
-    style: Res<MotionStyle>,
-    mut objects: Query<(Option<&ObjectMotion>, &mut ObjectAnimation)>,
-) {
-    if let Ok((own_style, mut animation)) = objects.get_mut(add.entity) {
-        ease_height(&mut animation.height, 0.0, style_of(own_style, *style));
-    }
-}
-
-/// Rising and sinking take [`RISE_SECONDS`], or no time when objects snap.
-fn ease_height(height: &mut Tween<f32>, to: f32, style: MotionStyle) {
-    let seconds = if style == MotionStyle::Snap {
+/// How long rising or sinking takes: [`RISE_SECONDS`], or no time when
+/// objects snap.
+fn rise_seconds(style: MotionStyle) -> f32 {
+    if style == MotionStyle::Snap {
         0.0
     } else {
         RISE_SECONDS
-    };
-    height.ease_to(to, seconds, EaseFunction::SmoothStep);
+    }
+}
+
+fn ease_height(height: &mut Tween<f32>, to: f32, style: MotionStyle) {
+    height.ease_to(to, rise_seconds(style), EaseFunction::SmoothStep);
 }
 
 /// Despawns [`Sinking`] objects once they have sunk.
 fn remove_sunk(mut commands: Commands, sinking: Query<(Entity, &ObjectAnimation), With<Sinking>>) {
     for (entity, animation) in &sinking {
-        if animation.height.done() {
+        if animation.height.target() == 0.0 && animation.height.done() {
             commands.entity(entity).despawn();
         }
     }
@@ -238,7 +237,7 @@ pub fn animate_objects(
             Option<&ObjectMotion>,
             Option<&MovePath>,
             Has<NonBlockingAnimation>,
-            Has<Sliding>,
+            (Has<Sliding>, Has<Rising>, Has<Sinking>),
             &mut ObjectAnimation,
             &mut AnimatedPos,
         ),
@@ -247,8 +246,16 @@ pub fn animate_objects(
 ) {
     let dt = time.delta_secs();
     let mut blocking = 0.0_f32;
-    for (entity, pos, own_style, path, non_blocking, sliding, mut animation, mut shown) in
-        &mut objects
+    for (
+        entity,
+        pos,
+        own_style,
+        path,
+        non_blocking,
+        (sliding, rising, sinking),
+        mut animation,
+        mut shown,
+    ) in &mut objects
     {
         // A step through a portal carries on from the exit: the motion so
         // far is moved there first, so the step starts at the exit face.
@@ -258,21 +265,39 @@ pub fn animate_objects(
         {
             animation.state.carry(&through);
         }
-        follow(
-            &mut animation.state,
-            pos.0.as_vec2(),
-            path.map(|path| path.0),
-            if sliding {
-                slide_style(own_style, *style)
+        let motion = if sliding {
+            slide_style(own_style, *style)
+        } else {
+            style_of(own_style, *style)
+        };
+        // A rising object moves to its cell once it stands; a sinking one
+        // sinks once it has got where it goes. Either waits for the other
+        // step, which the next turn waits for too.
+        let still_rising = rising && !animation.height.done();
+        let mut to_come = 0.0;
+        if still_rising {
+            let cells = (pos.0.as_vec2() - animation.state.target()).length();
+            to_come = cells * motion.timing().0;
+        } else {
+            follow(
+                &mut animation.state,
+                pos.0.as_vec2(),
+                path.map(|path| path.0),
+                motion,
+                |from, to| wrapped(from, to, &grid),
+                dt,
+            );
+        }
+        if sinking && animation.height.target() == 1.0 {
+            if animation.state.at_rest() {
+                ease_height(&mut animation.height, 0.0, style_of(own_style, *style));
             } else {
-                style_of(own_style, *style)
-            },
-            |from, to| wrapped(from, to, &grid),
-            dt,
-        );
+                to_come = rise_seconds(style_of(own_style, *style));
+            }
+        }
         animation.height.advance(dt);
         if !non_blocking {
-            blocking = blocking.max(animation.remaining());
+            blocking = blocking.max(animation.remaining() + to_come);
         }
         shown.set_if_neq(AnimatedPos {
             position: animation.state.position,

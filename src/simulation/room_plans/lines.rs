@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::{RoomPlanner, SwitchContext, SwitchPlan, WallChange};
+use super::{RoomPlanner, SwitchContext, SwitchPlan, WallMove};
 
 /// Walls slide along rows and columns. A cell the new layout loses and one
 /// it gains, in the same row or column, become a slide when every cell
@@ -11,7 +11,8 @@ use super::{RoomPlanner, SwitchContext, SwitchPlan, WallChange};
 ///   into the next one's place, as a wall whose gap moves along it.
 ///
 /// The shortest slides are taken first, no cell is part of two, and only
-/// cells holding a wall slide. What is left rises or sinks in place.
+/// cells holding a wall slide. What is left rises or sinks in place
+/// (slides of no length).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LineSlides;
 
@@ -65,23 +66,23 @@ impl RoomPlanner for LineSlides {
                 continue;
             }
             used.extend(cells());
-            plan.changes.extend(
+            plan.moves.extend(
                 moves
                     .into_iter()
-                    .map(|(from, to)| WallChange::Slide { from, to }),
+                    .map(|(from, to)| WallMove::slide(from, to)),
             );
         }
-        plan.changes.extend(
+        plan.moves.extend(
             removed
                 .into_iter()
                 .filter(|p| !used.contains(p))
-                .map(|at| WallChange::Sink { at }),
+                .map(WallMove::sink_at),
         );
-        plan.changes.extend(
+        plan.moves.extend(
             added
                 .into_iter()
                 .filter(|p| !used.contains(p))
-                .map(|at| WallChange::Rise { at }),
+                .map(WallMove::rise_at),
         );
         plan
     }
@@ -90,6 +91,7 @@ impl RoomPlanner for LineSlides {
 #[cfg(test)]
 mod tests {
     use super::super::tests::plan_with;
+    use super::super::MoveKind;
     use super::*;
     use crate::model::Room;
 
@@ -98,19 +100,17 @@ mod tests {
     }
 
     fn slides(plan: &SwitchPlan) -> Vec<(IVec2, IVec2)> {
-        plan.changes
+        plan.moves
             .iter()
-            .filter_map(|change| match *change {
-                WallChange::Slide { from, to } => Some((from, to)),
-                _ => None,
-            })
+            .filter(|step| step.kind == MoveKind::Slide)
+            .map(|step| (step.from, step.to))
             .collect()
     }
 
     #[test]
     fn a_wall_slides_across_empty_floor() {
         let plan = switch(&[(0, 0)], &[(3, 0)]);
-        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(plan.moves.len(), 1);
         assert_eq!(slides(&plan), vec![(IVec2::new(0, 0), IVec2::new(3, 0))]);
     }
 
@@ -121,7 +121,7 @@ mod tests {
             &[(0, 0), (2, 0), (3, 0), (4, 0)],
             &[(0, 0), (1, 0), (2, 0), (4, 0)],
         );
-        assert_eq!(plan.changes.len(), 2);
+        assert_eq!(plan.moves.len(), 2);
         assert_eq!(
             slides(&plan),
             vec![
@@ -161,6 +161,6 @@ mod tests {
         // One cell gained, two lost: one slides, the other sinks.
         let plan = switch(&[(0, 0), (2, 0)], &[(1, 0)]);
         assert_eq!(slides(&plan).len(), 1);
-        assert_eq!(plan.changes.len(), 2);
+        assert_eq!(plan.moves.len(), 2);
     }
 }
