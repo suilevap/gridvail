@@ -3,6 +3,49 @@ use crate::app::{GamePlugin, MapText};
 use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 
+#[test]
+fn wait_meter_shows_remaining_time_and_confirms_commitment() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(MapText("XXXXXXXX\nXp    bX\nX      X\nXXXXXXXX"))
+        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+            100,
+        )))
+        .add_plugins((
+            GamePlugin,
+            BattlePlugin,
+            crate::rendering::TextRendererPlugin,
+        ));
+    for _ in 0..4 {
+        app.update();
+    }
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::Space);
+    for _ in 0..3 {
+        app.update();
+    }
+    let world = app.world_mut();
+    assert!(world
+        .query::<&Text>()
+        .iter(world)
+        .any(|text| text.0.contains("until WAIT counts")));
+    assert!(world
+        .query::<&Node>()
+        .iter(world)
+        .any(|node| matches!(node.width, Val::Percent(percent) if (percent - 50.0).abs() < 1.0)));
+    for _ in 0..4 {
+        app.update();
+    }
+    let world = app.world_mut();
+    assert!(world
+        .query::<&Text>()
+        .iter(world)
+        .any(|text| text.0.contains("WAIT COUNTED")));
+    assert_eq!(world.resource::<BattleState>().round, 1);
+}
+
 fn game(map: &'static str) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)

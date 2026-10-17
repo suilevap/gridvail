@@ -76,6 +76,23 @@ fn prepare_fighters(
             BattleStart(pos.0),
         ));
         if !player {
+            if role == Some(&BattleRole::ShieldBearer) {
+                commands.spawn((
+                    Active,
+                    BoundTo {
+                        parent: entity,
+                        offset: IVec2::X,
+                        offset_dir: IVec2::X,
+                    },
+                    Pos(pos.0 + IVec2::X),
+                    PrevPos(pos.0 + IVec2::X),
+                    Facing::default(),
+                    DirectionTile {
+                        rule: "direction_v_rule".into(),
+                    },
+                    Glyph::new('>', 0, CYAN),
+                ));
+            }
             commands.entity(entity).insert(Fighter {
                 role: role.copied().unwrap_or_default(),
                 intent: BattleIntent::Idle,
