@@ -13,6 +13,7 @@ impl Plugin for LocomotionPlugin {
         app.add_systems(
             Update,
             follow_paths
+                .run_if(not(resource_exists::<crate::model::BattleState>))
                 .in_set(GamePhase::Simulation)
                 .before(move_commands),
         );

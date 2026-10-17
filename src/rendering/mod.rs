@@ -2,6 +2,7 @@
 
 mod extruded;
 mod settings;
+mod battle;
 mod text;
 // Desktop only: the web build leaves 3D rendering out to keep its download
 // small.

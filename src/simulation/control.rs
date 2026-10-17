@@ -16,6 +16,7 @@ pub fn track_keyboard_scheme(keys: Res<ButtonInput<KeyCode>>, mut scheme: ResMut
 /// while the view turns.
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
+    battle: Option<Res<BattleState>>,
     turn: Res<TurnState>,
     camera: Option<Res<ViewCamera>>,
     menu: Option<Res<SettingsMenu>>,
@@ -24,16 +25,19 @@ pub fn player_input(
         (With<Player>, With<Active>, Without<DestroyRequested>),
     >,
 ) {
+    // Tactical play takes one action per press, never repeats a held direction.
+    let pressed = |codes| if battle.is_some() { keys.any_just_pressed(codes) } else { keys.any_pressed(codes) };
     // The settings menu takes the arrow keys while it is open.
-    let screen = if SettingsMenu::is_open(menu.as_deref()) {
+    let screen = if SettingsMenu::is_open(menu.as_deref())
+        || battle.as_ref().is_some_and(|battle| battle.defeated) {
         None
-    } else if keys.any_pressed([KeyCode::ArrowUp, KeyCode::KeyW]) {
+    } else if pressed([KeyCode::ArrowUp, KeyCode::KeyW]) {
         Some(IVec2::NEG_Y)
-    } else if keys.any_pressed([KeyCode::ArrowDown, KeyCode::KeyS]) {
+    } else if pressed([KeyCode::ArrowDown, KeyCode::KeyS]) {
         Some(IVec2::Y)
-    } else if keys.any_pressed([KeyCode::ArrowLeft, KeyCode::KeyA]) {
+    } else if pressed([KeyCode::ArrowLeft, KeyCode::KeyA]) {
         Some(IVec2::NEG_X)
-    } else if keys.any_pressed([KeyCode::ArrowRight, KeyCode::KeyD]) {
+    } else if pressed([KeyCode::ArrowRight, KeyCode::KeyD]) {
         Some(IVec2::X)
     } else {
         None

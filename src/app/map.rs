@@ -248,6 +248,16 @@ fn build_map(
                     Behavior::for_tree(hunter_tree),
                 ))
                 .id(),
+            SpawnKind::Spearman | SpawnKind::ShieldBearer | SpawnKind::Brute => commands
+                .spawn((
+                    enemy_body(cell.pos, cell_count),
+                    match cell.kind {
+                        SpawnKind::Spearman => BattleRole::Spearman,
+                        SpawnKind::ShieldBearer => BattleRole::ShieldBearer,
+                        _ => BattleRole::Brute,
+                    },
+                ))
+                .id(),
             SpawnKind::Electricity => commands
                 .spawn((
                     Active,
@@ -327,6 +337,9 @@ fn build_map(
                     | SpawnKind::Player
                     | SpawnKind::Enemy
                     | SpawnKind::Hunter
+                    | SpawnKind::Spearman
+                    | SpawnKind::ShieldBearer
+                    | SpawnKind::Brute
                     | SpawnKind::Door
             )
         {
