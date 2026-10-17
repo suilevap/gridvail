@@ -127,6 +127,16 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
                     Behavior::for_tree(hunter_tree),
                 ))
                 .id(),
+            SpawnKind::Spearman | SpawnKind::ShieldBearer | SpawnKind::Brute => commands
+                .spawn((
+                    enemy_body(cell.pos, cell_count),
+                    match cell.kind {
+                        SpawnKind::Spearman => BattleRole::Spearman,
+                        SpawnKind::ShieldBearer => BattleRole::ShieldBearer,
+                        _ => BattleRole::Brute,
+                    },
+                ))
+                .id(),
             SpawnKind::Electricity => commands
                 .spawn((
                     Active,
@@ -198,6 +208,9 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
                     | SpawnKind::Player
                     | SpawnKind::Enemy
                     | SpawnKind::Hunter
+                    | SpawnKind::Spearman
+                    | SpawnKind::ShieldBearer
+                    | SpawnKind::Brute
                     | SpawnKind::Door
             )
         {

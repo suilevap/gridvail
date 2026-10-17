@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use super::DynamicLight;
 use crate::foundation::portal::CellTransform;
-use crate::lighting::{dimmed, light_to_palette, DARK_MAGENTA, DARK_RED, MAGENTA};
+use crate::lighting::{dimmed, light_to_palette, DARK_MAGENTA, DARK_RED, MAGENTA, RED};
 use crate::model::*;
 
 /// Colour of a portal's threshold and of portal walls seen from behind or
@@ -43,6 +43,7 @@ pub fn compose_frame(
         Has<BoundTo>,
     )>,
     children: Query<(Entity, &Pos, &Glyph, Option<&AnimatedPos>, &BoundTo)>,
+    fighters: Query<(&Pos, &Fighter, &Health)>,
     mut buffers: ResMut<RenderBuffers>,
 ) {
     let Ok((player, visibility, view)) = viewers.single() else {
@@ -181,6 +182,23 @@ pub fn compose_frame(
         } else {
             buffers.current[index]
         };
+    }
+
+    // Only advertise attacks by enemies the player can actually see. Use the
+    // same world-to-frame lists as objects, so portals and both renderers agree.
+    for (pos, fighter, health) in &fighters {
+        let visible = grid.idx(pos.0).is_some_and(|index| buffers.seen_first[index] != RenderBuffers::NO_CELL);
+        if health.current == 0 || !visible { continue; }
+        for threatened in fighter.intent.cells().into_iter().flatten() {
+            let Some(world) = grid.idx(threatened) else { continue; };
+            let mut frame = buffers.seen_first[world];
+            while frame != RenderBuffers::NO_CELL {
+                let index = frame as usize;
+                buffers.current[index].color = RED;
+                buffers.ground[index] = RenderCell { ch: '!', color: RED, depth: 0 };
+                frame = buffers.seen_next[index];
+            }
+        }
     }
 
     // Keep only objects that won their cell, and give them its lit color.

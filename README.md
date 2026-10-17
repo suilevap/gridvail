@@ -223,6 +223,27 @@ direction, and where new foundational versus game-specific code belongs.
 
 ## Run and verify
 
+The playable executable installs tactical battle rules: arrows/WASD move or
+attack by bumping into an enemy, with one action per press. Enemies act only
+after your action; taking time to think never spends a turn. Red `!` cells show
+where an enemy will strike next, and blue enemies are recovering. A successful
+bump deals 2 damage and interrupts the advertised strike; shield bearers block
+hits from their front, so circle them during recovery.
+
+Hold Space for **0.6 seconds** to wait and brace against the next hit. The
+bottom panel shows a filling meter, seconds remaining, and **WAIT COUNTED**
+when the turn commits. Releasing early cancels; keeping Space down never
+commits another turn until you release it. On touch screens, hold a finger
+still instead (swiping moves/attacks; two fingers still control the camera).
+Bracing absorbs one damage from the next hit. `R` or the reset button restores
+the encounter's actors; existing door/item changes remain.
+
+Try `cargo run -- --map assets/maps/battle.txt`, or `?map=battle` in the browser.
+Map glyphs `s`, `g`, and `b` spawn a spearman (two-cell strike), shield bearer,
+and brute (heavy strike), respectively. Existing `e` enemies are skirmishers.
+`BattlePlugin` adds these rules to the base `GamePlugin`, so the original
+simulation and AI remain available for existing library users.
+
 ```sh
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD

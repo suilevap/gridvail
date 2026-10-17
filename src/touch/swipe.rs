@@ -35,6 +35,14 @@ impl Swipe {
             .held
             .and_then(|(dir, secs)| (secs >= SWIPE_HOLD_SECS).then_some(dir)))
     }
+
+    /// Holding still before any swipe is the touch equivalent of Space.
+    pub fn waiting(&self, touches: &Touches) -> bool {
+        !self.cancelled && self.held.is_none() && self.pending.is_none()
+            && touches.iter().count() == 1
+            && self.origin.is_some_and(|(id, origin)| touches.get_pressed(id)
+                .is_some_and(|touch| touch.position().distance(origin) < SWIPE_THRESHOLD))
+    }
 }
 
 pub fn read_swipes(
@@ -95,6 +103,7 @@ pub fn read_swipes(
 /// the screen.
 pub fn swipe_commands(
     mut swipe: ResMut<Swipe>,
+    battle: Option<Res<BattleState>>,
     turn: Res<TurnState>,
     camera: Option<Res<ViewCamera>>,
     mut players: Query<
@@ -102,10 +111,10 @@ pub fn swipe_commands(
         (With<Player>, With<Active>, Without<DestroyRequested>),
     >,
 ) {
-    if turn.simulation {
+    if turn.simulation || battle.as_ref().is_some_and(|battle| battle.defeated) {
         return;
     }
-    let Some(screen) = swipe.direction() else {
+    let Some(screen) = (if battle.is_some() { swipe.pending } else { swipe.direction() }) else {
         return;
     };
     let target = camera.map_or(screen, |camera| camera.map_direction(screen));
