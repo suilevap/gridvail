@@ -337,10 +337,12 @@ fn a_missed_bash_lowers_the_shield_even_for_a_frontal_counter() {
 #[test]
 fn brute_finishes_the_original_area_slam_after_the_player_leaves() {
     let mut app = game("XXXXXXXX\nX pb   X\nX      X\nX      X\nXXXXXXXX");
+    let entity = enemy(&mut app).0;
     let intent = enemy(&mut app).2.intent;
     assert!(matches!(intent, BattleIntent::WindUp { .. }));
     assert_eq!(intent.cells().into_iter().flatten().count(), 8);
     press(&mut app, KeyCode::ArrowDown);
+    assert_eq!(app.world().get::<Glyph>(entity).unwrap().color, RED);
     assert!(matches!(
         enemy(&mut app).2.intent,
         BattleIntent::Slam { .. }

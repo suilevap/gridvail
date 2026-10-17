@@ -243,7 +243,13 @@ fn resolve_attacks(
     motion: Option<Res<MotionStyle>>,
     mut player: Query<(&Pos, &mut Health), With<Player>>,
     mut enemies: Query<
-        (&Pos, &Health, &mut Fighter, Option<&mut ObjectAnimation>),
+        (
+            &Pos,
+            &Health,
+            &mut Fighter,
+            Option<&mut ObjectAnimation>,
+            &mut Glyph,
+        ),
         (With<Enemy>, Without<Player>),
     >,
 ) {
@@ -254,12 +260,13 @@ fn resolve_attacks(
         return;
     };
     let mut hit = false;
-    for (enemy_pos, enemy_health, mut fighter, animation) in &mut enemies {
+    for (enemy_pos, enemy_health, mut fighter, animation, mut glyph) in &mut enemies {
         if enemy_health.current == 0 {
             continue;
         }
         if let BattleIntent::WindUp { origin, damage } = fighter.intent {
             fighter.intent = BattleIntent::Slam { origin, damage };
+            glyph.color = RED;
             // Keep the original centre even if the player has left sight.
             fighter.needs_plan = false;
             continue;
