@@ -402,7 +402,7 @@ fn plan_intents(
             let delta = player.0 - pos.0;
             let distance = delta.abs().element_sum();
             let straight = delta.x == 0 || delta.y == 0;
-            if seen && fighter.role == BattleRole::Brute && delta.abs().max_element() <= 2 {
+            if seen && fighter.role == BattleRole::Brute && delta.abs().max_element() == 1 {
                 BattleIntent::WindUp {
                     origin: pos.0,
                     damage: fighter.role.damage(),

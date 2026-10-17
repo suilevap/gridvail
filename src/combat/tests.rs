@@ -380,8 +380,8 @@ fn brute_wind_up_is_armoured_but_recovery_can_be_punished() {
 
 #[test]
 fn baiting_a_brute_leaves_time_to_approach_and_land_two_opening_hits() {
-    let mut app = game("XXXXXXXXX\nX       X\nX p b   X\nX       X\nXXXXXXXXX");
-    wait_action(&mut app);
+    let mut app = game("XXXXXXXXX\nX       X\nX  pb   X\nX       X\nXXXXXXXXX");
+    press(&mut app, KeyCode::ArrowLeft);
     wait_action(&mut app);
     assert_eq!(enemy(&mut app).2.intent, BattleIntent::Recover);
     press(&mut app, KeyCode::ArrowRight);
