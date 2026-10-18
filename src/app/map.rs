@@ -19,6 +19,8 @@ use crate::model::*;
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::{wall_bundle, Rules};
 
+use super::transition::{begin_transition, Arrival, Intro};
+
 const MAP_TEXT: &str = include_str!("../../assets/maps/map1.txt");
 const WALL_RULE_TEXT: &str = include_str!("../../assets/rules/wall_rule.txt");
 const TRIANGLE_RULE_TEXT: &str = include_str!("../../assets/rules/direction_triangle_rule.txt");
@@ -81,9 +83,11 @@ impl Plugin for MapPlugin {
     }
 }
 
-fn construct_map(mut commands: Commands, map: Res<MapText>) {
+/// Spawns the first map, coming together from the title with an [`Intro`].
+fn construct_map(mut commands: Commands, map: Res<MapText>, intro: Option<Res<Intro>>) {
     let mut grid = MapGrid::new(1, 1);
-    build_map(&mut commands, &mut grid, map.0, None);
+    let arrival = intro.map(|intro| Arrival::Intro(intro.0));
+    build_map(&mut commands, &mut grid, map.0, None, arrival);
     commands.insert_resource(grid);
     commands.insert_resource(Rules {
         wall: TileRule::parse(WALL_RULE_TEXT),
@@ -96,9 +100,10 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
 /// placed on the map (anything with a `Pos`), what those carry, and its
 /// rooms. The player stays, with what they carry and anything bound to
 /// them, and moves to the new map's start, seeing it afresh: they remember
-/// nothing of it yet. The grid keeps counting its revisions, so sight, paths
-/// and the rest are built again for the new map.
-#[allow(clippy::type_complexity)]
+/// nothing of it yet. The new map comes together from the walls of the old
+/// one, where they stood (see `transition`). The grid keeps counting its
+/// revisions, so sight, paths and the rest are built again for the new map.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn load_map(
     mut commands: Commands,
     mut requests: MessageReader<LoadMap>,
@@ -107,14 +112,17 @@ fn load_map(
     placed: Query<(Entity, Option<&BoundTo>, Option<&Inventory>), With<Pos>>,
     rooms: Query<Entity, With<Room>>,
     players: Query<(Entity, &Pos), With<Player>>,
+    walls: Query<(Entity, &Pos), (With<Wall>, Without<Portal>)>,
 ) {
     let Some(&LoadMap(text)) = requests.read().last() else {
         return;
     };
     let (player, was_at) = players.single().ok().unzip();
+    // The old map's plain walls stay, for the new one to come together from.
+    let old_walls: Vec<(Entity, IVec2)> = walls.iter().map(|(wall, pos)| (wall, pos.0)).collect();
     let mut kept = Vec::new();
     for (entity, bound, carried) in &placed {
-        if Some(entity) == player {
+        if Some(entity) == player || walls.contains(entity) {
             continue;
         }
         if let Some(bound) = bound.filter(|bound| Some(bound.parent) == player) {
@@ -132,7 +140,8 @@ fn load_map(
         commands.entity(room).despawn();
     }
     crossings.0.clear();
-    let start = build_map(&mut commands, &mut grid, text, player);
+    let arrival = Some(Arrival::Walls(old_walls));
+    let start = build_map(&mut commands, &mut grid, text, player, arrival);
     if let (Some(player), Some(was_at)) = (player, was_at) {
         // A map without a start keeps the player where they were, or as
         // near as is free.
@@ -203,13 +212,15 @@ fn free_cell_near(grid: &MapGrid, p: IVec2) -> IVec2 {
 }
 
 /// Spawns the map `text` into `grid`, reset to its size. With `player`, that
-/// player takes the map's start instead of a new one being spawned; returns
-/// the start, if the map has one.
+/// player takes the map's start instead of a new one being spawned; with an
+/// `arrival`, the map's plain walls come together from it rather than
+/// standing at once. Returns the start, if the map has one.
 fn build_map(
     commands: &mut Commands,
     grid: &mut MapGrid,
     text: &'static str,
     player: Option<Entity>,
+    arrival: Option<Arrival>,
 ) -> Option<IVec2> {
     let (width, height, cells) = parse_map(text);
     let links = portal_links(width, height, &cells).unwrap_or_else(|error| panic!("map: {error}"));
@@ -224,8 +235,13 @@ fn build_map(
     grid.reset(width, height);
     let mut portal_walls = Vec::with_capacity(links.len());
     let mut start = None;
+    let mut map_walls = Vec::new();
 
-    for cell in cells {
+    for &cell in &cells {
+        if arrival.is_some() && cell.kind == SpawnKind::Wall {
+            map_walls.push(cell.pos);
+            continue;
+        }
         let entity = match cell.kind {
             // A portal is a wall; only its open face differs.
             SpawnKind::Wall | SpawnKind::Portal(_) => commands.spawn(wall_bundle(cell.pos)).id(),
@@ -360,6 +376,9 @@ fn build_map(
 
     for room in rooms {
         commands.spawn(Room::new(room.origin, room.size, room.layouts).with_planner(room.planner));
+    }
+    if let Some(arrival) = arrival {
+        begin_transition(commands, grid, arrival, &cells, map_walls);
     }
     start
 }

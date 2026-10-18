@@ -10,10 +10,15 @@ pub fn turn_tick(mut turn: ResMut<TurnState>) {
 
 pub fn recharge_tokens(
     time: Res<Time>,
+    cutscene: Option<Res<Cutscene>>,
     mut timer: ResMut<TokenTimer>,
     mut pacing: ResMut<TurnPacing>,
     mut holders: Query<&mut Tokens, Or<(With<Player>, With<Enemy>)>>,
 ) {
+    // No turn starts during a cutscene, not even on the timeout.
+    if cutscene.is_some() {
+        return;
+    }
     timer.0.tick(time.delta());
     let any_left = holders.iter().any(|tokens| tokens.count > 0);
     // A new turn starts on the timeout, or once every token is spent and the

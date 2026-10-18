@@ -5,8 +5,12 @@
 //! `RenderBuffers` without changing the game.
 
 mod map;
+mod transition;
 
 pub use map::{bundled_index, bundled_map, CurrentMap, LoadMap, MapPlugin, MapText, BUNDLED_MAPS};
+pub use transition::{
+    intro_scene, Arrival, Intro, IntroLayout, IntroScene, TransitionPhase, TransitionRoom,
+};
 
 use bevy::prelude::*;
 
@@ -51,6 +55,7 @@ impl Plugin for GamePlugin {
         )
         .add_plugins((
             MapPlugin,
+            transition::TransitionPlugin,
             SimulationPlugin::new(42),
             NavigationPlugin,
             ServicesPlugin,
