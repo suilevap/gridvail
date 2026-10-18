@@ -7,6 +7,7 @@
 //! turn waits for them (held input follows the animation). Without it the
 //! simulation runs with no delay.
 
+mod attacks;
 mod hierarchy;
 mod motion;
 mod plugin;

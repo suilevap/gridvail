@@ -179,6 +179,9 @@ impl MapGrid {
 pub struct TurnState {
     pub tick: u64,
     pub simulation: bool,
+    /// True only on the frame accepting a synchronized action.
+    pub committed: bool,
+    pub timed_out: bool,
 }
 
 impl TurnState {
@@ -188,6 +191,31 @@ impl TurnState {
         } else {
             "TickUpdate"
         }
+    }
+}
+
+/// How existing token turns start. Independent is the original simulation;
+/// LeaderDriven synchronizes actors with player input or the decision deadline.
+#[derive(Resource, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TurnMode {
+    #[default]
+    Independent,
+    LeaderDriven,
+}
+
+#[derive(Resource, Debug, Clone, Copy)]
+pub struct TurnDeadline {
+    pub enabled: bool,
+}
+impl Default for TurnDeadline {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+impl TurnState {
+    pub fn actors_may_act(&self, mode: TurnMode) -> bool {
+        !self.simulation && (mode == TurnMode::Independent || self.committed)
     }
 }
 

@@ -233,6 +233,55 @@ direction, and where new foundational versus game-specific code belongs.
 
 ## Run and verify
 
+The playable executable installs tactical battle rules: arrows/WASD move or
+attack by bumping into an enemy. Hold a direction to keep moving as turns
+become available. Each decision has a **one-second deadline**, shown by a
+shrinking orange/red bar and countdown. Acting commits the turn immediately;
+hesitating past the deadline lets enemies act without granting a brace.
+The clock pauses during action animations and in settings, then resets for
+the next decision. Red `!` cells show where an enemy will strike on the next
+action or timeout. Yellow `?` cells give an extra
+action of warning; blue `+` cells show a spent attack. Recovering enemies turn
+blue and lowercase. The compact battle panel shows health and the deadline,
+one nearby enemy's action/counter cue, and wait progress. `OPEN 2 turns` means two
+actions remain to counter; `any side` marks a lowered shield.
+
+- **Spear:** bait its two-cell lane, then step sideways. It lunges one cell
+  even on a miss and remains **EXTENDED for two actions**, letting you close
+  in and punish it. Try `?map=spear`.
+- **Shield:** its arrow marks the protected front. Bait its locked bash and
+  step aside; after the bash, its shield is **DOWN for two actions** and hits
+  from any side work, including the front. Try `?map=shield`.
+- **Brute:** provoke its **two-action wind-up**, then leave the marked 3x3
+  area before the slam. It finishes the slam even if you leave. The wind-up
+  is armoured and cannot be interrupted; after the slam it is **OPEN for
+  three actions**, enough to approach and counter twice. Try `?map=brute`.
+
+A normal bump deals 2 damage and interrupts; an opening hit deals **3**.
+Hitting the brute during its wind-up deals only 1 and does not stop the slam.
+
+Hold Space for **0.6 seconds** to wait and brace against the next hit. The
+bottom panel shows a filling meter, seconds remaining, and **WAIT COUNTED**
+when the turn commits. Releasing early cancels; keeping Space down never
+commits another turn until you release it. On touch screens, hold a finger
+still instead; swipe and hold to keep moving/attacking, while two fingers
+control the camera. Holding Space counts one deliberate wait per press;
+the decision clock keeps running afterward.
+Bracing absorbs one damage from the next hit. `R` or the reset button restores
+the encounter's actors; existing door/item changes remain.
+
+Try `cargo run -- --map assets/maps/battle.txt`, or `?map=battle` in the browser.
+Map glyphs `s`, `g`, and `b` spawn a spearman (two-cell strike), shield bearer,
+and brute (heavy strike), respectively. Existing `e` enemies are skirmishers.
+`app::BattlePlugin` composes these rules with the base `GamePlugin`; the
+original AI and locomotion remain active. Reusable `CombatPlugin` also works
+with independent token turns and non-enemy entities. Attack geometry, lunge,
+guard, armour, brace and recovery are components composed by the spawn presets
+in `app/actors.rs`; see [combat architecture](ARCHITECTURE.md#extending-combat-by-composition).
+
+[Watch the browser demonstration](docs/media/tactical-battle.mp4): the compact
+HUD, decision deadline, held movement, deliberate bracing, and touch movement.
+
 ```sh
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD

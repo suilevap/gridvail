@@ -171,3 +171,13 @@ impl EnemyAct {
         }
     }
 }
+
+/// Input to attack geometry/pursuit. An order, tree or perception system may
+/// write it; geometry does not select its own opponent.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct AttackTarget(pub Option<IVec2>);
+/// The application's default target selector. Omit it to drive AttackTarget
+/// from another AI or an order instead.
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[require(AttackTarget)]
+pub struct TrackPlayer;

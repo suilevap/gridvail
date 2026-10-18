@@ -25,8 +25,24 @@ pub enum GamePhase {
     Lighting,
     Visibility,
     /// Turn whole-cell moves into continuous motion for display.
+    Planning,
     Animation,
     Presentation,
     Output,
     Finalize,
+}
+
+/// Neutral ordering contract for systems composing an action. Lower-level
+/// plugins do not need to import an AI or application's private functions.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TurnPhase {
+    Input,
+    Start,
+    Decide,
+    Follow,
+    Attacks,
+    Spend,
+    Move,
+    Damage,
+    Cleanup,
 }

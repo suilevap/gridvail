@@ -43,6 +43,8 @@ pub fn compose_frame(
         Has<BoundTo>,
     )>,
     children: Query<(Entity, &Pos, &Glyph, Option<&AnimatedPos>, &BoundTo)>,
+    overlays: Query<(&Pos, &CellOverlay)>,
+    unlit: Query<(), With<Unlit>>,
     mut buffers: ResMut<RenderBuffers>,
 ) {
     let Ok((player, visibility, view)) = viewers.single() else {
@@ -58,6 +60,7 @@ pub fn compose_frame(
     }
     buffers.swap();
     buffers.current.fill(RenderCell::default());
+    buffers.overlay_priority.fill(0);
     buffers.objects.clear();
     mark_seen(&mut buffers, &grid, visibility, view, reveal.is_some());
 
@@ -183,6 +186,36 @@ pub fn compose_frame(
         };
     }
 
+    // Generic cell annotations use their owner's visibility and the same
+    // portal transforms as objects. Priority is data, not a glyph convention.
+    for (pos, overlay) in &overlays {
+        if overlay.priority == 0
+            || !grid
+                .idx(pos.0)
+                .is_some_and(|index| buffers.seen_first[index] != RenderBuffers::NO_CELL)
+        {
+            continue;
+        }
+        for cell in overlay.cells.into_iter().flatten() {
+            if grid.blocks_vision(cell) {
+                continue;
+            }
+            let Some(world) = grid.idx(cell) else {
+                continue;
+            };
+            let mut frame = buffers.seen_first[world];
+            while frame != RenderBuffers::NO_CELL {
+                let index = frame as usize;
+                if overlay.priority >= buffers.overlay_priority[index] {
+                    buffers.overlay_priority[index] = overlay.priority;
+                    buffers.current[index].color = overlay.cell.color;
+                    buffers.ground[index] = overlay.cell;
+                }
+                frame = buffers.seen_next[index];
+            }
+        }
+    }
+
     // Keep only objects that won their cell, and give them its lit color.
     // One partly sunk into the floor (rising or sinking) does not hide it.
     let buffers = &mut *buffers;
@@ -193,7 +226,13 @@ pub fn compose_frame(
         };
         let cell = buffers.current[index];
         let shown = cell.ch == object.cell.ch && cell.depth == object.cell.depth;
-        object.cell.color = cell.color;
+        if unlit.contains(object.entity) {
+            // Explicit full-bright display data applies to both the flat
+            // frame cell and its object sprite.
+            buffers.current[index].color = object.cell.color;
+        } else {
+            object.cell.color = cell.color;
+        }
         if shown && object.height < 1.0 {
             let mut floor = RenderCell::default();
             let position = buffers.pos_of(index);

@@ -25,6 +25,7 @@ pub const MAX_BLOCKED_STEPS: u8 = 3;
 /// is done.
 pub fn follow_paths(
     turn: Res<TurnState>,
+    mode: Res<TurnMode>,
     nav: Res<NavMap>,
     grid: Res<MapGrid>,
     mut planner: ResMut<PathPlanner>,
@@ -39,7 +40,7 @@ pub fn follow_paths(
         (With<Active>, Without<DestroyRequested>),
     >,
 ) {
-    if turn.simulation || nav.grid().is_empty() {
+    if !turn.actors_may_act(*mode) || nav.grid().is_empty() {
         return;
     }
     for (pos, destination, prefs, mut follow, mut command) in &mut walkers {

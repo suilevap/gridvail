@@ -13,7 +13,6 @@ use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 
 struct CountingAllocator;
 
@@ -22,6 +21,8 @@ thread_local! {
 }
 
 static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
+// The allocator counter is shared even though tracking is thread-local.
+static MEASUREMENTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -58,23 +59,22 @@ fn measured(update: impl FnOnce()) -> usize {
     ALLOCATIONS.load(Ordering::Relaxed)
 }
 
-/// Runs `Update` (where every game and renderer system lives) on the
-/// single-threaded executor. The counter only sees allocations on this
-/// thread, so with the default multi-threaded executor whatever ran on a
-/// worker thread went uncounted and the totals shifted with scheduling.
+/// Keep scheduler work on the measured thread, including Bevy's time and
+/// message schedules. Otherwise worker/main-thread races change the counted
+/// bookkeeping allocations even when gameplay performs identical work.
 fn single_threaded(app: &mut App) {
-    app.edit_schedule(Update, |schedule| {
+    for (_, schedule) in app.world_mut().resource_mut::<Schedules>().iter_mut() {
         schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
-    });
+    }
 }
 
 fn boot() -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .init_resource::<ButtonInput<KeyCode>>()
-        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
-            16,
-        )))
+        .insert_resource(TimeUpdateStrategy::ManualDuration(
+            Time::<Fixed>::default().timestep(),
+        ))
         .add_plugins((GamePlugin, ObjectAnimationPlugin, TextRendererPlugin));
     single_threaded(&mut app);
     for _ in 0..256 {
@@ -85,37 +85,46 @@ fn boot() -> App {
 
 #[test]
 fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
+    let _measurement = MEASUREMENTS
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     let mut baseline = App::new();
     // Bevy's single-threaded executor performs bookkeeping allocations based
     // on schedule shape. Use a comparable number of chained no-op systems so
     // the comparison isolates allocations made inside our systems.
-    baseline.add_plugins(MinimalPlugins).add_systems(
-        Update,
-        (
+    // Compare the same fixed-update cadence, independent of machine speed.
+    baseline
+        .add_plugins(MinimalPlugins)
+        .insert_resource(TimeUpdateStrategy::ManualDuration(
+            Time::<Fixed>::default().timestep(),
+        ))
+        .add_systems(
+            Update,
             (
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
+                (
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                )
+                    .chain(),
+                (|| {}, || {}, || {}, || {}, || {}, || {}, || {}, || {}).chain(),
             )
                 .chain(),
-            (|| {}, || {}, || {}, || {}, || {}, || {}, || {}, || {}).chain(),
-        )
-            .chain(),
-    );
+        );
     single_threaded(&mut baseline);
     for _ in 0..256 {
         baseline.update();
@@ -162,5 +171,80 @@ fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
     assert!(
         turn_allocations <= idle_allocations.div_ceil(4) + 2,
         "player turns added allocations: idle={idle_allocations}, turns={turn_allocations}"
+    );
+}
+
+#[test]
+fn warmed_combat_actions_reuse_attack_and_defence_storage() {
+    let _measurement = MEASUREMENTS
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    use pav_ecs_game_bevy_port::app::{BattlePlugin, MapText};
+    use pav_ecs_game_bevy_port::model::{
+        ActionTaken, AttackWindow, DirectionalGuard, Enemy, Health,
+    };
+    // Exact fixed-step windows must do equal executor work. A 16ms frame
+    // drifts against Bevy's default 1/64s timestep and can add a fixed tick
+    // (and its bookkeeping allocations) to just one of the measured windows.
+    let frame = Time::<Fixed>::default().timestep();
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(TimeUpdateStrategy::ManualDuration(frame))
+        .insert_resource(MapText("XXXXXXXX\nX ps   X\nX      X\nXXXXXXXX"))
+        .add_plugins((GamePlugin, BattlePlugin));
+    single_threaded(&mut app);
+    app.update();
+    let world = app.world_mut();
+    for mut health in world.query::<&mut Health>().iter_mut(world) {
+        *health = Health::new(1_000_000); // Keep destruction out of ordinary turns.
+    }
+    let enemy = world
+        .query_filtered::<Entity, With<Enemy>>()
+        .single(world)
+        .unwrap();
+    world.entity_mut(enemy).insert(DirectionalGuard {
+        window: AttackWindow::OutsideRecovery,
+    });
+    for _ in 0..256 {
+        app.update();
+    }
+    let fixed_before_idle = app.world().resource::<Time<Fixed>>().elapsed();
+    let idle = measured(|| {
+        for _ in 0..128 {
+            app.update();
+        }
+    });
+    let idle_fixed = app.world().resource::<Time<Fixed>>().elapsed() - fixed_before_idle;
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::ArrowRight);
+    for _ in 0..32 {
+        app.update();
+    } // Warm the bump/guard/interruption paths too.
+    let world = app.world_mut();
+    let before = world
+        .query_filtered::<&ActionTaken, With<Player>>()
+        .single(world)
+        .unwrap()
+        .serial;
+    let fixed_before_turns = app.world().resource::<Time<Fixed>>().elapsed();
+    let turns = measured(|| {
+        for _ in 0..128 {
+            app.update();
+        }
+    });
+    let turns_fixed = app.world().resource::<Time<Fixed>>().elapsed() - fixed_before_turns;
+    assert_eq!(turns_fixed, idle_fixed, "measure equal fixed-update work");
+    let world = app.world_mut();
+    let after = world
+        .query_filtered::<&ActionTaken, With<Player>>()
+        .single(world)
+        .unwrap()
+        .serial;
+    assert_eq!(after - before, 128);
+    assert!(
+        turns <= idle + 2,
+        "combat added allocations: idle={idle}, turns={turns}"
     );
 }

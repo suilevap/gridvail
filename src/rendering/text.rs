@@ -138,6 +138,7 @@ impl Plugin for TextRendererPlugin {
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
                     update_hud,
+                    super::battle::draw_battle_ui,
                     super::settings::draw_settings,
                     super::settings::draw_compass,
                 )
@@ -240,6 +241,7 @@ pub(super) fn setup(
     buffers: Res<RenderBuffers>,
     rules: Option<Res<Rules>>,
     fonts: Option<ResMut<Assets<Font>>>,
+    battle: Option<Res<EncounterOutcome>>,
 ) {
     let camera = commands
         .spawn((
@@ -291,6 +293,9 @@ pub(super) fn setup(
         },
     ));
     super::settings::spawn_settings_ui(&mut commands, camera);
+    if battle.is_some() {
+        super::battle::spawn_battle_ui(&mut commands, camera);
+    }
 }
 
 fn flush_cells(
@@ -598,12 +603,13 @@ fn glyph_rotation(camera: &ViewCamera) -> Quat {
 
 #[allow(clippy::too_many_arguments)]
 fn update_hud(
+    battle: Option<Res<EncounterOutcome>>,
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
     players: Query<(&Pos, &Tokens, Option<&Inventory>), With<Player>>,
     keys: Query<(), With<Key>>,
-    enemies: Query<Entity, (With<Enemy>, Without<DestroyRequested>)>,
+    enemies: Query<Entity, (With<Enemy>, With<Active>, Without<DestroyRequested>)>,
     collisions: Res<CollisionBuffer>,
     motion: Option<Res<MotionStyle>>,
     operator: Option<Res<CameraOperator>>,
@@ -627,7 +633,25 @@ fn update_hud(
         .unwrap_or((IVec2::ZERO, 0, 0));
     for mut text in hud.iter_mut() {
         text.0.clear();
-        match scheme {
+        if battle.is_some() {
+            writeln!(
+                text.0,
+                "Gridvail | {} | Q/E turn | Z/X zoom | Esc settings",
+                if scheme == ControlScheme::Touch {
+                    "swipe + hold: walk/attack | hold still: wait"
+                } else {
+                    "hold arrows/WASD: walk/attack | hold Space: wait"
+                }
+            )
+            .unwrap();
+            write!(
+                text.0,
+                "S: spear | G: shield (arrow marks front) | B: brute"
+            )
+            .unwrap();
+            continue;
+        } else {
+            match scheme {
             ControlScheme::Keyboard => writeln!(
                 text.0,
                 "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | Esc settings",
@@ -644,6 +668,7 @@ fn update_hud(
             ),
         }
         .expect("writing to String cannot fail");
+        }
         write!(
             text.0,
             "Tick {} | {} | map {}x{} | player ({},{}) | tokens {} | keys {} | enemies {} | bumps {} | N portals: {}",

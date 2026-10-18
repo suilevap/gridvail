@@ -138,3 +138,20 @@ mod tests {
         assert_eq!(intent.held, None);
     }
 }
+
+/// Records consumption of this actor's ordinary action token. Domain systems
+/// react to the action without creating their own rounds or clocks.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct ActionTaken {
+    pub active: bool,
+    pub serial: u64,
+}
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct ForcedWait(pub bool);
+
+/// Opens synchronized turns; its commands may come from any controller.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct TurnLeader;
+/// Spends an idle token when the leader opens a synchronized turn.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct TurnFollower;

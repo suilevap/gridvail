@@ -5,7 +5,7 @@ The code is arranged from reusable foundations toward the concrete game:
 ```text
 foundation  content  model  schedule
      ↑        ↑       ↑       ↑
-     simulation  vision  navigation  lighting  animation  presentation
+     simulation  combat  vision  navigation  lighting  animation  presentation
           ↑               ↑
           ai  →  locomotion
              ↑       ↑       ↑
@@ -50,8 +50,16 @@ and renderers must not import it.
   reach every service; `ServicesPlugin` provides it and keeps what the
   services know of the world current.
 - `simulation/` contains reusable gameplay systems and `SimulationPlugin`.
-  Control, turn budgeting, motion, conflict resolution, lifecycle, and tile
-  updates are separate files.
+  Control (including deliberate hold-to-wait), turn budgeting, motion,
+  conflict resolution, lifecycle, and tile updates are separate files.
+  `TurnMode` selects independent token turns or synchronization with a
+  `TurnLeader`; `TurnFollower`s spend idle tokens when that leader acts.
+  The existing `TokenTimer` supplies the decision deadline. Token consumption
+  writes each actor's `ActionTaken`: attack cooldowns observe that record,
+  without a second round counter. `TurnPhase` in `schedule` orders input,
+  acceptance, decisions, path following, attack requests, token spending,
+  movement, damage and cleanup. Plugins use these neutral sets rather than
+  importing higher-level systems to establish ordering.
   `rooms.rs` switches `Room`s to the layout asked for (`Room::advance`).
   It asks the room's planner how (`room_plans/`: the `RoomPlanner` trait,
   one strategy per file, chosen by name from the `RoomPlanners` resource)
@@ -66,6 +74,18 @@ and renderers must not import it.
   which `tile_system` autotiles again. It does not know what asked:
   `plates.rs` is a stand-in trigger (`PressurePlate`) until a trigger/action
   system, where a room switch is one kind of action.
+- `combat/` executes attacks and resolves damage, independently of controls,
+  enemy archetypes and rendering. `execution.rs` produces `AttackPoints`
+  from bump commands or a locked `AttackCycle`. It advances wind-up and
+  recovery only after the actor spends its ordinary token. `damage.rs`
+  collects occupied footprint cells into a preallocated queue, then separate
+  systems apply vulnerability, directional guards, armour, bracing, health
+  damage and interruption. `Health` owns only health; `Brace`,
+  `DirectionalGuard`, `Armour` and `InterruptResistance` compose independently.
+  Phase windows describe when a defence applies, not what enemy owns it.
+  Both attack sources share one registered damage pipeline: bumps resolve
+  before movement so they can interrupt, and committed footprints resolve
+  after movement so leaving their cells dodges them.
 - `vision/` converts sensors and blocker state into cached FOV and visibility
   components. Every field of view sees through portals: lights' and
   sensors' `FovResult` (its samples for lights, which fade by the way the
@@ -115,6 +135,14 @@ and renderers must not import it.
   needs `GetKey`, which needs `FetchKey(key)` for each known key in turn
   and fails only when every one has; with a key, door pricing lets the next
   plan through the door.
+  `attacks.rs` supplies capability-based attack decisions after refreshed
+  visibility (`GamePhase::Planning`). Target selection writes `AttackTarget`;
+  line/neighbor planners only read that target, geometry, power and timing.
+  `TrackPlayer` selects the game's default target; another controller can
+  write a target without a player or enemy entity. Pursuit writes the existing
+  `Destination`, so `follow_paths` owns planning and movement, including door,
+  crowd and portal preferences. Trees, wandering and locomotion remain enabled
+  alongside these actors; there is no global battle-mode bypass.
 - `lighting/` contains light blending and palette conversion. It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for
@@ -137,7 +165,9 @@ and renderers must not import it.
   shown position to `AnimatedPos`, and reports how long unfinished moves
   still run to `TurnPacing`, which holds the next turn until they have nearly
   finished. It needs no renderer; without it the simulation runs with no
-  delay.
+  delay. `attacks.rs` observes `AttackExecuted` and optional `AttackAnimation`
+  data to play the same motion primitives on misses as well as hits; attack
+  resolution never manipulates animation state.
 - `presentation/` builds light maps and renderer-neutral composed cell frames.
   Frame cells are in the player's map coordinates; a cell the player sees
   shows the map cell it looks onto (`RenderBuffers::seen`), which behind a
@@ -146,6 +176,10 @@ and renderers must not import it.
   Renderers draw each frame as two layers: `ground` (per-cell floor and fog,
   blank under objects) and `objects` (every visible glyph entity, at its
   animated position), so any object can move.
+  `combat.rs` projects attack phases into glyphs and generic `CellOverlay`s.
+  The frame compositor knows only overlay cells, priority, visibility and the
+  optional `Unlit` display marker; it has no attack/health/archetype branches.
+  Overlap priority is explicit data rather than a comparison of `!`, `?`, `+`.
 - `camera/` directs the renderer-neutral `ViewCamera` (model data: the map
   point at the screen centre, rotation, zoom, offset, and the conversion
   between map and view cells). `CameraOperator` follows a target (the
@@ -209,6 +243,17 @@ and renderers must not import it.
   where its exits lead (`CurrentMap`), and loads that map when the player
   steps onto an `Exit`. Domain composition,
   phase ordering, and compatibility decisions live in `app/mod.rs`.
+  `actors.rs` holds the concrete combat balance/display bundles: a spear is a
+  line attack plus a lunge; a shield adds a directional guard; a brute combines
+  a neighbor attack, longer timing, armour and interruption resistance.
+  `BattlePlugin` in `battle.rs` composes `CombatPlugin` with leader-driven turns
+  and encounter outcome/reset policy. Restart validation, positions, health,
+  appearance, attacks, animation and turn state are restored in separate
+  passes; geometry changes and items remain intact. Spawn/placement observers
+  capture reset anchors for actors created by startup or `LoadMap`, and a
+  relocated turn leader starts with a fresh deadline. Existing player health
+  and inventory carry over through the map loader. Enemy names and balance
+  numbers belong in these spawn presets, never in reusable domain systems.
 - `main.rs` installs the animation step, selects the text or hybrid 3D-wall
   renderer, installs
   `DebugPerformancePlugin`, optionally installs `AgentApiPlugin`, and owns the
@@ -238,3 +283,13 @@ When adding code, place it in the lowest layer that can own it:
 
 This keeps the C# project's useful separation between common algorithms,
 components, and game systems without reproducing its custom ECS infrastructure.
+
+## Extending combat by composition
+
+An actor can add `DirectionalGuard { window: AttackWindow::OutsideRecovery }`
+without changing its line attack or lunge. `Armour` and `InterruptResistance`
+can be attached independently, including to non-enemy entities. A different
+line range, damage or wind-up changes component data in a spawn bundle;
+no enemy-type registry, damage switch or renderer switch is needed. Required
+components on attack capabilities install execution/record storage up front.
+Footprints, hit queues and path buffers are reused across ordinary actions.

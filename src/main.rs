@@ -18,6 +18,7 @@ use bevy::{
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::ai::PortalPolicy;
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
+use pav_ecs_game_bevy_port::app::BattlePlugin;
 use pav_ecs_game_bevy_port::app::{CurrentMap, GamePlugin, LoadMap, MapText, BUNDLED_MAPS};
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
@@ -86,6 +87,7 @@ fn main() -> AppExit {
         .insert_resource(RoomPlanners::default().with_default(&options.room_planner))
         .add_plugins(plugins)
         .add_plugins(GamePlugin)
+        .add_plugins(BattlePlugin)
         .add_plugins((
             ObjectAnimationPlugin,
             TextRendererPlugin,

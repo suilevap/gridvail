@@ -81,9 +81,13 @@ impl Plugin for MapPlugin {
     }
 }
 
-fn construct_map(mut commands: Commands, map: Res<MapText>) {
+fn construct_map(
+    mut commands: Commands,
+    map: Res<MapText>,
+    tactical: Option<Res<super::battle::TacticalRules>>,
+) {
     let mut grid = MapGrid::new(1, 1);
-    build_map(&mut commands, &mut grid, map.0, None);
+    build_map(&mut commands, &mut grid, map.0, None, tactical.is_some());
     commands.insert_resource(grid);
     commands.insert_resource(Rules {
         wall: TileRule::parse(WALL_RULE_TEXT),
@@ -99,9 +103,10 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
 /// nothing of it yet. The grid keeps counting its revisions, so sight, paths
 /// and the rest are built again for the new map.
 #[allow(clippy::type_complexity)]
-fn load_map(
+pub(super) fn load_map(
     mut commands: Commands,
     mut requests: MessageReader<LoadMap>,
+    tactical: Option<Res<super::battle::TacticalRules>>,
     mut grid: ResMut<MapGrid>,
     mut crossings: ResMut<PortalCrossings>,
     placed: Query<(Entity, Option<&BoundTo>, Option<&Inventory>), With<Pos>>,
@@ -132,7 +137,7 @@ fn load_map(
         commands.entity(room).despawn();
     }
     crossings.0.clear();
-    let start = build_map(&mut commands, &mut grid, text, player);
+    let start = build_map(&mut commands, &mut grid, text, player, tactical.is_some());
     if let (Some(player), Some(was_at)) = (player, was_at) {
         // A map without a start keeps the player where they were, or as
         // near as is free.
@@ -210,6 +215,7 @@ fn build_map(
     grid: &mut MapGrid,
     text: &'static str,
     player: Option<Entity>,
+    tactical: bool,
 ) -> Option<IVec2> {
     let (width, height, cells) = parse_map(text);
     let links = portal_links(width, height, &cells).unwrap_or_else(|error| panic!("map: {error}"));
@@ -231,22 +237,57 @@ fn build_map(
             SpawnKind::Wall | SpawnKind::Portal(_) => commands.spawn(wall_bundle(cell.pos)).id(),
             SpawnKind::Player => {
                 start = Some(cell.pos);
-                player.unwrap_or_else(|| spawn_player(commands, cell.pos, cell_count))
+                player.unwrap_or_else(|| spawn_player(commands, cell.pos, cell_count, tactical))
             }
-            SpawnKind::Enemy => commands
-                .spawn((
-                    enemy_body(cell.pos, cell_count),
-                    EnemyMind::default(),
-                    Behavior::for_tree(enemy_tree),
-                ))
-                .id(),
-            SpawnKind::Hunter => commands
-                .spawn((
+            SpawnKind::Enemy => {
+                let mut enemy =
+                    commands.spawn((enemy_body(cell.pos, cell_count), EnemyMind::default()));
+                if tactical {
+                    enemy.insert(super::actors::skirmisher());
+                } else {
+                    enemy.insert(Behavior::for_tree(enemy_tree));
+                }
+                enemy.id()
+            }
+            SpawnKind::Hunter => {
+                let mut enemy = commands.spawn((
                     enemy_body(cell.pos, cell_count),
                     (Hunter, Order::default()),
                     EnemyMind::default(),
                     Behavior::for_tree(hunter_tree),
-                ))
+                ));
+                if tactical {
+                    enemy.insert(super::actors::hunter_combat());
+                }
+                enemy.id()
+            }
+            SpawnKind::Spearman => commands
+                .spawn((enemy_body(cell.pos, cell_count), super::actors::spear()))
+                .id(),
+            SpawnKind::ShieldBearer => {
+                let enemy = commands
+                    .spawn((enemy_body(cell.pos, cell_count), super::actors::shield()))
+                    .id();
+                commands.spawn((
+                    Active,
+                    GuardMarker,
+                    BoundTo {
+                        parent: enemy,
+                        offset: IVec2::X,
+                        offset_dir: IVec2::X,
+                    },
+                    Pos(cell.pos + IVec2::X),
+                    PrevPos(cell.pos + IVec2::X),
+                    Facing::default(),
+                    DirectionTile {
+                        rule: "direction_v_rule".into(),
+                    },
+                    Glyph::new('>', 0, crate::lighting::CYAN),
+                ));
+                enemy
+            }
+            SpawnKind::Brute => commands
+                .spawn((enemy_body(cell.pos, cell_count), super::actors::brute()))
                 .id(),
             SpawnKind::Electricity => commands
                 .spawn((
@@ -327,6 +368,9 @@ fn build_map(
                     | SpawnKind::Player
                     | SpawnKind::Enemy
                     | SpawnKind::Hunter
+                    | SpawnKind::Spearman
+                    | SpawnKind::ShieldBearer
+                    | SpawnKind::Brute
                     | SpawnKind::Door
             )
         {
@@ -365,7 +409,7 @@ fn build_map(
 }
 
 /// A new player at `at`, with the direction marker bound to them.
-fn spawn_player(commands: &mut Commands, at: IVec2, cell_count: usize) -> Entity {
+fn spawn_player(commands: &mut Commands, at: IVec2, cell_count: usize, tactical: bool) -> Entity {
     let player = commands
         .spawn((
             Active,
@@ -375,11 +419,13 @@ fn spawn_player(commands: &mut Commands, at: IVec2, cell_count: usize) -> Entity
                 Speed::default(),
                 MoveCommand::default(),
                 MoveIntent::default(),
+                ActionTaken::default(),
+                ForcedWait::default(),
                 PendingPos::default(),
                 PrevPos(at),
             ),
             Glyph::new('@', 1, WHITE),
-            Player(0),
+            (Player(0), TurnLeader),
             Inventory::default(),
             Tokens::new(1),
             Friction(1),
@@ -401,6 +447,11 @@ fn spawn_player(commands: &mut Commands, at: IVec2, cell_count: usize) -> Entity
             ),
         ))
         .id();
+    if tactical {
+        commands
+            .entity(player)
+            .insert(super::actors::player_combat());
+    }
     // Bound 'i' direction marker, one step ahead of the player
     // (the original light source belongs to the player).
     commands.spawn((
@@ -428,10 +479,11 @@ const ENEMY_CROWD_COST: u32 = 4;
 /// body. Its role adds a mind and a tree.
 fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
     (
-        (Active, Collider, Enemy, Pos(pos)),
+        (Active, Collider, Enemy, TurnFollower, Pos(pos)),
         (
             Speed::default(),
             MoveCommand::default(),
+            ActionTaken::default(),
             PendingPos::default(),
             PrevPos(pos),
         ),
