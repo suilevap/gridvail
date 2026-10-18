@@ -6,7 +6,7 @@
 
 mod map;
 
-pub use map::{MapPlugin, MapText};
+pub use map::{LoadMap, MapPlugin, MapText};
 
 use bevy::prelude::*;
 

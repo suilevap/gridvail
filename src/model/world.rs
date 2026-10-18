@@ -74,6 +74,19 @@ impl MapGrid {
         }
     }
 
+    /// Empties the grid for another map of `width` x `height`. Every
+    /// revision moves on, so whatever was built from the old map (sight,
+    /// paths, portal views) is built again.
+    pub fn reset(&mut self, width: i32, height: i32) {
+        let next = Self {
+            revision: self.revision + 1,
+            blocker_revision: self.blocker_revision + 1,
+            portal_revision: self.portal_revision + 1,
+            ..Self::new(width, height)
+        };
+        *self = next;
+    }
+
     pub fn is_valid(&self, p: IVec2) -> bool {
         p.x >= 0 && p.y >= 0 && p.x < self.width && p.y < self.height
     }

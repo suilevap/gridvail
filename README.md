@@ -132,6 +132,12 @@ next to this file.
   its own with `RoomPlanners::add` (see `simulation/room_plans/`). In
   `rooms.txt` the room's walls slide to move its gaps, and pillars rise in
   its corners.
+- Loading another map while playing (an addition): `[` and `]` play the
+  previous and next bundled map. Code asks for any map with the `LoadMap`
+  message. The level goes (everything on the map, what its actors carry,
+  its rooms) and the player carries over with what they carry to the new
+  map's start, or stays where they were if it has none; they remember
+  nothing of the new map yet. Maps of any size work.
 - Settings (an addition): Esc opens a small menu to choose how the view
   behaves through portals that turn (turn with the player or keep north
   up), when the compass shows (when the view is turned, always or off) and
@@ -233,7 +239,7 @@ cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up 
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 252 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 256 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
@@ -293,7 +299,8 @@ cargo run -- --record recordings/walk --walk "LLLLL.......RRRRUU......"
 (fixed 16 ms timestep) plus `DIR/trace.csv` with the player's logical cell,
 drawn position, and the view camera's centre, rotation and zoom per frame, then exits. Its `--walk` holds each arrow key
 for 8 frames, like a player holding the key, taps the camera keys `Q`/`E`
-(turn) and `Z`/`X` (zoom) once, and `.` releases; turn into a
+(turn) and `Z`/`X` (zoom) and the map keys `[`/`]` once, and `.` releases;
+turn into a
 video with, for example,
 `ffmpeg -framerate 60 -i DIR/frame_%05d.png -pix_fmt yuv420p walk.mp4`.
 

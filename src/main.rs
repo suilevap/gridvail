@@ -18,7 +18,7 @@ use bevy::{
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::ai::PortalPolicy;
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
-use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
+use pav_ecs_game_bevy_port::app::{GamePlugin, LoadMap, MapText};
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
@@ -48,8 +48,8 @@ fn main() -> AppExit {
     let walk = options.walk;
     let renderer = options.renderer;
     assert!(
-        walk.chars().all(|c| "UDLRQEZXO.".contains(c)),
-        "walk steps must be U, D, L, R, Q, E, Z, X, O (Esc), or . (no key)"
+        walk.chars().all(|c| "UDLRQEZXO[].".contains(c)),
+        "walk steps must be U, D, L, R, Q, E, Z, X, O (Esc), [ or ] (maps), or . (no key)"
     );
     let plugins = DefaultPlugins
         .set(WindowPlugin {
@@ -67,6 +67,12 @@ fn main() -> AppExit {
         })
         .set(ImagePlugin::default_nearest());
     let mut app = App::new();
+    let bundled = options
+        .map
+        .as_deref()
+        .map_or(bundled_index("map1"), bundled_index);
+    app.insert_resource(BundledMap(bundled))
+        .add_systems(Update, cycle_maps);
     if let Some(path) = options.map {
         #[cfg(not(target_family = "wasm"))]
         {
@@ -342,17 +348,43 @@ impl Options {
 }
 
 // Generated from assets/maps; no per-map list to maintain.
-#[cfg(any(target_family = "wasm", test))]
 include!(concat!(env!("OUT_DIR"), "/bundled_maps.rs"));
+
+/// Where `path` (a bundled map's name, file name or path) is among the
+/// bundled maps.
+fn bundled_index(path: &str) -> Option<usize> {
+    let name = path.strip_prefix("assets/maps/").unwrap_or(path);
+    let name = name.strip_suffix(".txt").unwrap_or(name);
+    BUNDLED_MAPS.iter().position(|(map, _)| *map == name)
+}
+
+/// The bundled map being played, if it is one; `[` and `]` step through them.
+#[derive(Resource, Clone, Copy, Debug)]
+struct BundledMap(Option<usize>);
+
+/// `[` and `]` play the previous and next bundled map.
+fn cycle_maps(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut current: ResMut<BundledMap>,
+    mut load: MessageWriter<LoadMap>,
+) {
+    let count = BUNDLED_MAPS.len();
+    let step = if keys.just_pressed(KeyCode::BracketRight) {
+        1
+    } else if keys.just_pressed(KeyCode::BracketLeft) {
+        count - 1
+    } else {
+        return;
+    };
+    let next = current.0.map_or(0, |index| (index + step) % count);
+    current.0 = Some(next);
+    load.write(LoadMap(BUNDLED_MAPS[next].1));
+}
 
 #[cfg(any(target_family = "wasm", test))]
 fn bundled_map(path: &str) -> &'static str {
-    let name = path.strip_prefix("assets/maps/").unwrap_or(path);
-    let name = name.strip_suffix(".txt").unwrap_or(name);
-    BUNDLED_MAPS
-        .iter()
-        .find(|(map, _)| *map == name)
-        .map(|(_, text)| *text)
+    bundled_index(path)
+        .map(|index| BUNDLED_MAPS[index].1)
         .unwrap_or_else(|| panic!("unknown bundled map: {path}"))
 }
 
@@ -455,6 +487,8 @@ fn walk_key(step: char) -> Option<KeyCode> {
         'R' => Some(KeyCode::ArrowRight),
         'Q' => Some(KeyCode::KeyQ),
         'E' => Some(KeyCode::KeyE),
+        '[' => Some(KeyCode::BracketLeft),
+        ']' => Some(KeyCode::BracketRight),
         'Z' => Some(KeyCode::KeyZ),
         'X' => Some(KeyCode::KeyX),
         'O' => Some(KeyCode::Escape),
@@ -494,10 +528,10 @@ fn hold_recorded_input(
         return;
     };
     let step = recording.walk.get((frame / CAPTURE_STEP_FRAMES) as usize);
-    // Camera keys, Esc and every key in the settings menu act on each
-    // press, so they are tapped, not held.
+    // Camera keys, Esc, the map keys and every key in the settings menu act
+    // on each press, so they are tapped, not held.
     let menu_open = menu.is_some_and(|menu| menu.open);
-    let tapped = menu_open || step.is_some_and(|step| "QEZXO".contains(*step));
+    let tapped = menu_open || step.is_some_and(|step| "QEZXO[]".contains(*step));
     if tapped && !frame.is_multiple_of(CAPTURE_STEP_FRAMES) {
         return;
     }
