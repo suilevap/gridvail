@@ -55,3 +55,36 @@ impl Default for BounceLight {
         }
     }
 }
+
+/// How light colours cells: in the original game's palette steps, or
+/// smoothly, each kind's colours blended along a gradient.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LightStyle {
+    #[default]
+    Palette,
+    Smooth,
+}
+
+impl LightStyle {
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "palette" => Some(Self::Palette),
+            "smooth" => Some(Self::Smooth),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Palette => "palette",
+            Self::Smooth => "smooth",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            Self::Palette => Self::Smooth,
+            Self::Smooth => Self::Palette,
+        }
+    }
+}

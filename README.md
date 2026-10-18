@@ -149,6 +149,12 @@ next to this file.
   is near it. A wall gives light back only to lit cells beside it, so it
   does not shine through to its dark side. `assets/maps/bounce.txt` shows
   it off.
+- Smooth light colours (an addition, opt-in with `--light smooth` or L in
+  game): the text renderer draws each lit cell in an exact colour from a
+  gradient per light kind instead of the 16-colour palette's steps. Every
+  gradient starts at the unlit grey and never gets darker as light grows,
+  so a light fades into the dark and into other lights. The palette stays
+  the default and is what the agent API and the 3D renderer still use.
 - Seeing and lighting through portals (an addition): every field of view
   goes through portals, as the player's does, so enemies notice the player
   through a portal and lamps light the far side of one, fading with the
@@ -242,7 +248,8 @@ cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's l
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --map assets/maps/bounce.txt --gi  # bounced light; G toggles it in game
-cargo test --workspace   # 255 tests, including allocation and independent C# comparisons
+cargo run -- --light smooth     # smooth light colours; L toggles them in game
+cargo test --workspace   # 256 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

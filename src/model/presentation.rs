@@ -21,6 +21,9 @@ pub struct RenderCell {
     pub ch: char,
     pub color: u8,
     pub depth: u8,
+    /// The exact sRGB colour to draw instead of the palette's `color`, for
+    /// cells light shades smoothly (`LightStyle::Smooth`).
+    pub rgb: Option<[u8; 3]>,
 }
 
 /// A visible glyph entity (wall, lamp, actor...), drawn by renderers on its

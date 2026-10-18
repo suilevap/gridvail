@@ -130,6 +130,7 @@ impl Plugin for TextRendererPlugin {
                     super::settings::settings_input,
                     cycle_motion,
                     toggle_bounce_light,
+                    cycle_light_style,
                     fit_frame_to_window,
                     match_cells_to_frame,
                     place_cells,
@@ -313,7 +314,7 @@ fn flush_cells(
             } else {
                 text.0.push(cell.ch);
             }
-            color.0 = palette_color(cell.color);
+            color.0 = cell_color(&cell);
         }
     }
 }
@@ -364,7 +365,7 @@ fn spawn_object_sprites(world: &mut World) {
                     font_size: FontSize::Px(CELL_FONT_SIZE),
                     ..default()
                 },
-                TextColor(palette_color(object.cell.color)),
+                TextColor(cell_color(&object.cell)),
                 Transform::from_translation(view_translation(&camera, object.position) + Vec3::Z)
                     .with_rotation(glyph_rotation(&camera)),
                 Visibility::Hidden,
@@ -427,7 +428,7 @@ pub(super) fn place_object_sprites(
             text.0.push_str(&drawn);
         }
         // Rising out of the floor or sinking into it, it fades.
-        let desired = palette_color(object.cell.color).with_alpha(object.height);
+        let desired = cell_color(&object.cell).with_alpha(object.height);
         if color.0 != desired {
             color.0 = desired;
         }
@@ -501,6 +502,31 @@ fn cycle_motion(
     if let Some(mut motion) = motion {
         if keys.is_some_and(|keys| keys.just_pressed(KeyCode::KeyM)) {
             *motion = motion.next();
+        }
+    }
+}
+
+/// The colour a frame cell is drawn in: its exact colour where light
+/// shades it smoothly, else its palette colour.
+fn cell_color(cell: &RenderCell) -> Color {
+    cell.rgb.map_or_else(
+        || palette_color(cell.color),
+        |[r, g, b]| Color::srgb_u8(r, g, b),
+    )
+}
+
+/// L switches between palette and smooth light colours.
+fn cycle_light_style(
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    menu: Res<SettingsMenu>,
+    style: Option<ResMut<LightStyle>>,
+) {
+    if menu.open {
+        return;
+    }
+    if let Some(mut style) = style {
+        if keys.is_some_and(|keys| keys.just_pressed(KeyCode::KeyL)) {
+            *style = style.next();
         }
     }
 }
@@ -603,6 +629,7 @@ fn update_hud(
     collisions: Res<CollisionBuffer>,
     motion: Option<Res<MotionStyle>>,
     bounce_light: Option<Res<BounceLight>>,
+    light_style: Option<Res<LightStyle>>,
     operator: Option<Res<CameraOperator>>,
     scheme: Option<Res<ControlScheme>>,
     mut hud: Query<&mut Text, With<HudText>>,
@@ -627,7 +654,7 @@ fn update_hud(
         match scheme {
             ControlScheme::Keyboard => writeln!(
                 text.0,
-                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | G light: {} | Esc settings",
+                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | G light: {} | L colours: {} | Esc settings",
                 if extruded_walls.is_some() {
                     " | wheel zoom"
                 } else {
@@ -639,6 +666,7 @@ fn update_hud(
                 } else {
                     "direct"
                 },
+                light_style.as_ref().map_or("palette", |style| style.name()),
             ),
             ControlScheme::Touch => writeln!(
                 text.0,

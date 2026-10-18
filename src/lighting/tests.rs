@@ -176,3 +176,23 @@ fn bounced_light_tints_a_dimmer_light_of_another_kind() {
     assert_eq!(layer[acid].kind, LightKind::Fire);
     assert!(layer[acid].value > 10);
 }
+
+#[test]
+fn smooth_light_starts_unlit_and_never_darkens() {
+    let brightness = |[r, g, b]: [u8; 3]| 0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32;
+    for kind in [
+        LightKind::None,
+        LightKind::Fire,
+        LightKind::Electricity,
+        LightKind::Acid,
+    ] {
+        let rgb = |value| light_to_rgb(&LightCell { value, kind });
+        assert_eq!(rgb(1), [64, 64, 64], "{kind:?} fades into the unlit grey");
+        for value in 2..=255 {
+            assert!(
+                brightness(rgb(value)) >= brightness(rgb(value - 1)) - 0.5,
+                "{kind:?} gets darker at {value}"
+            );
+        }
+    }
+}

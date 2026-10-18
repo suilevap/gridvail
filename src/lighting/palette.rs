@@ -68,6 +68,76 @@ pub fn dimmed(index: u8) -> u8 {
     }
 }
 
+/// Each kind's gradient: colours near its palette colours (sRGB) at light
+/// values around where its palette table reaches them, starting for every
+/// kind from the dark grey of an unlit cell, so a light fades out into the
+/// dark, and into other lights, without a step. Stronger light is never
+/// darker: the dark blue and green of the palette are lifted, as they are
+/// darker than the unlit grey.
+const UNLIT: [f32; 3] = [0.25, 0.25, 0.25];
+const FIRE_GRADIENT: &[(f32, [f32; 3])] = &[
+    (1.0, UNLIT),
+    (70.0, [0.6, 0.5, 0.0]),
+    (170.0, [1.0, 0.9, 0.2]),
+    (255.0, [1.0, 1.0, 0.85]),
+];
+const ELECTRO_GRADIENT: &[(f32, [f32; 3])] = &[
+    (1.0, UNLIT),
+    (32.0, [0.25, 0.32, 0.7]),
+    (96.0, [0.2, 0.55, 0.75]),
+    (160.0, [0.3, 0.5, 1.0]),
+    (255.0, [0.4, 0.95, 0.95]),
+];
+const ACID_GRADIENT: &[(f32, [f32; 3])] = &[
+    (1.0, UNLIT),
+    (64.0, [0.2, 0.6, 0.2]),
+    (192.0, [0.3, 0.95, 0.3]),
+];
+const NONE_GRADIENT: &[(f32, [f32; 3])] = &[
+    (1.0, UNLIT),
+    (48.0, [0.55, 0.55, 0.55]),
+    (255.0, [1.0, 1.0, 1.0]),
+];
+
+fn along(gradient: &[(f32, [f32; 3])], value: f32) -> [f32; 3] {
+    let mut previous = gradient[0];
+    for &(at, color) in gradient {
+        if value <= at {
+            let span = at - previous.0;
+            let t = if span > 0.0 {
+                (value - previous.0) / span
+            } else {
+                1.0
+            };
+            return std::array::from_fn(|i| previous.1[i] + (color[i] - previous.1[i]) * t);
+        }
+        previous = (at, color);
+    }
+    previous.1
+}
+
+/// The exact colour of a lit cell (sRGB), the smooth counterpart of
+/// [`light_to_palette`].
+pub fn light_to_rgb(cell: &LightCell) -> [u8; 3] {
+    if cell.value == 0 {
+        return [0; 3];
+    }
+    let gradient = match cell.kind {
+        LightKind::Fire => FIRE_GRADIENT,
+        LightKind::Electricity => ELECTRO_GRADIENT,
+        LightKind::Acid => ACID_GRADIENT,
+        LightKind::None => NONE_GRADIENT,
+    };
+    along(gradient, cell.value as f32).map(|channel| (channel * 255.0).round() as u8)
+}
+
+/// The colour a remembered cell is drawn in: greyer and darker, the smooth
+/// counterpart of [`dimmed`].
+pub fn dimmed_rgb(rgb: [u8; 3]) -> [u8; 3] {
+    let grey = (rgb[0] as f32 + rgb[1] as f32 + rgb[2] as f32) / 3.0;
+    rgb.map(|channel| ((channel as f32 * 0.4 + grey * 0.6) * 0.5).round() as u8)
+}
+
 pub fn palette_color(index: u8) -> bevy::prelude::Color {
     use bevy::prelude::Color;
     match index {

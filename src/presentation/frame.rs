@@ -2,7 +2,9 @@ use bevy::prelude::*;
 
 use super::DynamicLight;
 use crate::foundation::portal::CellTransform;
-use crate::lighting::{dimmed, light_to_palette, DARK_MAGENTA, DARK_RED, MAGENTA};
+use crate::lighting::{
+    dimmed, dimmed_rgb, light_to_palette, light_to_rgb, DARK_MAGENTA, DARK_RED, MAGENTA,
+};
 use crate::model::*;
 
 /// Colour of a portal's threshold and of portal walls seen from behind or
@@ -28,10 +30,11 @@ pub const PORTAL_GLYPH: char = '░';
 ///
 /// Two indexes are kept apart: map data (visibility, light) is indexed by
 /// `MapGrid::idx`, frame data by `RenderBuffers::idx`.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn compose_frame(
     grid: Res<MapGrid>,
     dynamic: Res<DynamicLight>,
+    style: Option<Res<LightStyle>>,
     reveal: Option<Res<RevealAll>>,
     viewers: Query<(&Pos, &VisibilityMap, Option<&PlayerView>), With<Player>>,
     glyphs: Query<(
@@ -72,6 +75,7 @@ pub fn compose_frame(
             ch: glyph.ch,
             color: glyph.color,
             depth: glyph.depth,
+            rgb: None,
         };
         let shown = shown.copied().unwrap_or(AnimatedPos::at(pos.0));
         let mut instance = 0;
@@ -125,6 +129,7 @@ pub fn compose_frame(
             ch: glyph.ch,
             color: glyph.color,
             depth: glyph.depth,
+            rgb: None,
         };
         let shown = shown.copied().unwrap_or(AnimatedPos::at(pos.0));
         for i in 0..buffers.objects.len() {
@@ -155,6 +160,7 @@ pub fn compose_frame(
         }
     }
 
+    let smooth = style.is_some_and(|style| *style == LightStyle::Smooth);
     let light_at = |p: IVec2| {
         grid.idx(p)
             .and_then(|i| dynamic.data.get(i))
@@ -167,12 +173,13 @@ pub fn compose_frame(
         let seen = buffers.seen[index];
         if seen.is_some() || known(position) {
             let cell = &mut buffers.current[index];
-            light_cell(cell, seen, position, &grid, &light_at);
+            light_cell(cell, seen, position, &grid, &light_at, smooth);
         } else if borders_known_background(&buffers, &known, position) {
             buffers.current[index] = RenderCell {
                 ch: '?',
                 color: DARK_RED,
                 depth: 0,
+                rgb: None,
             };
         }
         // Objects draw themselves; the ground under them stays blank.
@@ -194,10 +201,18 @@ pub fn compose_frame(
         let cell = buffers.current[index];
         let shown = cell.ch == object.cell.ch && cell.depth == object.cell.depth;
         object.cell.color = cell.color;
+        object.cell.rgb = cell.rgb;
         if shown && object.height < 1.0 {
             let mut floor = RenderCell::default();
             let position = buffers.pos_of(index);
-            light_cell(&mut floor, buffers.seen[index], position, &grid, &light_at);
+            light_cell(
+                &mut floor,
+                buffers.seen[index],
+                position,
+                &grid,
+                &light_at,
+                smooth,
+            );
             buffers.ground[index] = floor;
         }
         shown
@@ -207,17 +222,21 @@ pub fn compose_frame(
 
 /// Lights frame cell `cell` at `position`, seen now through `seen` or else
 /// remembered: an empty one becomes floor (or a portal's threshold), and an
-/// object's glyph takes the light's colour (or a portal's).
+/// object's glyph takes the light's colour (or a portal's), `smooth`ly
+/// shaded or in palette steps.
 fn light_cell(
     cell: &mut RenderCell,
     seen: Option<SeenCell>,
     position: IVec2,
     grid: &MapGrid,
     light_at: &impl Fn(IVec2) -> LightCell,
+    smooth: bool,
 ) {
     let occupied = !matches!(cell.ch, ' ' | '\0');
     if let Some(seen) = seen {
-        shade(cell, true, light_to_palette(&light_at(seen.world)));
+        let light = light_at(seen.world);
+        let rgb = smooth.then(|| light_to_rgb(&light));
+        shade(cell, true, light_to_palette(&light), rgb);
         // The threshold's floor, or the portal's own wall when the view
         // does not pass through it.
         if seen.portal && !occupied {
@@ -225,15 +244,24 @@ fn light_cell(
                 ch: PORTAL_GLYPH,
                 color: PORTAL_COLOR,
                 depth: 0,
+                rgb: None,
             };
         } else if occupied && grid.portal_at(seen.world).is_some() {
             cell.color = PORTAL_COLOR;
+            cell.rgb = None;
         }
     } else {
         let light = light_at(position);
-        shade(cell, is_hex_pos(position), dimmed(light_to_palette(&light)));
+        let rgb = smooth.then(|| dimmed_rgb(light_to_rgb(&light)));
+        shade(
+            cell,
+            is_hex_pos(position),
+            dimmed(light_to_palette(&light)),
+            rgb,
+        );
         if occupied && grid.portal_at(position).is_some() {
             cell.color = REMEMBERED_PORTAL_COLOR;
+            cell.rgb = None;
         }
     }
 }
@@ -332,14 +360,16 @@ fn draw(
     });
 }
 
-fn shade(cell: &mut RenderCell, floor: bool, color: u8) {
+fn shade(cell: &mut RenderCell, floor: bool, color: u8, rgb: Option<[u8; 3]>) {
     if cell.ch == ' ' || cell.ch == '\0' {
         if floor {
             cell.ch = '.';
             cell.color = color;
+            cell.rgb = rgb;
         }
     } else {
         cell.color = color;
+        cell.rgb = rgb;
     }
 }
 
