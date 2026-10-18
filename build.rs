@@ -10,7 +10,10 @@ fn main() {
         .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "txt"))
         .collect();
     maps.sort();
-    let mut source = String::from("const BUNDLED_MAPS: &[(&str, &str)] = &[\n");
+    let mut source = String::from(
+        "/// Every map in `assets/maps`, by name (its file name without `.txt`).\n\
+         pub const BUNDLED_MAPS: &[(&str, &str)] = &[\n",
+    );
     for path in maps {
         let name = path.file_stem().unwrap().to_str().expect("UTF-8 map name");
         source.push_str(&format!(

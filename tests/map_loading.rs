@@ -5,8 +5,8 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::animation::ObjectAnimationPlugin;
-use pav_ecs_game_bevy_port::app::{GamePlugin, LoadMap, MapText};
-use pav_ecs_game_bevy_port::content::map::{parse_map, SpawnKind};
+use pav_ecs_game_bevy_port::app::{bundled_map, CurrentMap, GamePlugin, LoadMap, MapText};
+use pav_ecs_game_bevy_port::content::map::{parse_map, parse_next, SpawnKind};
 use pav_ecs_game_bevy_port::model::*;
 use pav_ecs_game_bevy_port::navigation::NavMap;
 use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
@@ -210,5 +210,84 @@ fn a_walking_player_carries_over_to_every_bundled_map() {
         for _ in 0..12 {
             app.update();
         }
+    }
+}
+
+/// One step right of the start is an exit to `rooms`.
+const WITH_EXIT: &str = "\
+XXXXXX
+Xp>..X
+XXXXXX
+@next rooms
+";
+
+/// Holds `key` until the player has stepped, then lets the turn finish.
+fn step(app: &mut App, key: KeyCode) {
+    let hero = player(app);
+    let from = app.world().get::<Pos>(hero).unwrap().0;
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(key);
+    for _ in 0..200 {
+        app.update();
+        if app.world().get::<Pos>(hero).unwrap().0 != from {
+            break;
+        }
+    }
+    let mut input = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+    input.release(key);
+    input.clear();
+}
+
+fn playing(app: &App) -> &'static str {
+    app.world().resource::<CurrentMap>().text
+}
+
+#[test]
+fn stepping_onto_an_exit_leads_to_the_next_map() {
+    for animated in [false, true] {
+        let mut app = boot(WITH_EXIT, |app| {
+            if animated {
+                app.add_plugins(ObjectAnimationPlugin);
+            }
+        });
+        let hero = player(&mut app);
+        let rooms = bundled_map("rooms").unwrap();
+        assert_eq!(app.world().resource::<CurrentMap>().next, Some(rooms));
+        // Placed on a map, the player has not stepped onto anything.
+        for _ in 0..30 {
+            app.update();
+        }
+        assert_eq!(playing(&app), WITH_EXIT);
+
+        step(&mut app, KeyCode::ArrowRight);
+        for _ in 0..60 {
+            app.update();
+        }
+        assert_eq!(playing(&app), rooms, "animated: {animated}");
+        assert_eq!(player(&mut app), hero, "the same player");
+        let start = parse_map(rooms)
+            .2
+            .into_iter()
+            .find(|cell| cell.kind == SpawnKind::Player)
+            .unwrap()
+            .pos;
+        assert_eq!(app.world().get::<Pos>(hero).unwrap().0, start);
+    }
+}
+
+#[test]
+fn the_bundled_maps_lead_from_one_to_the_next_and_round() {
+    let mut map = "map1";
+    for expected in ["map2", "map3", "map1"] {
+        let text = bundled_map(map).unwrap();
+        let cells = parse_map(text).2;
+        assert!(
+            cells.iter().any(|cell| cell.kind == SpawnKind::Exit),
+            "{map} has an exit"
+        );
+        let next = parse_next(text, &cells).unwrap().unwrap();
+        assert_eq!(next, expected, "{map} leads on");
+        map = expected;
     }
 }

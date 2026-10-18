@@ -1,8 +1,9 @@
 //! ASCII map parsing. Mirrors `LoadMapSystem.TryGetSpawnRequest`:
 //! `X`/`x` wall, `p` player, `e` enemy, `~` electricity, `i` light,
 //! `%` acid; anything else is empty floor. Additions: `k` key, `D` door,
-//! `h` hunter, `_` pressure plate, and digits `1`-`9` for portal walls (the
-//! two cells with the same digit lead to each other).
+//! `h` hunter, `_` pressure plate, `>` exit to the next map, and digits
+//! `1`-`9` for portal walls (the two cells with the same digit lead to each
+//! other).
 //!
 //! After the map, `@room <x> <y>` blocks give other layouts of a room: the
 //! block's lines are the walls (`X`/`x`; anything else is floor) of the
@@ -11,6 +12,9 @@
 //! it in order. `@room <x> <y> <planner>` also names the strategy for how
 //! its walls get from one layout to the next (any of its blocks may name
 //! it, and they must agree).
+//!
+//! `@next <map>` names the map the exits lead to; a map with exits must
+//! have one.
 
 use bevy::prelude::*;
 
@@ -27,6 +31,8 @@ pub enum SpawnKind {
     Key,
     Door,
     Plate,
+    /// Steps out to the next map (`@next`).
+    Exit,
     /// A wall whose open face is a portal to the other cell with the same
     /// digit.
     Portal(u8),
@@ -50,6 +56,7 @@ pub fn spawn_kind_of(c: char) -> Option<SpawnKind> {
         'k' => Some(SpawnKind::Key),
         'D' => Some(SpawnKind::Door),
         '_' => Some(SpawnKind::Plate),
+        '>' => Some(SpawnKind::Exit),
         '1'..='9' => Some(SpawnKind::Portal(c as u8 - b'0')),
         _ => None,
     }
@@ -105,6 +112,10 @@ pub fn parse_rooms(text: &str, cells: &[SpawnCell]) -> Result<Vec<RoomSpec>, Str
         .peekable();
     while let Some(header) = lines.next() {
         let fields: Vec<&str> = header.split_whitespace().collect();
+        if fields.first() == Some(&"@next") {
+            // Read by `parse_next`.
+            continue;
+        }
         let (origin, planner) = match fields[..] {
             ["@room", x, y, ref planner @ ..] if planner.len() <= 1 => (
                 x.parse()
@@ -114,7 +125,7 @@ pub fn parse_rooms(text: &str, cells: &[SpawnCell]) -> Result<Vec<RoomSpec>, Str
             ),
             _ => {
                 return Err(format!(
-                    "unknown block `{header}`; expected `@room <x> <y> [planner]`"
+                    "unknown block `{header}`; expected `@room <x> <y> [planner]` or `@next <map>`"
                 ))
             }
         };
@@ -193,6 +204,26 @@ pub fn parse_rooms(text: &str, cells: &[SpawnCell]) -> Result<Vec<RoomSpec>, Str
         }
     }
     Ok(rooms)
+}
+
+/// Reads the `@next <map>` line after the map: the map its exits lead to.
+/// A map with exits (in `cells`, from [`parse_map`]) must name one, and
+/// may name only one.
+pub fn parse_next(text: &str, cells: &[SpawnCell]) -> Result<Option<String>, String> {
+    let mut next = None;
+    for line in lines_of(text).skip_while(|line| !line.starts_with('@')) {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        match fields[..] {
+            ["@next", map] if next.is_none() => next = Some(map.to_owned()),
+            ["@next", _] => return Err("more than one `@next`".to_owned()),
+            ["@next", ..] => return Err(format!("bad `{line}`; expected `@next <map>`")),
+            _ => {}
+        }
+    }
+    if next.is_none() && cells.iter().any(|cell| cell.kind == SpawnKind::Exit) {
+        return Err("the map has exits but no `@next <map>`".to_owned());
+    }
+    Ok(next)
 }
 
 /// One portal wall: its cell, its open side (towards the only floor cell
@@ -376,6 +407,27 @@ mod tests {
         assert!(rooms("X.\n@room 0 0 a b\n.X")
             .unwrap_err()
             .contains("unknown block"));
+    }
+
+    #[test]
+    fn exits_lead_to_the_map_named_by_next() {
+        let next = |text| parse_next(text, &parse_map(text).2);
+        let text = "X>.\n@room 2 0\nX\n@next map2\n";
+        assert!(parse_map(text).2.contains(&SpawnCell {
+            pos: IVec2::new(1, 0),
+            kind: SpawnKind::Exit,
+        }));
+        assert_eq!(next(text).unwrap().as_deref(), Some("map2"));
+        assert!(
+            parse_rooms(text, &parse_map(text).2).is_ok(),
+            "rooms skip it"
+        );
+        assert_eq!(next("X..\n").unwrap(), None);
+        assert!(next("X>.\n").unwrap_err().contains("no `@next"));
+        assert!(next("X>.\n@next a\n@next b")
+            .unwrap_err()
+            .contains("more than one"));
+        assert!(next("X>.\n@next a b").unwrap_err().contains("expected"));
     }
 
     #[test]

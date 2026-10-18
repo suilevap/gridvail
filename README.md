@@ -132,9 +132,13 @@ next to this file.
   its own with `RoomPlanners::add` (see `simulation/room_plans/`). In
   `rooms.txt` the room's walls slide to move its gaps, and pillars rise in
   its corners.
-- Loading another map while playing (an addition): `[` and `]` play the
-  previous and next bundled map. Code asks for any map with the `LoadMap`
-  message. The level goes (everything on the map, what its actors carry,
+- Exits and loading another map while playing (an addition): `>` in a map
+  is an exit, and `@next <map>` after the map names the bundled map its
+  exits lead to (a map with exits must have one). Stepping onto an exit
+  leaves for that map at once, so a held key does not run over it.
+  `map1`, `map2` and `map3` lead from one to the next and round. `[` and
+  `]` also play the previous and next bundled map (keyboard only). Code
+  asks for any map with the `LoadMap` message. The level goes (everything on the map, what its actors carry,
   its rooms) and the player carries over with what they carry to the new
   map's start, or stays where they were if it has none; they remember
   nothing of the new map yet. Maps of any size work.
@@ -239,7 +243,7 @@ cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up 
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 256 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 259 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
