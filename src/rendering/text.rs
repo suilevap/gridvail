@@ -638,9 +638,9 @@ fn update_hud(
                 text.0,
                 "Gridvail | {} | Q/E turn | Z/X zoom | Esc settings",
                 if scheme == ControlScheme::Touch {
-                    "swipe: move/attack | hold still: wait"
+                    "swipe + hold: walk/attack | hold still: wait"
                 } else {
-                    "arrows/WASD: move/attack | hold Space: wait"
+                    "hold arrows/WASD: walk/attack | hold Space: wait"
                 }
             )
             .unwrap();

@@ -51,6 +51,7 @@ fn game_with_ui(map: &'static str, ui: bool) -> App {
     for _ in 0..4 {
         app.update();
     }
+    app.world_mut().resource_mut::<TokenTimer>().0.reset();
     app
 }
 
@@ -99,12 +100,12 @@ fn wait_action(app: &mut App) {
 }
 
 #[test]
-fn waiting_for_input_does_not_spend_rounds_or_move_enemies() {
+fn the_telegraph_stays_locked_until_the_decision_deadline() {
     let mut app = game("XXXXXXXX\nXp    bX\nX      X\nXXXXXXXX");
     let entity = enemy(&mut app).0;
     let start = *app.world().get::<Pos>(entity).unwrap();
     let intent = enemy(&mut app).2.intent;
-    for _ in 0..100 {
+    for _ in 0..8 {
         app.update();
     }
     assert_eq!(app.world().resource::<BattleState>().round, 0);
@@ -144,7 +145,7 @@ fn wait_hold_shows_progress_cancels_and_commits_exactly_once() {
 }
 
 #[test]
-fn holding_space_counts_one_guarded_turn_until_released() {
+fn holding_space_counts_one_brace_but_does_not_stop_the_decision_clock() {
     let mut app = game("XXXXXXXX\nXp    bX\nX      X\nXXXXXXXX");
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
@@ -154,30 +155,170 @@ fn holding_space_counts_one_guarded_turn_until_released() {
     }
     assert!(app.world().resource::<WaitHold>().progress() > 0.0);
     assert_eq!(app.world().resource::<BattleState>().round, 0);
-    for _ in 0..20 {
+    for _ in 0..5 {
         app.update();
     }
     assert_eq!(app.world().resource::<BattleState>().round, 1);
     assert!(player(&mut app).1.guarded);
     assert!(app.world().resource::<WaitHold>().latched);
-}
-
-#[test]
-fn a_held_movement_key_never_repeats_in_battle() {
-    let mut app = game("XXXXXXXX\nXp    bX\nX      X\nXXXXXXXX");
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .press(KeyCode::ArrowDown);
-    app.update();
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .clear();
-    let position = player(&mut app).0;
     for _ in 0..20 {
         app.update();
     }
+    assert!(app.world().resource::<BattleState>().round > 1);
+    assert!(!player(&mut app).1.guarded);
+    assert_eq!(app.world().resource::<WaitHold>().elapsed, 0.0);
+}
+
+#[test]
+fn holding_a_direction_keeps_moving_and_releasing_stops_it() {
+    let mut app = game("XXXXXXXXXXXX\nXp        bX\nX          X\nXXXXXXXXXXXX");
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::ArrowRight);
+    for _ in 0..4 {
+        app.update();
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .clear();
+    }
+    let position = player(&mut app).0;
+    assert_eq!(position, IVec2::new(5, 1));
+    assert_eq!(app.world().resource::<BattleState>().round, 4);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .reset_all();
+    for _ in 0..3 {
+        app.update();
+    }
     assert_eq!(player(&mut app).0, position);
+    assert_eq!(app.world().resource::<BattleState>().round, 4);
+}
+
+#[test]
+fn a_missed_deadline_gives_enemies_an_unbraced_action() {
+    let mut app = game("XXXXXXXX\nX ps   X\nX      X\nXXXXXXXX");
+    let pos = player(&mut app).0;
+    for _ in 0..9 {
+        app.update();
+    }
+    assert_eq!(app.world().resource::<BattleState>().round, 0);
+    app.update();
     assert_eq!(app.world().resource::<BattleState>().round, 1);
+    assert_eq!(player(&mut app).0, pos);
+    assert_eq!(player(&mut app).1.current, 10);
+    assert!(!player(&mut app).1.guarded);
+    for _ in 0..10 {
+        app.update();
+    }
+    assert_eq!(app.world().resource::<BattleState>().round, 2);
+}
+
+#[test]
+fn manual_input_wins_on_the_deadline_frame_and_resets_the_clock() {
+    let mut app = game("XXXXXXXX\nX ps   X\nX      X\nXXXXXXXX");
+    for _ in 0..9 {
+        app.update();
+    }
+    press(&mut app, KeyCode::ArrowDown);
+    assert_eq!(app.world().resource::<BattleState>().round, 1);
+    assert_eq!(player(&mut app).1.current, 12);
+    assert!(app.world().resource::<TokenTimer>().0.elapsed_secs() < 0.11);
+    for _ in 0..8 {
+        app.update();
+    }
+    assert_eq!(app.world().resource::<BattleState>().round, 1);
+    app.update();
+    assert_eq!(app.world().resource::<BattleState>().round, 2);
+}
+
+#[test]
+fn settings_pause_the_decision_clock_and_reset_starts_it_fresh() {
+    let mut app = game("XXXXXXXX\nXp    bX\nX      X\nXXXXXXXX");
+    for _ in 0..4 {
+        app.update();
+    }
+    app.insert_resource(SettingsMenu {
+        open: true,
+        ..default()
+    });
+    for _ in 0..20 {
+        app.update();
+    }
+    assert_eq!(app.world().resource::<BattleState>().round, 0);
+    assert!((app.world().resource::<TokenTimer>().0.elapsed_secs() - 0.4).abs() < 0.01);
+    app.world_mut().resource_mut::<SettingsMenu>().open = false;
+    for _ in 0..5 {
+        app.update();
+    }
+    assert_eq!(app.world().resource::<BattleState>().round, 0);
+    app.update();
+    assert_eq!(app.world().resource::<BattleState>().round, 1);
+    press(&mut app, KeyCode::KeyR);
+    assert_eq!(app.world().resource::<BattleState>().round, 0);
+    assert!(app.world().resource::<TokenTimer>().0.elapsed_secs() < 0.21);
+}
+
+#[test]
+fn the_clock_waits_for_animation_before_timing_the_next_decision() {
+    let mut app = game("XXXXXXXXXXXX\nXp        bX\nX          X\nXXXXXXXXXXXX");
+    press(&mut app, KeyCode::ArrowDown);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::ArrowRight);
+    app.update();
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .reset_all();
+    app.world_mut()
+        .resource_mut::<TurnPacing>()
+        .report_animation(Duration::from_secs(5));
+    for _ in 0..20 {
+        app.update();
+    }
+    assert_eq!(app.world().resource::<BattleState>().round, 2);
+    assert_eq!(app.world().resource::<TokenTimer>().0.elapsed_secs(), 0.0);
+    app.world_mut()
+        .resource_mut::<TurnPacing>()
+        .report_animation(Duration::ZERO);
+    app.update();
+    assert!(app.world().resource::<TokenTimer>().0.remaining_secs() > 0.89);
+    assert_eq!(app.world().resource::<BattleState>().round, 2);
+}
+
+#[test]
+fn a_late_wait_hold_is_cancelled_by_the_deadline_without_granting_a_brace() {
+    let mut app = game("XXXXXXXX\nX ps   X\nX      X\nXXXXXXXX");
+    for _ in 0..7 {
+        app.update();
+    }
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::Space);
+    for _ in 0..4 {
+        app.update();
+    }
+    assert_eq!(app.world().resource::<BattleState>().round, 1);
+    assert_eq!(player(&mut app).1.current, 10);
+    assert!(!player(&mut app).1.guarded);
+    assert!(app.world().resource::<WaitHold>().latched);
+    assert_eq!(app.world().resource::<WaitHold>().elapsed, 0.0);
+}
+
+#[test]
+fn the_hud_shows_the_decision_countdown_and_urgent_clock_bar() {
+    let mut app = game_with_ui("XXXXXXXX\nXp    bX\nX      X\nXXXXXXXX", true);
+    for _ in 0..8 {
+        app.update();
+    }
+    let world = app.world_mut();
+    assert!(world
+        .query::<&Text>()
+        .iter(world)
+        .any(|text| text.0.contains("ACT IN 0.2s")));
+    assert!(world.query::<(&Node, &BackgroundColor)>().iter(world).any(
+        |(node, color)| matches!(node.width, Val::Percent(p) if (p - 20.0).abs() < 0.1)
+            && color.0 == Color::srgb(1.0, 0.25, 0.25)
+    ));
 }
 
 #[test]

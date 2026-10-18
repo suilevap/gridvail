@@ -234,9 +234,13 @@ direction, and where new foundational versus game-specific code belongs.
 ## Run and verify
 
 The playable executable installs tactical battle rules: arrows/WASD move or
-attack by bumping into an enemy, with one action per press. Enemies act only
-after your action; taking time to think never spends a turn. Red `!` cells show
-where an enemy will strike on your next action. Yellow `?` cells give an extra
+attack by bumping into an enemy. Hold a direction to keep moving as turns
+become available. Each decision has a **one-second deadline**, shown by a
+shrinking orange/red bar and countdown. Acting commits the turn immediately;
+hesitating past the deadline lets enemies act without granting a brace.
+The clock pauses during action animations and in settings, then resets for
+the next decision. Red `!` cells show where an enemy will strike on the next
+action or timeout. Yellow `?` cells give an extra
 action of warning; blue `+` cells show a spent attack. Recovering enemies turn
 blue and lowercase. The HUD names the nearest visible enemy's action, tells
 you how to counter it, and counts the actions left in its opening.
@@ -259,7 +263,9 @@ Hold Space for **0.6 seconds** to wait and brace against the next hit. The
 bottom panel shows a filling meter, seconds remaining, and **WAIT COUNTED**
 when the turn commits. Releasing early cancels; keeping Space down never
 commits another turn until you release it. On touch screens, hold a finger
-still instead (swiping moves/attacks; two fingers still control the camera).
+still instead; swipe and hold to keep moving/attacking, while two fingers
+control the camera. Holding Space counts one deliberate wait per press;
+the decision clock keeps running afterward.
 Bracing absorbs one damage from the next hit. `R` or the reset button restores
 the encounter's actors; existing door/item changes remain.
 

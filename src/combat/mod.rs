@@ -33,7 +33,7 @@ impl Plugin for BattlePlugin {
             .add_systems(PreUpdate, restart_battle.after(bevy::input::InputSystems))
             .add_systems(
                 Update,
-                (hold_to_wait, begin_action, order_enemy_actions)
+                (hold_to_wait, begin_action, expire_turn, order_enemy_actions)
                     .chain()
                     .after(player_input)
                     .after(swipe_commands)
@@ -207,6 +207,50 @@ fn begin_action(
     } else {
         "Hit for 2 - enemy interrupted"
     };
+}
+
+/// A missed deadline spends a neutral action, not a free defensive wait.
+/// Manual input wins on the deadline frame. Only decision time counts:
+/// tokens stay spent while the preceding action is still animating.
+fn expire_turn(
+    time: Res<Time>,
+    menu: Option<Res<SettingsMenu>>,
+    turn: Res<TurnState>,
+    mut timer: ResMut<TokenTimer>,
+    mut state: ResMut<BattleState>,
+    mut wait: ResMut<WaitHold>,
+    mut player: Query<(&mut MoveCommand, &Tokens, &mut Health), With<Player>>,
+) {
+    if state.committed {
+        timer.0.reset();
+        return;
+    }
+    if state.defeated || state.won || turn.simulation || SettingsMenu::is_open(menu.as_deref()) {
+        return;
+    }
+    let Ok((mut command, tokens, mut health)) = player.single_mut() else {
+        return;
+    };
+    if tokens.count <= 0 || health.current <= 0 {
+        return;
+    }
+    timer.0.tick(time.delta());
+    if !timer.0.is_finished() {
+        return;
+    }
+    *command = MoveCommand {
+        target: IVec2::ZERO,
+        relative: true,
+        active: true,
+    };
+    health.guarded = false;
+    // A late or already-counted hold cannot queue a brace behind a timeout.
+    wait.latched |= wait.elapsed > 0.0;
+    wait.elapsed = 0.0;
+    state.committed = true;
+    state.round += 1;
+    state.feedback = "Time up - enemies act; no brace";
+    timer.0.reset();
 }
 
 fn order_enemy_actions(
@@ -479,6 +523,7 @@ fn restart_battle(
     mut commands: Commands,
     mut state: ResMut<BattleState>,
     mut wait: ResMut<WaitHold>,
+    mut timer: ResMut<TokenTimer>,
     mut grid: ResMut<MapGrid>,
     mut actors: Query<(
         Entity,
@@ -551,6 +596,7 @@ fn restart_battle(
         ..default()
     };
     *wait = WaitHold::default();
+    timer.0.reset();
 }
 
 #[cfg(test)]

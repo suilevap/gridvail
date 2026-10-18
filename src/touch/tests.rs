@@ -4,9 +4,12 @@ use bevy::prelude::*;
 use super::*;
 
 #[test]
-fn tactical_touch_hold_cancels_on_swipe_and_does_not_repeat_steps() {
+fn tactical_touch_hold_cancels_on_swipe_and_keeps_walking_while_held() {
     let (mut app, player) = touch_app();
     app.init_resource::<BattleState>()
+        .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+            std::time::Duration::from_millis(100),
+        ))
         .init_resource::<WaitHold>()
         .add_systems(PreUpdate, read_wait_touch.after(read_swipes));
     touch(&mut app, TouchPhase::Started, 100.0, 100.0);
@@ -15,8 +18,14 @@ fn tactical_touch_hold_cancels_on_swipe_and_does_not_repeat_steps() {
     assert!(!app.world().resource::<WaitHold>().touch_held);
     assert_eq!(step_taken(&mut app, player), Some(IVec2::X));
     assert_eq!(step_taken(&mut app, player), None);
+    for _ in 0..4 {
+        app.update();
+    }
+    assert_eq!(step_taken(&mut app, player), Some(IVec2::X));
+    assert_eq!(step_taken(&mut app, player), Some(IVec2::X));
     touch(&mut app, TouchPhase::Ended, 160.0, 100.0);
     assert!(!app.world().resource::<WaitHold>().touch_held);
+    assert_eq!(step_taken(&mut app, player), None);
 }
 
 #[test]

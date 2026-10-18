@@ -12,6 +12,8 @@ pub(super) struct BattleLabel;
 #[derive(Component)]
 pub(super) struct WaitFill;
 #[derive(Component)]
+pub(super) struct TurnFill;
+#[derive(Component)]
 pub(super) struct RestartBattle;
 
 pub(super) fn spawn_battle_ui(commands: &mut Commands, camera: Entity) {
@@ -34,6 +36,26 @@ pub(super) fn spawn_battle_ui(commands: &mut Commands, camera: Entity) {
             ZIndex(100),
         ))
         .with_children(|panel| {
+            panel
+                .spawn((
+                    Node {
+                        height: Val::Px(6.0),
+                        width: Val::Percent(100.0),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb(0.12, 0.17, 0.21)),
+                ))
+                .with_children(|bar| {
+                    bar.spawn((
+                        TurnFill,
+                        Node {
+                            height: Val::Percent(100.0),
+                            width: Val::Percent(100.0),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgb(1.0, 0.7, 0.2)),
+                    ));
+                });
             panel.spawn((
                 BattleLabel,
                 Text::new(String::with_capacity(512)),
@@ -90,6 +112,7 @@ pub(super) fn draw_battle_ui(
     battle: Option<ResMut<BattleState>>,
     wait: Option<Res<WaitHold>>,
     turn: Res<TurnState>,
+    timer: Res<TokenTimer>,
     menu: Option<Res<SettingsMenu>>,
     scheme: Option<Res<ControlScheme>>,
     grid: Res<MapGrid>,
@@ -99,7 +122,8 @@ pub(super) fn draw_battle_ui(
     buttons: Query<&Interaction, (With<RestartBattle>, Changed<Interaction>)>,
     mut labels: Query<&mut Text, With<BattleLabel>>,
     mut panels: Query<&mut Visibility, With<BattlePanel>>,
-    mut fills: Query<(&mut Node, &mut BackgroundColor), With<WaitFill>>,
+    mut fills: Query<(&mut Node, &mut BackgroundColor), (With<WaitFill>, Without<TurnFill>)>,
+    mut clocks: Query<(&mut Node, &mut BackgroundColor), With<TurnFill>>,
 ) {
     let (Some(mut battle), Some(wait)) = (battle, wait) else {
         return;
@@ -124,6 +148,18 @@ pub(super) fn draw_battle_ui(
     };
     for mut text in &mut labels {
         text.0.clear();
+        if !battle.defeated && !battle.won {
+            if turn.simulation || tokens.count <= 0 {
+                writeln!(text.0, "TURN: resolving action").unwrap();
+            } else {
+                writeln!(
+                    text.0,
+                    "ACT IN {:.1}s | timeout: enemies act",
+                    timer.0.remaining_secs()
+                )
+                .unwrap();
+            }
+        }
         writeln!(
             text.0,
             "HP {}/{}  |  Round {}  |  Enemies {}{}",
@@ -152,6 +188,8 @@ pub(super) fn draw_battle_ui(
                 (WaitHold::SECONDS - wait.elapsed).max(0.0)
             )
             .unwrap();
+        } else if wait.latched {
+            write!(text.0, "Release wait input to brace again").unwrap();
         } else {
             write!(
                 text.0,
@@ -218,6 +256,18 @@ pub(super) fn draw_battle_ui(
             Color::srgb(0.25, 0.95, 0.55)
         } else {
             Color::srgb(0.25, 0.75, 0.95)
+        };
+    }
+    for (mut node, mut color) in &mut clocks {
+        node.width = Val::Percent(if battle.defeated || battle.won {
+            0.0
+        } else {
+            timer.0.fraction_remaining() * 100.0
+        });
+        color.0 = if timer.0.fraction_remaining() <= 0.25 {
+            Color::srgb(1.0, 0.25, 0.25)
+        } else {
+            Color::srgb(1.0, 0.7, 0.2)
         };
     }
 }

@@ -109,6 +109,7 @@ pub fn read_swipes(
 pub fn swipe_commands(
     mut swipe: ResMut<Swipe>,
     battle: Option<Res<BattleState>>,
+    menu: Option<Res<SettingsMenu>>,
     turn: Res<TurnState>,
     camera: Option<Res<ViewCamera>>,
     mut players: Query<
@@ -116,14 +117,13 @@ pub fn swipe_commands(
         (With<Player>, With<Active>, Without<DestroyRequested>),
     >,
 ) {
-    if turn.simulation || battle.as_ref().is_some_and(|battle| battle.defeated) {
+    if turn.simulation
+        || SettingsMenu::is_open(menu.as_deref())
+        || battle.as_ref().is_some_and(|battle| battle.defeated)
+    {
         return;
     }
-    let Some(screen) = (if battle.is_some() {
-        swipe.pending
-    } else {
-        swipe.direction()
-    }) else {
+    let Some(screen) = swipe.direction() else {
         return;
     };
     let target = camera.map_or(screen, |camera| camera.map_direction(screen));

@@ -21,6 +21,8 @@ pub fn recharge_tokens(
     if battle.is_none() {
         timer.0.tick(time.delta());
     }
+    // BattlePlugin owns the decision deadline: expiry must commit an enemy
+    // turn, rather than silently refilling everyone's unspent tokens.
     let any_left = holders
         .iter()
         .any(|(tokens, active)| tokens.count > 0 && (battle.is_none() || active));
