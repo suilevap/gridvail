@@ -197,7 +197,14 @@ and renderers must not import it.
 - `debug_ui.rs` contains optional runtime diagnostics and their UI. It reads
   public game/renderer statistics without owning simulation or rendering.
 - `app/` wires the concrete Gridvail/PavEcsLiteGame port together. The bundled
-  map choice and exact spawn bundles live in `app/map.rs`; domain composition,
+  map choice and exact spawn bundles live in `app/map.rs`, which also loads
+  another map on `LoadMap` (in `PreUpdate`, so the frame's systems see one
+  whole map): the level (everything with a `Pos`, what it carries, its
+  rooms) is despawned, the player kept and moved to the new start, and
+  `MapGrid::reset` empties the grid for the new size while its revisions
+  move on, so sight, paths and light rebuild themselves; renderers follow
+  (the text renderer drops sprites of objects that are gone, the 3D floor
+  is rebuilt for a new size). Domain composition,
   phase ordering, and compatibility decisions live in `app/mod.rs`.
 - `main.rs` installs the animation step, selects the text or hybrid 3D-wall
   renderer, installs

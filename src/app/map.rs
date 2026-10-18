@@ -35,82 +35,151 @@ impl Default for MapText {
     }
 }
 
-/// Constructs the selected map, its rules, and its initial entities.
+/// Asks for another map to be played, at any time: the current one goes and
+/// the player carries over to the new one's start (see `load_map`).
+#[derive(Message, Clone, Copy, Debug)]
+pub struct LoadMap(pub &'static str);
+
+/// Constructs the selected map, its rules, and its initial entities, and
+/// loads another on [`LoadMap`].
 pub struct MapPlugin;
 
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MapText>()
-            .add_systems(Startup, construct_map.in_set(StartupPhase::Content));
+            .add_message::<LoadMap>()
+            .add_systems(Startup, construct_map.in_set(StartupPhase::Content))
+            // Before the frame's game systems, in a schedule of its own, so
+            // the old level is wholly gone and the new one wholly there
+            // when they run.
+            .add_systems(PreUpdate, load_map.run_if(on_message::<LoadMap>));
     }
 }
 
 fn construct_map(mut commands: Commands, map: Res<MapText>) {
-    let (width, height, cells) = parse_map(map.0);
+    let mut grid = MapGrid::new(1, 1);
+    build_map(&mut commands, &mut grid, map.0, None);
+    commands.insert_resource(grid);
+    commands.insert_resource(Rules {
+        wall: TileRule::parse(WALL_RULE_TEXT),
+        triangle: DirectionTileRule::parse(TRIANGLE_RULE_TEXT).expect("triangle rule"),
+        v: DirectionTileRule::parse(V_RULE_TEXT).expect("v rule"),
+    });
+}
+
+/// Plays the map last asked for with [`LoadMap`]. The level goes: everything
+/// placed on the map (anything with a `Pos`), what those carry, and its
+/// rooms. The player stays, with what they carry and anything bound to
+/// them, and moves to the new map's start, seeing it afresh: they remember
+/// nothing of it yet. The grid keeps counting its revisions, so sight, paths
+/// and the rest are built again for the new map.
+#[allow(clippy::type_complexity)]
+fn load_map(
+    mut commands: Commands,
+    mut requests: MessageReader<LoadMap>,
+    mut grid: ResMut<MapGrid>,
+    mut crossings: ResMut<PortalCrossings>,
+    placed: Query<(Entity, Option<&BoundTo>, Option<&Inventory>), With<Pos>>,
+    rooms: Query<Entity, With<Room>>,
+    players: Query<(Entity, &Pos), With<Player>>,
+) {
+    let Some(&LoadMap(text)) = requests.read().last() else {
+        return;
+    };
+    let (player, was_at) = players.single().ok().unzip();
+    let mut kept = Vec::new();
+    for (entity, bound, carried) in &placed {
+        if Some(entity) == player {
+            continue;
+        }
+        if let Some(bound) = bound.filter(|bound| Some(bound.parent) == player) {
+            kept.push((entity, bound.offset));
+            continue;
+        }
+        for &item in carried.iter().flat_map(|carried| &carried.0) {
+            if let Ok(mut item) = commands.get_entity(item) {
+                item.despawn();
+            }
+        }
+        commands.entity(entity).despawn();
+    }
+    for room in &rooms {
+        commands.entity(room).despawn();
+    }
+    crossings.0.clear();
+    let start = build_map(&mut commands, &mut grid, text, player);
+    if let (Some(player), Some(was_at)) = (player, was_at) {
+        // A map without a start keeps the player where they were, or as
+        // near as is free.
+        let start = start.unwrap_or_else(|| {
+            let at = free_cell_near(&grid, was_at.0);
+            grid.set(at, player);
+            at
+        });
+        let cell_count = (grid.width * grid.height) as usize;
+        // Taking `Pos` off and putting it back places them anew, so they are
+        // shown there at once rather than moving there.
+        commands.entity(player).remove::<Pos>().insert((
+            Pos(start),
+            PrevPos(start),
+            PendingPos::default(),
+            MoveCommand::default(),
+            Speed::default(),
+            VisibilityMap {
+                revision: u64::MAX,
+                data: vec![Vis::empty(); cell_count],
+            },
+        ));
+        for (entity, offset) in kept {
+            let at = grid.safe_pos(start + offset);
+            commands
+                .entity(entity)
+                .remove::<Pos>()
+                .insert((Pos(at), PrevPos(at)));
+        }
+    }
+}
+
+/// The free cell of `grid` nearest `p` (wrapped into it), or `p` itself if
+/// none is free.
+fn free_cell_near(grid: &MapGrid, p: IVec2) -> IVec2 {
+    let p = grid.safe_pos(p);
+    let reach = grid.width.max(grid.height);
+    (0..=reach)
+        .flat_map(|r| {
+            (-r..=r)
+                .flat_map(move |dy| (-r..=r).map(move |dx| IVec2::new(dx, dy)))
+                .filter(move |d| d.abs().max_element() == r)
+        })
+        .map(|d| grid.safe_pos(p + d))
+        .find(|&cell| grid.get(cell).is_none())
+        .unwrap_or(p)
+}
+
+/// Spawns the map `text` into `grid`, reset to its size. With `player`, that
+/// player takes the map's start instead of a new one being spawned; returns
+/// the start, if the map has one.
+fn build_map(
+    commands: &mut Commands,
+    grid: &mut MapGrid,
+    text: &str,
+    player: Option<Entity>,
+) -> Option<IVec2> {
+    let (width, height, cells) = parse_map(text);
     let links = portal_links(width, height, &cells).unwrap_or_else(|error| panic!("map: {error}"));
-    let rooms = parse_rooms(map.0, &cells).unwrap_or_else(|error| panic!("map: {error}"));
+    let rooms = parse_rooms(text, &cells).unwrap_or_else(|error| panic!("map: {error}"));
     let cell_count = (width * height) as usize;
-    let mut grid = MapGrid::new(width, height);
+    grid.reset(width, height);
     let mut portal_walls = Vec::with_capacity(links.len());
+    let mut start = None;
 
     for cell in cells {
         let entity = match cell.kind {
             // A portal is a wall; only its open face differs.
             SpawnKind::Wall | SpawnKind::Portal(_) => commands.spawn(wall_bundle(cell.pos)).id(),
             SpawnKind::Player => {
-                let player = commands
-                    .spawn((
-                        Active,
-                        Collider,
-                        Pos(cell.pos),
-                        (
-                            Speed::default(),
-                            MoveCommand::default(),
-                            MoveIntent::default(),
-                            PendingPos::default(),
-                            PrevPos(cell.pos),
-                        ),
-                        Glyph::new('@', 1, WHITE),
-                        Player(0),
-                        Inventory::default(),
-                        Tokens::new(1),
-                        Friction(1),
-                        Facing::default(),
-                        DirectionBasedOnSpeed,
-                        VisualSensor { radius: 16 },
-                        PlayerView::with_radius(16),
-                        LightSource {
-                            radius: 16,
-                            kind: LightKind::None,
-                            value: 32,
-                        },
-                        (
-                            initial_fov(cell_count),
-                            VisibilityMap {
-                                revision: u64::MAX,
-                                data: vec![Vis::empty(); cell_count],
-                            },
-                        ),
-                    ))
-                    .id();
-                // Bound 'i' direction marker, one step ahead of the player
-                // (the original light source belongs to the player).
-                commands.spawn((
-                    Active,
-                    BoundTo {
-                        parent: player,
-                        offset: IVec2::new(1, 0),
-                        offset_dir: IVec2::new(1, 0),
-                    },
-                    Pos(cell.pos + IVec2::X),
-                    PrevPos(cell.pos + IVec2::X),
-                    Facing::default(),
-                    DirectionTile {
-                        rule: "direction_triangle_rule".to_string(),
-                    },
-                    Glyph::new('i', 0, WHITE),
-                ));
-                player
+                start = Some(cell.pos);
+                player.unwrap_or_else(|| spawn_player(commands, cell.pos, cell_count))
             }
             SpawnKind::Enemy => commands
                 .spawn((
@@ -232,13 +301,64 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
     for room in rooms {
         commands.spawn(Room::new(room.origin, room.size, room.layouts).with_planner(room.planner));
     }
+    start
+}
 
-    commands.insert_resource(grid);
-    commands.insert_resource(Rules {
-        wall: TileRule::parse(WALL_RULE_TEXT),
-        triangle: DirectionTileRule::parse(TRIANGLE_RULE_TEXT).expect("triangle rule"),
-        v: DirectionTileRule::parse(V_RULE_TEXT).expect("v rule"),
-    });
+/// A new player at `at`, with the direction marker bound to them.
+fn spawn_player(commands: &mut Commands, at: IVec2, cell_count: usize) -> Entity {
+    let player = commands
+        .spawn((
+            Active,
+            Collider,
+            Pos(at),
+            (
+                Speed::default(),
+                MoveCommand::default(),
+                MoveIntent::default(),
+                PendingPos::default(),
+                PrevPos(at),
+            ),
+            Glyph::new('@', 1, WHITE),
+            Player(0),
+            Inventory::default(),
+            Tokens::new(1),
+            Friction(1),
+            Facing::default(),
+            DirectionBasedOnSpeed,
+            VisualSensor { radius: 16 },
+            PlayerView::with_radius(16),
+            LightSource {
+                radius: 16,
+                kind: LightKind::None,
+                value: 32,
+            },
+            (
+                initial_fov(cell_count),
+                VisibilityMap {
+                    revision: u64::MAX,
+                    data: vec![Vis::empty(); cell_count],
+                },
+            ),
+        ))
+        .id();
+    // Bound 'i' direction marker, one step ahead of the player
+    // (the original light source belongs to the player).
+    commands.spawn((
+        Active,
+        BoundTo {
+            parent: player,
+            offset: IVec2::new(1, 0),
+            offset_dir: IVec2::new(1, 0),
+        },
+        Pos(at + IVec2::X),
+        PrevPos(at + IVec2::X),
+        Facing::default(),
+        DirectionTile {
+            rule: "direction_triangle_rule".to_string(),
+        },
+        Glyph::new('i', 0, WHITE),
+    ));
+    player
 }
 
 /// Steps of detour an enemy takes rather than queue behind another actor.

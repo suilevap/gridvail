@@ -134,6 +134,7 @@ impl Plugin for TextRendererPlugin {
                     place_cells,
                     smooth_turning_glyphs,
                     flush_cells,
+                    drop_gone_sprites,
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
                     update_hud,
@@ -329,6 +330,26 @@ fn object_sprites_missing(buffers: Res<RenderBuffers>, sprites: Res<ObjectSprite
         .objects
         .iter()
         .any(|object| !sprites.0.contains_key(&(object.entity, object.instance)))
+}
+
+/// Despawns the sprites of objects that are gone (a wall that sank, a map
+/// that was left), so they do not pile up.
+fn drop_gone_sprites(
+    mut commands: Commands,
+    mut gone: RemovedComponents<Glyph>,
+    mut sprites: ResMut<ObjectSprites>,
+) {
+    let gone: bevy::ecs::entity::EntityHashSet = gone.read().collect();
+    if gone.is_empty() {
+        return;
+    }
+    sprites.0.retain(|&(object, _), &mut sprite| {
+        let keep = !gone.contains(&object);
+        if !keep {
+            commands.entity(sprite).despawn();
+        }
+        keep
+    });
 }
 
 /// Spawns sprites for newly seen objects. It is exclusive and runs only when

@@ -87,6 +87,7 @@ impl Plugin for ExtrudedWallRendererPlugin {
                     move_camera,
                     follow_wall_changes,
                     sync_walls,
+                    resize_floor.run_if(resource_changed::<MapGrid>),
                     sync_floors,
                     project_text_cells,
                 )
@@ -108,6 +109,9 @@ struct WallMeshes(Vec<Handle<Mesh>>);
 struct FloorTexture {
     handle: Handle<Image>,
     pixels: Vec<u8>,
+    /// The floor slab, and the map size it was built for.
+    entity: Entity,
+    size: IVec2,
 }
 
 /// Perspective camera placement derived from the view camera.
@@ -199,6 +203,50 @@ fn setup(
             })
         })
         .collect();
+    let floor = spawn_floor(
+        &mut commands,
+        &grid,
+        &mut meshes,
+        &mut materials,
+        &mut images,
+    );
+
+    let mut extruded = ExtrudedWalls {
+        symbols: EntityHashMap::default(),
+        meshes: EntityHashMap::default(),
+    };
+    for (source, position, glyph) in &walls {
+        let Some(mask) = mask_of(&rules, glyph.ch) else {
+            continue;
+        };
+        let mesh = commands
+            .spawn(extruded_wall(
+                source,
+                glyph.ch,
+                &wall_meshes[mask],
+                &wall_materials[0],
+                grid_to_world(position.0, grid.width, grid.height),
+            ))
+            .id();
+        extruded.symbols.insert(source, glyph.ch);
+        extruded.meshes.insert(source, mesh);
+    }
+
+    commands.insert_resource(extruded);
+    commands.insert_resource(WallMeshes(wall_meshes));
+    commands.insert_resource(WallMaterials(wall_materials));
+    commands.insert_resource(floor);
+}
+
+/// The floor under a map of `grid`'s size: one slab, lit through a texture
+/// with a pixel per map cell.
+fn spawn_floor(
+    commands: &mut Commands,
+    grid: &MapGrid,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<DungeonMaterial>,
+    images: &mut Assets<Image>,
+) -> FloorTexture {
     let pixels = vec![0; (grid.width * grid.height) as usize * 4];
     let mut light_image = Image::new_fill(
         Extent3d {
@@ -225,44 +273,47 @@ fn setup(
         ),
         alpha_mode: AlphaMode::Blend,
     });
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(
-            grid.width as f32 * CELL_SIZE.x,
-            grid.height as f32 * CELL_SIZE.y,
-            FLOOR_DEPTH,
-        ))),
-        MeshMaterial3d(floor_material),
-        Transform::from_xyz(0.0, 0.0, -(FLOOR_DEPTH * 0.5 + 0.05)),
-    ));
+    let entity = commands
+        .spawn((
+            Mesh3d(meshes.add(Cuboid::new(
+                grid.width as f32 * CELL_SIZE.x,
+                grid.height as f32 * CELL_SIZE.y,
+                FLOOR_DEPTH,
+            ))),
+            MeshMaterial3d(floor_material),
+            Transform::from_xyz(0.0, 0.0, -(FLOOR_DEPTH * 0.5 + 0.05)),
+        ))
+        .id();
 
-    let mut extruded = ExtrudedWalls {
-        symbols: EntityHashMap::default(),
-        meshes: EntityHashMap::default(),
-    };
-    for (source, position, glyph) in &walls {
-        let Some(mask) = mask_of(&rules, glyph.ch) else {
-            continue;
-        };
-        let mesh = commands
-            .spawn(extruded_wall(
-                source,
-                glyph.ch,
-                &wall_meshes[mask],
-                &wall_materials[0],
-                grid_to_world(position.0, grid.width, grid.height),
-            ))
-            .id();
-        extruded.symbols.insert(source, glyph.ch);
-        extruded.meshes.insert(source, mesh);
-    }
-
-    commands.insert_resource(extruded);
-    commands.insert_resource(WallMeshes(wall_meshes));
-    commands.insert_resource(WallMaterials(wall_materials));
-    commands.insert_resource(FloorTexture {
+    FloorTexture {
         handle: light_map,
         pixels,
-    });
+        entity,
+        size: IVec2::new(grid.width, grid.height),
+    }
+}
+
+/// Builds the floor again for a map of another size (another map loaded).
+fn resize_floor(
+    mut commands: Commands,
+    grid: Res<MapGrid>,
+    mut floor: ResMut<FloorTexture>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<DungeonMaterial>>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    if floor.size == IVec2::new(grid.width, grid.height) {
+        return;
+    }
+    commands.entity(floor.entity).despawn();
+    images.remove(&floor.handle);
+    *floor = spawn_floor(
+        &mut commands,
+        &grid,
+        &mut meshes,
+        &mut materials,
+        &mut images,
+    );
 }
 
 /// Follows the view camera; the mouse wheel asks the operator to zoom.
@@ -446,7 +497,7 @@ fn sync_floors(
         .and_then(|image| image.data.as_deref())
         != Some(floor.pixels.as_slice());
     if needs_upload {
-        let FloorTexture { handle, pixels } = &*floor;
+        let FloorTexture { handle, pixels, .. } = &*floor;
         if let Some(mut image) = images.get_mut(handle) {
             if let Some(data) = image.data.as_mut() {
                 data.copy_from_slice(pixels);
