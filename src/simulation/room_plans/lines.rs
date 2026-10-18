@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use bevy::prelude::*;
 
 use super::{RoomPlanner, SwitchContext, SwitchPlan, WallMove};
@@ -18,9 +20,21 @@ pub struct LineSlides;
 
 impl RoomPlanner for LineSlides {
     fn plan(&self, switch: &SwitchContext) -> SwitchPlan {
-        let (from, to) = (switch.from, switch.to);
-        let removed: Vec<IVec2> = switch.removed().collect();
-        let added: Vec<IVec2> = switch.added().collect();
+        // Sets: a room may be the whole map (the intro).
+        let from: HashSet<IVec2> = switch.from.iter().copied().collect();
+        let to: HashSet<IVec2> = switch.to.iter().copied().collect();
+        let removed: Vec<IVec2> = switch
+            .from
+            .iter()
+            .copied()
+            .filter(|p| !to.contains(p))
+            .collect();
+        let added: Vec<IVec2> = switch
+            .to
+            .iter()
+            .copied()
+            .filter(|p| !from.contains(p))
+            .collect();
         let both = |p: IVec2| from.contains(&p) && to.contains(&p);
         let floor = |p: IVec2| !from.contains(&p) && !to.contains(&p) && switch.is_free(p);
 
@@ -53,7 +67,7 @@ impl RoomPlanner for LineSlides {
         candidates.sort_by_key(|(length, _)| *length);
 
         let mut plan = SwitchPlan::default();
-        let mut used: Vec<IVec2> = Vec::new();
+        let mut used: HashSet<IVec2> = HashSet::new();
         for (_, moves) in candidates {
             let start = moves[0].0;
             let end = moves[moves.len() - 1].1;
