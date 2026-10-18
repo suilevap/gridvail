@@ -1,9 +1,9 @@
 use bevy::prelude::*;
 
-use super::{DynamicLight, LightEdge, LightEdges};
+use super::DynamicLight;
 use crate::foundation::portal::CellTransform;
 use crate::lighting::{
-    dimmed, dimmed_rgb, light_to_palette, light_to_rgb, point_lit, DARK_MAGENTA, DARK_RED, MAGENTA,
+    dimmed, dimmed_rgb, light_to_palette, light_to_rgb, DARK_MAGENTA, DARK_RED, MAGENTA,
 };
 use crate::model::*;
 
@@ -35,10 +35,10 @@ pub fn compose_frame(
     grid: Res<MapGrid>,
     dynamic: Res<DynamicLight>,
     style: Option<Res<LightStyle>>,
-    (floor_style, light_edges, floor_light): (
+    (floor_style, floor_light, lamps): (
         Option<Res<FloorStyle>>,
-        Option<Res<LightEdges>>,
         Option<ResMut<FloorLight>>,
+        Query<(&Pos, Option<&AnimatedPos>, &LightSource)>,
     ),
     reveal: Option<Res<RevealAll>>,
     viewers: Query<(&Pos, &VisibilityMap, Option<&PlayerView>), With<Player>>,
@@ -226,93 +226,84 @@ pub fn compose_frame(
 
     let shader_floor = floor_style.is_some_and(|style| *style != FloorStyle::Text);
     if let Some(mut floor) = floor_light.filter(|_| shader_floor) {
-        let edge_at = |p: IVec2| {
+        let direct_at = |p: IVec2| {
             grid.idx(p)
-                .and_then(|i| light_edges.as_ref()?.cells.get(i))
+                .and_then(|i| dynamic.direct.get(i))
                 .copied()
                 .unwrap_or_default()
         };
-        fill_floor(buffers, &light_at, &edge_at, &mut floor);
+        fill_floor(buffers, &grid, &light_at, &direct_at, &mut floor);
+        floor.lamps.clear();
+        let window = Rect::from_corners(
+            buffers.origin.as_vec2(),
+            (buffers.origin + IVec2::new(buffers.width, buffers.height)).as_vec2(),
+        );
+        floor.lamps.extend(
+            lamps
+                .iter()
+                .map(|(pos, shown, light)| FloorLamp {
+                    position: shown.map_or(pos.0.as_vec2(), |shown| shown.position),
+                    radius: light.radius as f32,
+                    value: light.value as f32,
+                    kind: light.kind,
+                })
+                .filter(|lamp| {
+                    let nearest = lamp.position.clamp(window.min, window.max);
+                    nearest.distance(lamp.position) <= lamp.radius + 1.0
+                }),
+        );
     }
 }
 
-/// Fills `floor` with the light of the frame's floor cells, finer than the
-/// grid: on the edge of a shadow, the texels of the part the brightest
-/// light reaches get its full light and the rest go without it. A cell seen
-/// through a portal turns that part as the portal turns what it shows.
+/// Fills `floor` for the frame: every cell's light and whether it blocks
+/// light, and which floor the shader lights itself, a pixel at a time from
+/// the lamps: floor seen directly. Its own light then only adds what
+/// bounced onto it (`light_at` brighter than `direct_at`).
 fn fill_floor(
     buffers: &RenderBuffers,
+    grid: &MapGrid,
     light_at: &impl Fn(IVec2) -> LightCell,
-    edge_at: &impl Fn(IVec2) -> LightEdge,
+    direct_at: &impl Fn(IVec2) -> LightCell,
     floor: &mut FloorLight,
 ) {
-    const TEXELS: usize = FloorLight::TEXELS;
     floor.origin = buffers.origin;
     floor.cells = IVec2::new(buffers.width, buffers.height);
-    let row = buffers.width as usize * TEXELS;
-    floor.data.clear();
-    floor
-        .data
-        .resize(row * buffers.height as usize * TEXELS * 4, 0);
-    let texel = |light: LightCell, remembered: bool| {
+    let cells = (buffers.width * buffers.height) as usize;
+    floor.light.clear();
+    floor.light.resize(cells * 4, 0);
+    floor.info.clear();
+    floor.info.resize(cells * 4, 0);
+    for index in 0..buffers.ground.len() {
+        let position = buffers.pos_of(index);
+        let local = (position - buffers.origin).as_uvec2();
+        let at = (local.y * buffers.width as u32 + local.x) as usize * 4;
+        let info = &mut floor.info[at..at + 4];
+        info[0] = if grid.blocks_vision(position) { 255 } else { 0 };
+        if buffers.ground[index].ch != '.' {
+            continue;
+        }
+        let (light, remembered) = match buffers.seen[index] {
+            Some(seen) => {
+                if seen.transform.is_identity() {
+                    let (light, direct) = (light_at(seen.world), direct_at(seen.world));
+                    info[1] = 255;
+                    info[2] = if light.value > direct.value {
+                        light.value
+                    } else {
+                        0
+                    };
+                }
+                (light_at(seen.world), false)
+            }
+            None => (light_at(position), true),
+        };
         let rgb = light_to_rgb(&light);
         let (rgb, value) = if remembered {
             (dimmed_rgb(rgb), light.value / 2)
         } else {
             (rgb, light.value)
         };
-        [rgb[0], rgb[1], rgb[2], value.max(1)]
-    };
-    for index in 0..buffers.ground.len() {
-        if buffers.ground[index].ch != '.' {
-            continue;
-        }
-        let local = (buffers.pos_of(index) - buffers.origin).as_uvec2();
-        let (lit, shadowed, edge, transform) = match buffers.seen[index] {
-            Some(seen) => {
-                let light = light_at(seen.world);
-                let edge = edge_at(seen.world);
-                if edge.is_edge() {
-                    let without = (light.value as f32 - edge.amount).max(1.0);
-                    let lit = LightCell {
-                        value: (without + edge.reach).min(255.0) as u8,
-                        ..light
-                    };
-                    let shadowed = LightCell {
-                        value: without as u8,
-                        ..light
-                    };
-                    (
-                        texel(lit, false),
-                        texel(shadowed, false),
-                        Some(edge.lit),
-                        seen.transform,
-                    )
-                } else {
-                    let all = texel(light, false);
-                    (all, all, None, seen.transform)
-                }
-            }
-            None => {
-                let all = texel(light_at(buffers.pos_of(index)), true);
-                (all, all, None, CellTransform::IDENTITY)
-            }
-        };
-        for y in 0..TEXELS {
-            for x in 0..TEXELS {
-                let reached = edge.is_none_or(|points| {
-                    // The point of the map cell this texel shows.
-                    let shown = (Vec2::new(x as f32, y as f32) + 0.5) / TEXELS as f32 - 0.5;
-                    let point = ((transform.turn_vec(shown) + 0.5) * TEXELS as f32)
-                        .floor()
-                        .clamp(Vec2::ZERO, Vec2::splat(TEXELS as f32 - 1.0));
-                    point_lit(points, point.x as usize, point.y as usize)
-                });
-                let at =
-                    ((local.y as usize * TEXELS + y) * row + local.x as usize * TEXELS + x) * 4;
-                floor.data[at..at + 4].copy_from_slice(if reached { &lit } else { &shadowed });
-            }
-        }
+        floor.light[at..at + 4].copy_from_slice(&[rgb[0], rgb[1], rgb[2], value.max(1)]);
     }
 }
 

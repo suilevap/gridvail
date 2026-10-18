@@ -628,26 +628,22 @@ fn portals_show_their_threshold_and_their_walls() {
 }
 
 #[test]
-fn the_floor_light_splits_a_shadow_edge_cell_by_its_lit_points() {
+fn the_floor_light_marks_what_the_shader_lights_and_what_bounced() {
     let mut app = test_app::headless();
-    let edge = IVec2::new(1, 0);
     let mut light = DynamicLight::sized(64);
+    // Cell 1 is lit by a lamp; cell 2 only by light bounced onto it.
+    light.direct = vec![LightCell::default(); 64];
     light.data[1] = LightCell {
-        value: 60,
+        value: 120,
         kind: LightKind::Fire,
     };
-    let mut edges = LightEdges::default();
-    edges.cells = vec![LightEdge::default(); 64];
-    // The brightest light gives the cell 50 of the 100 it would give it
-    // seen in full, reaching its top two rows of points.
-    edges.cells[1] = LightEdge {
-        amount: 50.0,
-        reach: 100.0,
-        lit: 0x00FF,
+    light.direct[1] = light.data[1];
+    light.data[2] = LightCell {
+        value: 30,
+        kind: LightKind::Fire,
     };
     app.insert_resource(light)
-        .insert_resource(edges)
-        .insert_resource(FloorStyle::Dots)
+        .insert_resource(FloorStyle::Dither)
         .insert_resource(FloorLight::default())
         .insert_resource(RenderBuffers::new(8, 8));
     let seen = Vis::VISIBLE | Vis::KNOWN;
@@ -655,23 +651,35 @@ fn the_floor_light_splits_a_shadow_edge_cell_by_its_lit_points() {
         Player(0),
         Pos(IVec2::ZERO),
         Speed::default(),
-        visibility(&[(IVec2::ZERO, seen), (edge, seen)]),
+        visibility(&[
+            (IVec2::ZERO, seen),
+            (IVec2::new(1, 0), seen),
+            (IVec2::new(2, 0), seen),
+        ]),
+    ));
+    app.world_mut().spawn((
+        Pos(IVec2::new(3, 0)),
+        Glyph::new('#', 1, GRAY),
+        AnimatedPos::at(IVec2::new(3, 0)),
+    ));
+    app.world_mut().spawn((
+        Pos(IVec2::new(5, 5)),
+        LightSource {
+            radius: 4,
+            kind: LightKind::Fire,
+            value: 196,
+        },
     ));
     app.world_mut().run_system_once(compose_frame).unwrap();
 
     let floor = app.world().resource::<FloorLight>();
-    let texels = FloorLight::TEXELS;
-    let row = 8 * texels;
-    let brightness = |x: usize, y: usize| floor.data[(y * row + x) * 4 + 3];
-    let left = edge.x as usize * texels;
-    assert_eq!(brightness(left, 0), 110, "lit: the rest and its full light");
-    assert_eq!(brightness(left + 3, 1), 110);
-    assert_eq!(brightness(left, 2), 10, "shaded: only the rest");
-    assert_eq!(brightness(left + 3, 3), 10);
-    assert_eq!(brightness(0, 0), 1, "the player's cell: unlit floor");
-    assert_eq!(
-        brightness(2 * texels, 0),
-        0,
-        "no floor where nothing is seen"
-    );
+    let info = |x: usize| &floor.info[x * 4..x * 4 + 4];
+    let brightness = |x: usize| floor.light[x * 4 + 3];
+    assert_eq!(info(1)[1], 255, "floor seen directly is lit by the shader");
+    assert_eq!(info(1)[2], 0, "with nothing bounced onto it");
+    assert_eq!(info(2)[2], 30, "light bounced onto a cell");
+    assert_eq!(brightness(1), 120, "every cell keeps its own light");
+    assert_eq!(brightness(4), 0, "no floor where nothing is seen");
+    assert_eq!(floor.lamps.len(), 1);
+    assert_eq!(floor.lamps[0].position, Vec2::new(5.0, 5.0));
 }

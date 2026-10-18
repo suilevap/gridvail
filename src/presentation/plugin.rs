@@ -5,7 +5,7 @@ use crate::model::{
 };
 use crate::schedule::{GamePhase, StartupPhase};
 
-use super::{compose_frame, render_light_layers, DynamicLight, LightEdges};
+use super::{compose_frame, render_light_layers, DynamicLight};
 
 /// Light-map processing and composition of a renderer-neutral cell frame.
 pub struct PresentationPlugin;
@@ -17,7 +17,6 @@ impl Plugin for PresentationPlugin {
             .init_resource::<LightStyle>()
             .init_resource::<FloorStyle>()
             .init_resource::<FloorLight>()
-            .init_resource::<LightEdges>()
             .add_systems(Startup, setup_buffers.in_set(StartupPhase::Presentation))
             .add_systems(Update, render_light_layers.in_set(GamePhase::Lighting))
             .add_systems(

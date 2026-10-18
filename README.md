@@ -156,10 +156,13 @@ next to this file.
   so a light fades into the dark and into other lights. The palette stays
   the default and is what the agent API and the 3D renderer still use.
 - Floor shader (an addition, a prototype, opt-in with `--floor` or V in
-  game): instead of a dot per cell, a shader draws the floor from light
-  finer than the grid, 4 by 4 a cell. On a shadow's edge (a cell a light
-  reaches only in part) each of 16 points is tested against the walls, so
-  shadows keep their shape inside cells. Styles: `dots` (four dots a cell,
+  game): instead of a dot per cell, a shader draws the floor. Floor seen
+  directly is lit a pixel at a time: a ray from each nearby light to the
+  pixel through the cells that block light, with the game's falloff, so
+  shadows have exact edges, light fades smoothly inside cells, a moving
+  light's shadows glide with it, fire flickers, electricity buzzes and
+  acid pulses. Bounced light, remembered cells and cells seen through a
+  portal show their cell's light. Styles: `dots` (four dots a cell,
   larger where brighter), `dither` (ordered dithering), `scanlines` (light
   on every third row, a band rolling down) and `ridges` (lines lifted by
   the light under them, swaying where lit); `text` is the dot per cell.
@@ -259,7 +262,7 @@ cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --map assets/maps/bounce.txt --gi  # bounced light; G toggles it in game
 cargo run -- --light smooth     # smooth light colours; L toggles them in game
 cargo run -- --map assets/maps/shadows.txt --floor ridges  # the floor shader; V cycles its styles
-cargo test --workspace   # 259 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 257 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::LightCell;
+use super::{LightCell, LightKind};
 use crate::foundation::portal::CellTransform;
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -222,22 +222,37 @@ pub fn is_hex_pos(p: IVec2) -> bool {
     (p.x + p.y % 2) % 2 == 0
 }
 
-/// The floor's light for a floor shader, finer than the grid: over the
-/// frame's window, [`FloorLight::TEXELS`] by [`FloorLight::TEXELS`] texels
-/// a cell, row by row, each an sRGB colour and a brightness (alpha). A
-/// texel with no brightness has no floor to draw: a wall, an object's cell
-/// or a cell never seen. Remembered cells are dimmer.
+/// What a floor shader needs to light the floor a pixel at a time, over
+/// the frame's window, row by row a cell at a time.
+///
+/// Floor seen directly is lit by the shader from `lamps`, each a ray to
+/// every pixel through the cells that block light, so shadows have exact
+/// edges and light fades smoothly inside cells. Other floor (remembered,
+/// or seen through a portal) shows its cell's light from `light`.
 #[derive(Resource, Debug, Default)]
 pub struct FloorLight {
     /// The map position of the window's top-left cell.
     pub origin: IVec2,
     /// The window's size in cells.
     pub cells: IVec2,
-    /// RGBA8 texels, `cells * TEXELS` of them.
-    pub data: Vec<u8>,
+    /// Per cell, its light as sRGB colour and brightness (alpha); no
+    /// brightness where there is no floor to draw: a wall, an object's cell
+    /// or a cell never seen. Remembered cells are dimmer.
+    pub light: Vec<u8>,
+    /// Per cell: whether it blocks light (red), whether the shader lights
+    /// it from `lamps` (green) and the light bounced onto it (blue).
+    pub info: Vec<u8>,
+    /// The lights that may reach the window.
+    pub lamps: Vec<FloorLamp>,
 }
 
-impl FloorLight {
-    /// Texels along each side of a cell.
-    pub const TEXELS: usize = 4;
+/// A light as a floor shader casts it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FloorLamp {
+    /// Where it is shown on the map, in fractional cells: a moving light
+    /// glides with its holder.
+    pub position: Vec2,
+    pub radius: f32,
+    pub value: f32,
+    pub kind: LightKind,
 }
