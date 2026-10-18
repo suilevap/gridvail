@@ -18,7 +18,7 @@ use bevy::{
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::ai::PortalPolicy;
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
-use pav_ecs_game_bevy_port::app::{GamePlugin, LoadMap, MapText};
+use pav_ecs_game_bevy_port::app::{CurrentMap, GamePlugin, LoadMap, MapText, BUNDLED_MAPS};
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
@@ -67,12 +67,7 @@ fn main() -> AppExit {
         })
         .set(ImagePlugin::default_nearest());
     let mut app = App::new();
-    let bundled = options
-        .map
-        .as_deref()
-        .map_or(bundled_index("map1"), bundled_index);
-    app.insert_resource(BundledMap(bundled))
-        .add_systems(Update, cycle_maps);
+    app.add_systems(Update, cycle_maps);
     if let Some(path) = options.map {
         #[cfg(not(target_family = "wasm"))]
         {
@@ -348,24 +343,11 @@ impl Options {
 }
 
 // Generated from assets/maps; no per-map list to maintain.
-include!(concat!(env!("OUT_DIR"), "/bundled_maps.rs"));
-
-/// Where `path` (a bundled map's name, file name or path) is among the
-/// bundled maps.
-fn bundled_index(path: &str) -> Option<usize> {
-    let name = path.strip_prefix("assets/maps/").unwrap_or(path);
-    let name = name.strip_suffix(".txt").unwrap_or(name);
-    BUNDLED_MAPS.iter().position(|(map, _)| *map == name)
-}
-
-/// The bundled map being played, if it is one; `[` and `]` step through them.
-#[derive(Resource, Clone, Copy, Debug)]
-struct BundledMap(Option<usize>);
-
-/// `[` and `]` play the previous and next bundled map.
+/// `[` and `]` play the previous and next bundled map, from the one being
+/// played (the first, after a map that is not bundled).
 fn cycle_maps(
     keys: Res<ButtonInput<KeyCode>>,
-    mut current: ResMut<BundledMap>,
+    current: Option<Res<CurrentMap>>,
     mut load: MessageWriter<LoadMap>,
 ) {
     let count = BUNDLED_MAPS.len();
@@ -376,15 +358,18 @@ fn cycle_maps(
     } else {
         return;
     };
-    let next = current.0.map_or(0, |index| (index + step) % count);
-    current.0 = Some(next);
+    let index = current.and_then(|current| {
+        BUNDLED_MAPS
+            .iter()
+            .position(|&(_, text)| text == current.text)
+    });
+    let next = index.map_or(0, |index| (index + step) % count);
     load.write(LoadMap(BUNDLED_MAPS[next].1));
 }
 
 #[cfg(any(target_family = "wasm", test))]
 fn bundled_map(path: &str) -> &'static str {
-    bundled_index(path)
-        .map(|index| BUNDLED_MAPS[index].1)
+    pav_ecs_game_bevy_port::app::bundled_map(path)
         .unwrap_or_else(|| panic!("unknown bundled map: {path}"))
 }
 

@@ -200,6 +200,15 @@ impl Default for TokenTimer {
     }
 }
 
+/// A floor cell that leads to the next map: the player stepping onto it
+/// leaves for the map its own names (`@next`).
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Exit;
+
+impl Exit {
+    pub const GLYPH: char = '>';
+}
+
 /// Decides when a completed turn may refill action tokens.
 ///
 /// The simulation itself never waits: without an animation step the next
