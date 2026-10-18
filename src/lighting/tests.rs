@@ -219,15 +219,20 @@ fn shadow_edges_light_only_the_points_a_light_sees() {
 }
 
 #[test]
-fn shadow_edge_glyphs_show_the_lit_part() {
-    assert_eq!(lit_blocks(FULLY_LIT), '█');
-    assert_eq!(lit_blocks(0x03), '▘', "dots 1 and 2: the top left");
-    assert_eq!(lit_blocks(0xA0), '▗', "dots 6 and 8: the bottom right");
-    assert_eq!(lit_dot(0x01), '⠁');
-    assert_eq!(
-        lit_dot(0x08 | 0x10 | 0x80),
-        '⠐',
-        "dots 4, 5 and 8: their middle is nearest dot 5"
+fn the_points_of_a_cell_go_row_by_row() {
+    use bevy::prelude::IVec2;
+    // A wall straight above a cell, the light straight above that: the
+    // light reaches no point of the cell. With the light off to the right,
+    // the wall shades all but the cell's bottom right.
+    let above = |p: IVec2| p == IVec2::new(0, 1);
+    assert_eq!(lit_points(IVec2::ZERO, IVec2::new(0, 2), &above), 0);
+    let lit = lit_points(IVec2::new(2, 0), IVec2::new(1, 3), &|p| {
+        p == IVec2::new(1, 2)
+    });
+    assert!(
+        point_lit(lit, POINTS - 1, POINTS - 1),
+        "the bottom right point: {lit:#018b}"
     );
-    assert_eq!(lit_dots(FULLY_LIT), '⢕', "a checkerboard of four");
+    assert!(!point_lit(lit, 0, 0), "not the top left one");
+    assert_eq!(lit.count_ones(), 2, "the bottom two of the right column");
 }

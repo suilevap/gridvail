@@ -22,12 +22,12 @@ use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
-    AnimatedPos, BounceLight, CompassMode, LightStyle, Player, Pos, RevealAll, SettingsMenu,
-    ShadowEdges, ViewCamera, Vis, VisibilityMap,
+    AnimatedPos, BounceLight, CompassMode, FloorStyle, LightStyle, Player, Pos, RevealAll,
+    SettingsMenu, ViewCamera, Vis, VisibilityMap,
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
-use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
+use pav_ecs_game_bevy_port::rendering::{FloorShaderPlugin, TextRendererPlugin};
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
 use pav_ecs_game_bevy_port::simulation::room_plans::RoomPlanners;
 use pav_ecs_game_bevy_port::touch::TouchControlPlugin;
@@ -85,7 +85,7 @@ fn main() -> AppExit {
         })
         .insert_resource(RoomPlanners::default().with_default(&options.room_planner))
         .insert_resource(options.light_style)
-        .insert_resource(options.shadow_edges)
+        .insert_resource(options.floor_style)
         .insert_resource(BounceLight {
             enabled: options.bounce_light,
             ..default()
@@ -95,6 +95,7 @@ fn main() -> AppExit {
         .add_plugins((
             ObjectAnimationPlugin,
             TextRendererPlugin,
+            FloorShaderPlugin,
             TouchControlPlugin,
         ));
     if renderer == Renderer::Walls3d {
@@ -184,8 +185,8 @@ struct Options {
     bounce_light: bool,
     /// How light colours cells.
     light_style: LightStyle,
-    /// How shadow edges show inside cells.
-    shadow_edges: ShadowEdges,
+    /// How the floor is drawn.
+    floor_style: FloorStyle,
     /// What the view does through turning portals.
     portal_turn: PortalTurn,
     /// When the compass shows.
@@ -253,7 +254,7 @@ impl Options {
         let mut enemy_portals = false;
         let mut bounce_light = false;
         let mut light_style = None;
-        let mut shadow_edges = None;
+        let mut floor_style = None;
         let mut portal_turn = None;
         let mut compass = None;
         let mut room_planner = None;
@@ -297,12 +298,11 @@ impl Options {
                     LightStyle::from_name(&name).expect("--light must be palette or smooth"),
                 );
             },
-            "--edges": value if shadow_edges.is_none() => {
-                let name = args.next().expect("--edges requires a style");
-                shadow_edges = Some(
-                    ShadowEdges::from_name(&name)
-                        .expect("--edges must be off, dots, offset or blocks"),
-                );
+            "--floor": value if floor_style.is_none() => {
+                let name = args.next().expect("--floor requires a style");
+                floor_style = Some(FloorStyle::from_name(&name).expect(
+                    "--floor must be text, dots, dither, scanlines or ridges",
+                ));
             },
             "--portal-view": value if portal_turn.is_none() => {
                 let name = args.next().expect("--portal-view requires turn or north");
@@ -368,7 +368,7 @@ impl Options {
             enemy_portals,
             bounce_light,
             light_style: light_style.unwrap_or_default(),
-            shadow_edges: shadow_edges.unwrap_or_default(),
+            floor_style: floor_style.unwrap_or_default(),
             portal_turn: portal_turn.unwrap_or_default(),
             compass: compass.unwrap_or_default(),
             room_planner: room_planner.unwrap_or(RoomPlanners::default().default),

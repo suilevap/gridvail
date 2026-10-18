@@ -131,7 +131,7 @@ impl Plugin for TextRendererPlugin {
                     cycle_motion,
                     toggle_bounce_light,
                     cycle_light_style,
-                    cycle_shadow_edges,
+                    cycle_floor_style,
                     fit_frame_to_window,
                     match_cells_to_frame,
                     place_cells,
@@ -298,18 +298,25 @@ pub(super) fn setup(
 fn flush_cells(
     buffers: Res<RenderBuffers>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
+    floor_style: Option<Res<FloorStyle>>,
     mut stats: ResMut<TextRenderStats>,
     mut cells: Query<(&MapCell, &mut Text2d, &mut TextColor)>,
 ) {
     stats.changed_cells = 0;
+    // A floor shader draws the floor instead of its dots; switching between
+    // them redraws every cell.
+    let shader_floor = floor_style
+        .as_ref()
+        .is_some_and(|style| **style != FloorStyle::Text);
+    let restyled = floor_style.as_ref().is_some_and(|style| style.is_changed());
     for (cell, mut text, mut color) in cells.iter_mut() {
         let index = cell.0;
-        if buffers.ground[index] != buffers.previous_ground[index] {
+        if restyled || buffers.ground[index] != buffers.previous_ground[index] {
             stats.changed_cells += 1;
             let cell = buffers.ground[index];
             text.0.clear();
             // The perspective backend draws the floor as a mesh.
-            let replaced_by_mesh = extruded_walls.is_some() && cell.ch == '.';
+            let replaced_by_mesh = (extruded_walls.is_some() || shader_floor) && cell.ch == '.';
             if cell.ch == '\0' || replaced_by_mesh {
                 text.0.push(' ');
             } else {
@@ -532,18 +539,18 @@ fn cycle_light_style(
     }
 }
 
-/// V switches how shadow edges are drawn.
-fn cycle_shadow_edges(
+/// V switches how the floor is drawn.
+fn cycle_floor_style(
     keys: Option<Res<ButtonInput<KeyCode>>>,
     menu: Res<SettingsMenu>,
-    edges: Option<ResMut<ShadowEdges>>,
+    style: Option<ResMut<FloorStyle>>,
 ) {
     if menu.open {
         return;
     }
-    if let Some(mut edges) = edges {
+    if let Some(mut style) = style {
         if keys.is_some_and(|keys| keys.just_pressed(KeyCode::KeyV)) {
-            *edges = edges.next();
+            *style = style.next();
         }
     }
 }
@@ -647,7 +654,7 @@ fn update_hud(
     motion: Option<Res<MotionStyle>>,
     bounce_light: Option<Res<BounceLight>>,
     light_style: Option<Res<LightStyle>>,
-    shadow_edges: Option<Res<ShadowEdges>>,
+    floor_style: Option<Res<FloorStyle>>,
     operator: Option<Res<CameraOperator>>,
     scheme: Option<Res<ControlScheme>>,
     mut hud: Query<&mut Text, With<HudText>>,
@@ -672,7 +679,7 @@ fn update_hud(
         match scheme {
             ControlScheme::Keyboard => writeln!(
                 text.0,
-                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | G light: {} | L colours: {} | V edges: {} | Esc settings",
+                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | G light: {} | L colours: {} | V floor: {} | Esc settings",
                 if extruded_walls.is_some() {
                     " | wheel zoom"
                 } else {
@@ -685,7 +692,7 @@ fn update_hud(
                     "direct"
                 },
                 light_style.as_ref().map_or("palette", |style| style.name()),
-                shadow_edges.as_ref().map_or("off", |edges| edges.name()),
+                floor_style.as_ref().map_or("text", |style| style.name()),
             ),
             ControlScheme::Touch => writeln!(
                 text.0,

@@ -626,3 +626,52 @@ fn portals_show_their_threshold_and_their_walls() {
     assert_eq!(color_of(walls[2]), Some(PORTAL_COLOR));
     assert_eq!(color_of(walls[0]), None, "looked through, not drawn");
 }
+
+#[test]
+fn the_floor_light_splits_a_shadow_edge_cell_by_its_lit_points() {
+    let mut app = test_app::headless();
+    let edge = IVec2::new(1, 0);
+    let mut light = DynamicLight::sized(64);
+    light.data[1] = LightCell {
+        value: 60,
+        kind: LightKind::Fire,
+    };
+    let mut edges = LightEdges::default();
+    edges.cells = vec![LightEdge::default(); 64];
+    // The brightest light gives the cell 50 of the 100 it would give it
+    // seen in full, reaching its top two rows of points.
+    edges.cells[1] = LightEdge {
+        amount: 50.0,
+        reach: 100.0,
+        lit: 0x00FF,
+    };
+    app.insert_resource(light)
+        .insert_resource(edges)
+        .insert_resource(FloorStyle::Dots)
+        .insert_resource(FloorLight::default())
+        .insert_resource(RenderBuffers::new(8, 8));
+    let seen = Vis::VISIBLE | Vis::KNOWN;
+    app.world_mut().spawn((
+        Player(0),
+        Pos(IVec2::ZERO),
+        Speed::default(),
+        visibility(&[(IVec2::ZERO, seen), (edge, seen)]),
+    ));
+    app.world_mut().run_system_once(compose_frame).unwrap();
+
+    let floor = app.world().resource::<FloorLight>();
+    let texels = FloorLight::TEXELS;
+    let row = 8 * texels;
+    let brightness = |x: usize, y: usize| floor.data[(y * row + x) * 4 + 3];
+    let left = edge.x as usize * texels;
+    assert_eq!(brightness(left, 0), 110, "lit: the rest and its full light");
+    assert_eq!(brightness(left + 3, 1), 110);
+    assert_eq!(brightness(left, 2), 10, "shaded: only the rest");
+    assert_eq!(brightness(left + 3, 3), 10);
+    assert_eq!(brightness(0, 0), 1, "the player's cell: unlit floor");
+    assert_eq!(
+        brightness(2 * texels, 0),
+        0,
+        "no floor where nothing is seen"
+    );
+}

@@ -1,10 +1,9 @@
 use bevy::prelude::*;
 
-use super::{DynamicLight, LightEdges};
+use super::{DynamicLight, LightEdge, LightEdges};
 use crate::foundation::portal::CellTransform;
 use crate::lighting::{
-    dimmed, dimmed_rgb, light_to_palette, light_to_rgb, lit_blocks, lit_dot, lit_dots,
-    DARK_MAGENTA, DARK_RED, MAGENTA,
+    dimmed, dimmed_rgb, light_to_palette, light_to_rgb, point_lit, DARK_MAGENTA, DARK_RED, MAGENTA,
 };
 use crate::model::*;
 
@@ -36,8 +35,11 @@ pub fn compose_frame(
     grid: Res<MapGrid>,
     dynamic: Res<DynamicLight>,
     style: Option<Res<LightStyle>>,
-    light_edges: Option<Res<LightEdges>>,
-    shadow_edges: Option<Res<ShadowEdges>>,
+    (floor_style, light_edges, floor_light): (
+        Option<Res<FloorStyle>>,
+        Option<Res<LightEdges>>,
+        Option<ResMut<FloorLight>>,
+    ),
     reveal: Option<Res<RevealAll>>,
     viewers: Query<(&Pos, &VisibilityMap, Option<&PlayerView>), With<Player>>,
     glyphs: Query<(
@@ -164,19 +166,6 @@ pub fn compose_frame(
     }
 
     let smooth = style.is_some_and(|style| *style == LightStyle::Smooth);
-    let shadow_edges = shadow_edges.map_or(ShadowEdges::Off, |edges| *edges);
-    let edge_glyph = |p: IVec2| {
-        let edge = grid
-            .idx(p)
-            .and_then(|i| light_edges.as_ref()?.cells.get(i))
-            .filter(|edge| edge.is_edge())?;
-        match shadow_edges {
-            ShadowEdges::Off => None,
-            ShadowEdges::Dots => Some(lit_dots(edge.lit)),
-            ShadowEdges::Offset => Some(lit_dot(edge.lit)),
-            ShadowEdges::Blocks => Some(lit_blocks(edge.lit)),
-        }
-    };
     let light_at = |p: IVec2| {
         grid.idx(p)
             .and_then(|i| dynamic.data.get(i))
@@ -189,7 +178,7 @@ pub fn compose_frame(
         let seen = buffers.seen[index];
         if seen.is_some() || known(position) {
             let cell = &mut buffers.current[index];
-            light_cell(cell, seen, position, &grid, &light_at, smooth, &edge_glyph);
+            light_cell(cell, seen, position, &grid, &light_at, smooth);
         } else if borders_known_background(&buffers, &known, position) {
             buffers.current[index] = RenderCell {
                 ch: '?',
@@ -228,20 +217,109 @@ pub fn compose_frame(
                 &grid,
                 &light_at,
                 smooth,
-                &edge_glyph,
             );
             buffers.ground[index] = floor;
         }
         shown
     });
     buffers.objects = objects;
+
+    let shader_floor = floor_style.is_some_and(|style| *style != FloorStyle::Text);
+    if let Some(mut floor) = floor_light.filter(|_| shader_floor) {
+        let edge_at = |p: IVec2| {
+            grid.idx(p)
+                .and_then(|i| light_edges.as_ref()?.cells.get(i))
+                .copied()
+                .unwrap_or_default()
+        };
+        fill_floor(buffers, &light_at, &edge_at, &mut floor);
+    }
+}
+
+/// Fills `floor` with the light of the frame's floor cells, finer than the
+/// grid: on the edge of a shadow, the texels of the part the brightest
+/// light reaches get its full light and the rest go without it. A cell seen
+/// through a portal turns that part as the portal turns what it shows.
+fn fill_floor(
+    buffers: &RenderBuffers,
+    light_at: &impl Fn(IVec2) -> LightCell,
+    edge_at: &impl Fn(IVec2) -> LightEdge,
+    floor: &mut FloorLight,
+) {
+    const TEXELS: usize = FloorLight::TEXELS;
+    floor.origin = buffers.origin;
+    floor.cells = IVec2::new(buffers.width, buffers.height);
+    let row = buffers.width as usize * TEXELS;
+    floor.data.clear();
+    floor
+        .data
+        .resize(row * buffers.height as usize * TEXELS * 4, 0);
+    let texel = |light: LightCell, remembered: bool| {
+        let rgb = light_to_rgb(&light);
+        let (rgb, value) = if remembered {
+            (dimmed_rgb(rgb), light.value / 2)
+        } else {
+            (rgb, light.value)
+        };
+        [rgb[0], rgb[1], rgb[2], value.max(1)]
+    };
+    for index in 0..buffers.ground.len() {
+        if buffers.ground[index].ch != '.' {
+            continue;
+        }
+        let local = (buffers.pos_of(index) - buffers.origin).as_uvec2();
+        let (lit, shadowed, edge, transform) = match buffers.seen[index] {
+            Some(seen) => {
+                let light = light_at(seen.world);
+                let edge = edge_at(seen.world);
+                if edge.is_edge() {
+                    let without = (light.value as f32 - edge.amount).max(1.0);
+                    let lit = LightCell {
+                        value: (without + edge.reach).min(255.0) as u8,
+                        ..light
+                    };
+                    let shadowed = LightCell {
+                        value: without as u8,
+                        ..light
+                    };
+                    (
+                        texel(lit, false),
+                        texel(shadowed, false),
+                        Some(edge.lit),
+                        seen.transform,
+                    )
+                } else {
+                    let all = texel(light, false);
+                    (all, all, None, seen.transform)
+                }
+            }
+            None => {
+                let all = texel(light_at(buffers.pos_of(index)), true);
+                (all, all, None, CellTransform::IDENTITY)
+            }
+        };
+        for y in 0..TEXELS {
+            for x in 0..TEXELS {
+                let reached = edge.is_none_or(|points| {
+                    // The point of the map cell this texel shows.
+                    let shown = (Vec2::new(x as f32, y as f32) + 0.5) / TEXELS as f32 - 0.5;
+                    let point = ((transform.turn_vec(shown) + 0.5) * TEXELS as f32)
+                        .floor()
+                        .clamp(Vec2::ZERO, Vec2::splat(TEXELS as f32 - 1.0));
+                    point_lit(points, point.x as usize, point.y as usize)
+                });
+                let at =
+                    ((local.y as usize * TEXELS + y) * row + local.x as usize * TEXELS + x) * 4;
+                floor.data[at..at + 4].copy_from_slice(if reached { &lit } else { &shadowed });
+            }
+        }
+    }
 }
 
 /// Lights frame cell `cell` at `position`, seen now through `seen` or else
 /// remembered: an empty one becomes floor (or a portal's threshold), and an
 /// object's glyph takes the light's colour (or a portal's), `smooth`ly
-/// shaded or in palette steps. A floor seen directly on the edge of a
-/// shadow shows its `edge_glyph`, if it has one, instead of its dot.
+/// shaded or in palette steps.
 fn light_cell(
     cell: &mut RenderCell,
     seen: Option<SeenCell>,
@@ -249,23 +327,12 @@ fn light_cell(
     grid: &MapGrid,
     light_at: &impl Fn(IVec2) -> LightCell,
     smooth: bool,
-    edge_glyph: &impl Fn(IVec2) -> Option<char>,
 ) {
     let occupied = !matches!(cell.ch, ' ' | '\0');
     if let Some(seen) = seen {
         let light = light_at(seen.world);
         let rgb = smooth.then(|| light_to_rgb(&light));
         shade(cell, true, light_to_palette(&light), rgb);
-        if !occupied && seen.transform.is_identity() {
-            if let Some(ch) = edge_glyph(seen.world) {
-                cell.ch = ch;
-                // Blocks cover much more of a cell than a dot: dimmer.
-                if is_block(ch) {
-                    cell.color = dimmed(cell.color);
-                    cell.rgb = cell.rgb.map(|rgb| rgb.map(|c| (c as f32 * 0.45) as u8));
-                }
-            }
-        }
         // The threshold's floor, or the portal's own wall when the view
         // does not pass through it.
         if seen.portal && !occupied {
@@ -387,10 +454,6 @@ fn draw(
         quarters,
         cell: drawn,
     });
-}
-
-fn is_block(ch: char) -> bool {
-    ('\u{2580}'..='\u{259F}').contains(&ch)
 }
 
 fn shade(cell: &mut RenderCell, floor: bool, color: u8, rgb: Option<[u8; 3]>) {

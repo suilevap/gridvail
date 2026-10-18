@@ -24,8 +24,11 @@ impl DynamicLight {
 pub struct LightEdge {
     /// How much light the brightest light gives the cell.
     pub amount: f32,
+    /// How much it would give the cell seen in full: what the part of the
+    /// cell it reaches gets.
+    pub reach: f32,
     /// The points of the cell it reaches.
-    pub lit: u8,
+    pub lit: u16,
 }
 
 impl LightEdge {
@@ -198,10 +201,12 @@ fn blend_source(
         };
         let apparent = center + sample.delta;
         let edge = &mut edges[index];
-        let amount = sample.value * context.reach(apparent.x, apparent.y);
+        let reach = context.reach(apparent.x, apparent.y);
+        let amount = sample.value * reach;
         if amount > edge.amount {
             *edge = LightEdge {
                 amount,
+                reach,
                 lit: if sample.value >= 0.999 || !sample.transform.is_identity() {
                     FULLY_LIT
                 } else {

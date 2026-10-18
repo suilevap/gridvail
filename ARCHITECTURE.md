@@ -118,7 +118,7 @@ and renderers must not import it.
 - `lighting/` contains light blending, bounced light (`Bounce`, over a
   `BounceTopology` of open cells and their neighbours that `presentation`
   builds from the map, portals included), the lit part of a cell on a
-  shadow's edge (`lit_points`, and its glyphs) and palette conversion. It does not
+  shadow's edge (`lit_points`) and palette conversion. It does not
   know about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for
   every positioned object (actors, walls, decor). Each object plays one
@@ -141,7 +141,10 @@ and renderers must not import it.
   still run to `TurnPacing`, which holds the next turn until they have nearly
   finished. It needs no renderer; without it the simulation runs with no
   delay.
-- `presentation/` builds light maps and renderer-neutral composed cell frames.
+- `presentation/` builds light maps and renderer-neutral composed cell frames,
+  and, for a floor shader, the floor's light finer than the grid
+  (`FloorLight`: 4 by 4 texels a frame cell, split on shadow edges by
+  the points the brightest light reaches).
   Frame cells are in the player's map coordinates; a cell the player sees
   shows the map cell it looks onto (`RenderBuffers::seen`), which behind a
   portal is elsewhere on the map, and objects get one instance per place
@@ -194,6 +197,11 @@ and renderers must not import it.
   `ExtrudedWallRendererPlugin` adds a perspective camera plus shared wall and
   floor meshes beneath that text layer. A small GPU texture carries the same
   visibility and CPU-light results to the procedural floor shader.
+- `rendering/floor.rs` (`FloorShaderPlugin`, added by `main.rs` because it
+  needs a GPU) draws the floor under the text with
+  `assets/shaders/floor.wgsl`: one quad over the window whose shader turns
+  each pixel back into the map point it shows, so it turns and zooms with
+  the glyphs, in the chosen `FloorStyle`.
 - `agent_api/` contains the optional loopback Bevy Remote transport and custom
   control/state methods. It reads the composed frame and writes normal player
   command components, keeping agent actions inside the gameplay pipeline.

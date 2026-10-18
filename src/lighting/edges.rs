@@ -2,42 +2,37 @@
 //!
 //! Light reaches a cell on the edge of a shadow only in part (its field of
 //! view value is between 0 and 1). Which part is found by testing points
-//! inside the cell: a 2 by 4 grid, in the order of the dots of a braille
-//! character, so the result can be drawn as one. A cell then shows its
-//! floor only where the light falls, drawing the shadow's edge finer than
-//! the grid.
+//! inside the cell, a [`POINTS`] by [`POINTS`] grid, so a renderer can draw
+//! the shadow's edge finer than the grid.
 
 use bevy::prelude::{IVec2, Vec2};
 
-/// Every point of a cell lit.
-pub const FULLY_LIT: u8 = 0xFF;
+/// Points tested along each side of a cell.
+pub const POINTS: usize = 4;
 
-/// The points tested in a cell, as (column, row) of a 2 by 4 grid, in the
-/// order of braille dots 1 to 8 (bit 0 is dot 1).
-const POINTS: [(u8, u8); 8] = [
-    (0, 0),
-    (0, 1),
-    (0, 2),
-    (1, 0),
-    (1, 1),
-    (1, 2),
-    (0, 3),
-    (1, 3),
-];
+/// Every point of a cell lit.
+pub const FULLY_LIT: u16 = u16::MAX;
 
 /// Which points of `cell` a light at the centre of cell `light` reaches,
-/// a bit per point (see [`POINTS`]): those with no blocking cell between.
-pub fn lit_points(light: IVec2, cell: IVec2, blocks: &impl Fn(IVec2) -> bool) -> u8 {
+/// a bit per point, row by row from the top left (see [`point_lit`]):
+/// those with no blocking cell between.
+pub fn lit_points(light: IVec2, cell: IVec2, blocks: &impl Fn(IVec2) -> bool) -> u16 {
     let from = light.as_vec2() + Vec2::splat(0.5);
-    POINTS
-        .iter()
-        .enumerate()
-        .filter(|(_, &(column, row))| {
-            let to =
-                cell.as_vec2() + Vec2::new((column as f32 + 0.5) / 2.0, (row as f32 + 0.5) / 4.0);
-            clear_line(from, to, blocks)
-        })
-        .fold(0, |lit, (bit, _)| lit | 1 << bit)
+    let mut lit = 0;
+    for row in 0..POINTS {
+        for column in 0..POINTS {
+            let to = cell.as_vec2() + (Vec2::new(column as f32, row as f32) + 0.5) / POINTS as f32;
+            if clear_line(from, to, blocks) {
+                lit |= 1 << (row * POINTS + column);
+            }
+        }
+    }
+    lit
+}
+
+/// Whether point `column`, `row` of a cell is lit in `lit`.
+pub fn point_lit(lit: u16, column: usize, row: usize) -> bool {
+    lit & 1 << (row * POINTS + column) != 0
 }
 
 /// Whether the segment `from`-`to` crosses no blocking cell between the
@@ -84,54 +79,4 @@ fn clear_line(from: Vec2, to: Vec2, blocks: &impl Fn(IVec2) -> bool) -> bool {
         }
     }
     true
-}
-
-/// The lit part as braille dots, thinned to a checkerboard so a cell
-/// shows about as many dots as the floor's single dot does elsewhere. Too
-/// little lit for the checkerboard, it falls back to [`lit_dot`].
-pub fn lit_dots(lit: u8) -> char {
-    const CHECKERBOARD: u8 = 0x01 | 0x10 | 0x04 | 0x80;
-    match lit & CHECKERBOARD {
-        0 => lit_dot(lit),
-        dots => braille(dots),
-    }
-}
-
-/// One braille dot where the lit part's middle is.
-pub fn lit_dot(lit: u8) -> char {
-    let lit_points: Vec2 = POINTS
-        .iter()
-        .enumerate()
-        .filter(|(bit, _)| lit & 1 << bit != 0)
-        .map(|(_, &(column, row))| Vec2::new(column as f32, row as f32))
-        .fold(Vec2::ZERO, |sum, point| sum + point);
-    let count = lit.count_ones().max(1) as f32;
-    let middle = lit_points / count;
-    let nearest = POINTS
-        .iter()
-        .enumerate()
-        .min_by(|(_, a), (_, b)| {
-            let distance = |&&(column, row): &&(u8, u8)| {
-                Vec2::new(column as f32, row as f32).distance_squared(middle)
-            };
-            distance(a).total_cmp(&distance(b))
-        })
-        .map_or(0, |(bit, _)| bit);
-    braille(1 << nearest)
-}
-
-/// The lit part as quarter blocks: a quarter is lit when either of its two
-/// points is.
-pub fn lit_blocks(lit: u8) -> char {
-    const QUARTERS: [char; 16] = [
-        ' ', '▘', '▝', '▀', '▖', '▌', '▞', '▛', '▗', '▚', '▐', '▜', '▄', '▙', '▟', '█',
-    ];
-    // Top left: dots 1, 2; top right: 4, 5; bottom left: 3, 7; bottom
-    // right: 6, 8.
-    let quarter = |mask: u8| (lit & mask != 0) as usize;
-    QUARTERS[quarter(0x03) | quarter(0x18) << 1 | quarter(0x44) << 2 | quarter(0xA0) << 3]
-}
-
-fn braille(dots: u8) -> char {
-    char::from_u32(0x2800 + dots as u32).unwrap_or(' ')
 }

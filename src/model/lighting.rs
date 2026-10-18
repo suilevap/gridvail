@@ -89,32 +89,43 @@ impl LightStyle {
     }
 }
 
-/// How a floor cell on the edge of a shadow shows the part of it the light
-/// reaches, finer than the grid: not at all, as braille dots where it is
-/// lit, as one dot moved to the middle of the lit part, or as quarter
-/// blocks.
+/// How the floor is drawn: as the text renderer's dot per cell, or by a
+/// floor shader in one of its styles from [`FloorLight`], light finer than
+/// the grid.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ShadowEdges {
+pub enum FloorStyle {
     #[default]
-    Off,
+    Text,
+    /// Four dots a cell, larger where it is brighter.
     Dots,
-    Offset,
-    Blocks,
+    /// Ordered dithering in chunky pixels.
+    Dither,
+    /// Light only on every third pixel row, with a slow rolling band.
+    Scanlines,
+    /// Rows of lines raised by the light under them, swaying.
+    Ridges,
 }
 
-impl ShadowEdges {
-    const ALL: [Self; 4] = [Self::Off, Self::Dots, Self::Offset, Self::Blocks];
+impl FloorStyle {
+    const ALL: [Self; 5] = [
+        Self::Text,
+        Self::Dots,
+        Self::Dither,
+        Self::Scanlines,
+        Self::Ridges,
+    ];
 
     pub fn from_name(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|edges| edges.name() == name)
+        Self::ALL.into_iter().find(|style| style.name() == name)
     }
 
     pub fn name(self) -> &'static str {
         match self {
-            Self::Off => "off",
+            Self::Text => "text",
             Self::Dots => "dots",
-            Self::Offset => "offset",
-            Self::Blocks => "blocks",
+            Self::Dither => "dither",
+            Self::Scanlines => "scanlines",
+            Self::Ridges => "ridges",
         }
     }
 

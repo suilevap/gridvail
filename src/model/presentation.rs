@@ -221,3 +221,23 @@ impl Default for StaticLight {
 pub fn is_hex_pos(p: IVec2) -> bool {
     (p.x + p.y % 2) % 2 == 0
 }
+
+/// The floor's light for a floor shader, finer than the grid: over the
+/// frame's window, [`FloorLight::TEXELS`] by [`FloorLight::TEXELS`] texels
+/// a cell, row by row, each an sRGB colour and a brightness (alpha). A
+/// texel with no brightness has no floor to draw: a wall, an object's cell
+/// or a cell never seen. Remembered cells are dimmer.
+#[derive(Resource, Debug, Default)]
+pub struct FloorLight {
+    /// The map position of the window's top-left cell.
+    pub origin: IVec2,
+    /// The window's size in cells.
+    pub cells: IVec2,
+    /// RGBA8 texels, `cells * TEXELS` of them.
+    pub data: Vec<u8>,
+}
+
+impl FloorLight {
+    /// Texels along each side of a cell.
+    pub const TEXELS: usize = 4;
+}

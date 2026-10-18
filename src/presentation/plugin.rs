@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::model::{
-    BounceLight, FrameSize, LightStyle, MapGrid, RenderBuffers, ShadowEdges, StaticLight,
+    BounceLight, FloorLight, FloorStyle, FrameSize, LightStyle, MapGrid, RenderBuffers, StaticLight,
 };
 use crate::schedule::{GamePhase, StartupPhase};
 
@@ -15,7 +15,8 @@ impl Plugin for PresentationPlugin {
         app.init_resource::<FrameSize>()
             .init_resource::<BounceLight>()
             .init_resource::<LightStyle>()
-            .init_resource::<ShadowEdges>()
+            .init_resource::<FloorStyle>()
+            .init_resource::<FloorLight>()
             .init_resource::<LightEdges>()
             .add_systems(Startup, setup_buffers.in_set(StartupPhase::Presentation))
             .add_systems(Update, render_light_layers.in_set(GamePhase::Lighting))
