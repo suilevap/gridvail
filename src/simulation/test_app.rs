@@ -12,6 +12,7 @@ pub fn headless() -> App {
         .init_resource::<vision::FovShared>()
         .init_resource::<vision::PortalFovShared>()
         .init_resource::<TurnState>()
+        .init_resource::<TurnMode>()
         .init_resource::<TokenTimer>()
         .init_resource::<TurnPacing>()
         .init_resource::<CollisionBuffer>()

@@ -3,10 +3,9 @@ use flatbt_bevy::prelude::*;
 
 use super::*;
 use crate::locomotion::follow_paths;
-use crate::model::BattleState;
 use crate::navigation::share_paths;
-use crate::schedule::GamePhase;
-use crate::simulation::{direction_tiles, move_commands, player_input};
+use crate::schedule::{GamePhase, TurnPhase};
+use crate::simulation::direction_tiles;
 
 /// Enemy decisions: behavior trees, wandering goals, random steps, and what
 /// doors are worth.
@@ -23,7 +22,9 @@ pub struct AiPlugin;
 
 impl Plugin for AiPlugin {
     fn build(&self, app: &mut App) {
+        super::attacks::install(app);
         app.init_resource::<DoorPolicy>()
+            .init_resource::<crate::model::TurnMode>()
             .init_resource::<PortalPolicy>()
             .add_plugins((
                 BehaviorPlugin::for_tree(enemy_tree).tick_mode(enemy_tick),
@@ -32,10 +33,8 @@ impl Plugin for AiPlugin {
             .configure_sets(
                 Update,
                 BehaviorSystems
-                    .run_if(not(resource_exists::<BattleState>))
-                    .in_set(GamePhase::Simulation)
-                    .after(player_input)
-                    .before(follow_paths),
+                    .in_set(TurnPhase::Decide)
+                    .in_set(GamePhase::Simulation),
             )
             .add_systems(
                 Update,
@@ -51,19 +50,19 @@ impl Plugin for AiPlugin {
                     )
                         .chain()
                         .after(share_paths)
-                        .before(BehaviorSystems),
-                    carry_out.after(BehaviorSystems).before(follow_paths),
-                    wait_if_idle.after(follow_paths),
+                        .before(BehaviorSystems)
+                        .in_set(TurnPhase::Decide),
+                    carry_out.after(BehaviorSystems).in_set(TurnPhase::Decide),
+                    wait_if_idle
+                        .after(follow_paths)
+                        .after(carry_out)
+                        .in_set(TurnPhase::Follow),
                 )
-                    .in_set(GamePhase::Simulation)
-                    .run_if(not(resource_exists::<BattleState>))
-                    .after(player_input)
-                    .before(move_commands),
+                    .in_set(GamePhase::Simulation),
             )
             .add_systems(
                 Update,
                 show_mood
-                    .run_if(not(resource_exists::<BattleState>))
                     .after(direction_tiles)
                     .in_set(GamePhase::Simulation),
             );

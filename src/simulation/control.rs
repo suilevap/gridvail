@@ -16,7 +16,6 @@ pub fn track_keyboard_scheme(keys: Res<ButtonInput<KeyCode>>, mut scheme: ResMut
 /// while the view turns.
 pub fn player_input(
     keys: Res<ButtonInput<KeyCode>>,
-    battle: Option<Res<BattleState>>,
     turn: Res<TurnState>,
     camera: Option<Res<ViewCamera>>,
     menu: Option<Res<SettingsMenu>>,
@@ -27,9 +26,7 @@ pub fn player_input(
 ) {
     let pressed = |codes| keys.any_pressed(codes);
     // The settings menu takes the arrow keys while it is open.
-    let screen = if SettingsMenu::is_open(menu.as_deref())
-        || battle.as_ref().is_some_and(|battle| battle.defeated)
-    {
+    let screen = if SettingsMenu::is_open(menu.as_deref()) {
         None
     } else if pressed([KeyCode::ArrowUp, KeyCode::KeyW]) {
         Some(IVec2::NEG_Y)
@@ -68,10 +65,21 @@ pub fn player_input(
 
 pub fn move_commands(
     mut pacing: ResMut<TurnPacing>,
-    mut movers: Query<(&mut MoveCommand, &mut Speed, &mut Tokens), Without<DestroyRequested>>,
+    mut movers: Query<
+        (
+            &mut MoveCommand,
+            &mut Speed,
+            &mut Tokens,
+            Option<&mut ActionTaken>,
+        ),
+        Without<DestroyRequested>,
+    >,
 ) {
     let mut action_committed = false;
-    for (mut command, mut speed, mut tokens) in movers.iter_mut() {
+    for (mut command, mut speed, mut tokens, mut action) in movers.iter_mut() {
+        if let Some(action) = action.as_deref_mut() {
+            action.active = false;
+        }
         if !command.active || tokens.count <= 0 {
             continue;
         }
@@ -80,9 +88,72 @@ pub fn move_commands(
         }
         command.active = false;
         tokens.count -= 1;
+        if let Some(mut action) = action {
+            action.active = true;
+            action.serial += 1;
+        }
         action_committed = true;
     }
     if action_committed {
         pacing.action_committed();
+    }
+}
+
+/// Keyboard/touch hold recognition produces the same neutral command as any
+/// other deliberate wait. Combat decides what that action does.
+pub fn hold_to_wait(
+    time: Res<Time>,
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    menu: Option<Res<SettingsMenu>>,
+    turn: Res<TurnState>,
+    wait: Option<ResMut<WaitHold>>,
+    mut players: Query<(&mut MoveCommand, &Tokens), (With<Player>, With<Active>)>,
+) {
+    let Some(mut wait) = wait else {
+        return;
+    };
+    let Ok((mut command, tokens)) = players.single_mut() else {
+        return;
+    };
+    let held = !SettingsMenu::is_open(menu.as_deref())
+        && (keys.is_some_and(|keys| keys.pressed(KeyCode::Space)) || wait.touch_held);
+    if held && command.active && command.target != IVec2::ZERO {
+        wait.elapsed = 0.0;
+        wait.latched = true;
+        return;
+    }
+    if wait.update(
+        held,
+        !turn.simulation && tokens.count > 0,
+        time.delta_secs(),
+    ) {
+        *command = MoveCommand {
+            target: IVec2::ZERO,
+            relative: true,
+            active: true,
+        };
+    }
+}
+
+pub fn cancel_expired_wait(turn: Res<TurnState>, wait: Option<ResMut<WaitHold>>) {
+    if turn.timed_out {
+        if let Some(mut wait) = wait {
+            wait.latched |= wait.elapsed > 0.0;
+            wait.elapsed = 0.0;
+        }
+    }
+}
+
+pub fn request_restart(
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    menu: Option<Res<SettingsMenu>>,
+    request: Option<ResMut<RestartRequest>>,
+) {
+    if !SettingsMenu::is_open(menu.as_deref())
+        && keys.is_some_and(|keys| keys.just_pressed(KeyCode::KeyR))
+    {
+        if let Some(mut request) = request {
+            request.0 = true;
+        }
     }
 }

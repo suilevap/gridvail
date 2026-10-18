@@ -48,6 +48,7 @@ impl Plugin for ObjectAnimationPlugin {
                 Update,
                 (
                     bump_blocked_movers,
+                    super::attacks::animate_attacks,
                     animate_objects,
                     animate_children,
                     remove_sunk,

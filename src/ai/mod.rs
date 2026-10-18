@@ -20,6 +20,7 @@
 
 #![allow(clippy::type_complexity)]
 
+mod attacks;
 mod hunter;
 mod perception;
 mod plugin;
@@ -92,6 +93,7 @@ impl DoorPolicy {
 /// (the original game's behaviour).
 pub fn random_walk(
     turn: Res<TurnState>,
+    mode: Res<TurnMode>,
     mut rng: ResMut<SharedRng>,
     mut enemies: Query<
         &mut MoveCommand,
@@ -103,7 +105,7 @@ pub fn random_walk(
         ),
     >,
 ) {
-    if turn.simulation {
+    if !turn.actors_may_act(*mode) {
         return;
     }
     const MOVES: [IVec2; 5] = [IVec2::ZERO, IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y];
@@ -118,6 +120,7 @@ pub fn random_walk(
 /// unreachable or blocked), a new random floor cell to walk to.
 pub fn wander_goals(
     turn: Res<TurnState>,
+    mode: Res<TurnMode>,
     nav: Res<NavMap>,
     mut rng: ResMut<SharedRng>,
     mut wanderers: Query<
@@ -125,7 +128,7 @@ pub fn wander_goals(
         (With<Wander>, With<Active>, Without<DestroyRequested>),
     >,
 ) {
-    if turn.simulation || nav.grid().is_empty() {
+    if !turn.actors_may_act(*mode) || nav.grid().is_empty() {
         return;
     }
     let (width, height) = (nav.grid().width() as i32, nav.grid().height() as i32);

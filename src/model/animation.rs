@@ -50,3 +50,10 @@ pub struct Sinking;
 /// pace, rather than stepping the way actors walk.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Sliding;
+
+/// Optional reaction to a fired attack; the animation domain consumes it.
+#[derive(Component, Clone, Copy, Debug)]
+pub enum AttackAnimation {
+    Bump { seconds: f32 },
+    Hop { seconds: f32, height: f32 },
+}

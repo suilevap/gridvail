@@ -273,8 +273,11 @@ the encounter's actors; existing door/item changes remain.
 Try `cargo run -- --map assets/maps/battle.txt`, or `?map=battle` in the browser.
 Map glyphs `s`, `g`, and `b` spawn a spearman (two-cell strike), shield bearer,
 and brute (heavy strike), respectively. Existing `e` enemies are skirmishers.
-`BattlePlugin` adds these rules to the base `GamePlugin`, so the original
-simulation and AI remain available for existing library users.
+`app::BattlePlugin` composes these rules with the base `GamePlugin`; the
+original AI and locomotion remain active. Reusable `CombatPlugin` also works
+with independent token turns and non-enemy entities. Attack geometry, lunge,
+guard, armour, brace and recovery are components composed by the spawn presets
+in `app/actors.rs`; see [combat architecture](ARCHITECTURE.md#extending-combat-by-composition).
 
 [Watch the browser demonstration](docs/media/tactical-battle.mp4): the compact
 HUD, decision deadline, held movement, deliberate bracing, and touch movement.

@@ -2,9 +2,7 @@ use bevy::prelude::*;
 
 use super::DynamicLight;
 use crate::foundation::portal::CellTransform;
-use crate::lighting::{
-    dimmed, light_to_palette, CYAN, DARK_MAGENTA, DARK_RED, MAGENTA, RED, YELLOW,
-};
+use crate::lighting::{dimmed, light_to_palette, DARK_MAGENTA, DARK_RED, MAGENTA};
 use crate::model::*;
 
 /// Colour of a portal's threshold and of portal walls seen from behind or
@@ -43,11 +41,10 @@ pub fn compose_frame(
         Option<&Speed>,
         Option<&AnimatedPos>,
         Has<BoundTo>,
-        Option<&Health>,
-        Has<Enemy>,
     )>,
     children: Query<(Entity, &Pos, &Glyph, Option<&AnimatedPos>, &BoundTo)>,
-    fighters: Query<(&Pos, &Fighter, &Health)>,
+    overlays: Query<(&Pos, &CellOverlay)>,
+    unlit: Query<(), With<Unlit>>,
     mut buffers: ResMut<RenderBuffers>,
 ) {
     let Ok((player, visibility, view)) = viewers.single() else {
@@ -63,14 +60,15 @@ pub fn compose_frame(
     }
     buffers.swap();
     buffers.current.fill(RenderCell::default());
+    buffers.overlay_priority.fill(0);
     buffers.objects.clear();
     mark_seen(&mut buffers, &grid, visibility, view, reveal.is_some());
 
-    for (entity, pos, glyph, speed, shown, bound, health, enemy) in glyphs.iter() {
+    for (entity, pos, glyph, speed, shown, bound) in glyphs.iter() {
         let Some(world) = grid.idx(pos.0) else {
             continue;
         };
-        if bound || (enemy && health.is_some_and(|health| health.current == 0)) {
+        if bound {
             continue;
         }
         let drawn = RenderCell {
@@ -188,44 +186,31 @@ pub fn compose_frame(
         };
     }
 
-    // Only advertise attacks by enemies the player can actually see. Use the
-    // same world-to-frame lists as objects, so portals and both renderers agree.
-    for (pos, fighter, health) in &fighters {
-        let visible = grid
-            .idx(pos.0)
-            .is_some_and(|index| buffers.seen_first[index] != RenderBuffers::NO_CELL);
-        if health.current == 0 || !visible {
+    // Generic cell annotations use their owner's visibility and the same
+    // portal transforms as objects. Priority is data, not a glyph convention.
+    for (pos, overlay) in &overlays {
+        if overlay.priority == 0
+            || !grid
+                .idx(pos.0)
+                .is_some_and(|index| buffers.seen_first[index] != RenderBuffers::NO_CELL)
+        {
             continue;
         }
-        let (footprint, symbol, color) = match fighter.intent {
-            BattleIntent::WindUp { .. } => (fighter.intent, '?', YELLOW),
-            BattleIntent::Recover => (fighter.last_attack, '+', CYAN),
-            _ => (fighter.intent, '!', RED),
-        };
-        for threatened in footprint.cells().into_iter().flatten() {
-            if grid.blocks_vision(threatened) {
+        for cell in overlay.cells.into_iter().flatten() {
+            if grid.blocks_vision(cell) {
                 continue;
             }
-            let Some(world) = grid.idx(threatened) else {
+            let Some(world) = grid.idx(cell) else {
                 continue;
             };
             let mut frame = buffers.seen_first[world];
             while frame != RenderBuffers::NO_CELL {
                 let index = frame as usize;
-                // A spent attack must never make another enemy's live
-                // threat look safe, regardless of entity iteration order.
-                if (symbol == '+' && matches!(buffers.ground[index].ch, '!' | '?'))
-                    || (symbol == '?' && buffers.ground[index].ch == '!')
-                {
-                    frame = buffers.seen_next[index];
-                    continue;
+                if overlay.priority >= buffers.overlay_priority[index] {
+                    buffers.overlay_priority[index] = overlay.priority;
+                    buffers.current[index].color = overlay.cell.color;
+                    buffers.ground[index] = overlay.cell;
                 }
-                buffers.current[index].color = color;
-                buffers.ground[index] = RenderCell {
-                    ch: symbol,
-                    color,
-                    depth: 0,
-                };
                 frame = buffers.seen_next[index];
             }
         }
@@ -241,9 +226,9 @@ pub fn compose_frame(
         };
         let cell = buffers.current[index];
         let shown = cell.ch == object.cell.ch && cell.depth == object.cell.depth;
-        if fighters.contains(object.entity) {
-            // Intent colors are information, so keep them readable under
-            // the map's ambient lighting as well as in the object sprite.
+        if unlit.contains(object.entity) {
+            // Explicit full-bright display data applies to both the flat
+            // frame cell and its object sprite.
             buffers.current[index].color = object.cell.color;
         } else {
             object.cell.color = cell.color;

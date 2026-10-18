@@ -16,6 +16,7 @@ const STROLL_TRIES: usize = 8;
 /// every frame, and nothing downstream filters on it changing.
 pub fn perceive(
     turn: Res<TurnState>,
+    mode: Res<TurnMode>,
     grid: Res<MapGrid>,
     nav: Res<NavMap>,
     services: Res<Services>,
@@ -37,20 +38,13 @@ pub fn perceive(
     for (pos, tokens, doomed, sight, prefs, mut mind) in enemies.iter_mut() {
         let mind = mind.bypass_change_detection();
         mind.pos = pos.0;
-        mind.has_turn = !turn.simulation && !doomed && tokens.count > 0;
+        mind.has_turn = turn.actors_may_act(*mode) && !doomed && tokens.count > 0;
         if !mind.has_turn {
             continue;
         }
         // Seen as the player sees: through the enemy's field of view, which
         // walls shade, so the threshold decides how much of a cell is enough.
-        mind.player = player.filter(|&target| {
-            let cell = grid.safe_pos(target);
-            let index = (cell.y * grid.width + cell.x) as usize;
-            sight.is_some_and(|fov| {
-                fov.pos == pos.0
-                    && fov.data.get(index).copied().unwrap_or(0.0) > ENEMY_SIGHT_THRESHOLD
-            })
-        });
+        mind.player = player.filter(|&target| target_visible(&grid, pos.0, sight, target));
         if mind.player.is_some() {
             mind.last_seen = mind.player;
         } else if mind.last_seen == Some(pos.0) {
@@ -189,4 +183,18 @@ pub fn show_mood(mut enemies: Query<(&EnemyAct, &mut Glyph)>) {
         }
         glyph.set_if_neq(shown);
     }
+}
+
+/// Shared perception rule for tree blackboards and attack planners.
+pub(super) fn target_visible(
+    grid: &MapGrid,
+    from: IVec2,
+    sight: Option<&FovResult>,
+    target: IVec2,
+) -> bool {
+    grid.idx(target).is_some_and(|index| {
+        sight.is_some_and(|fov| {
+            fov.pos == from && fov.data.get(index).copied().unwrap_or(0.0) > ENEMY_SIGHT_THRESHOLD
+        })
+    })
 }

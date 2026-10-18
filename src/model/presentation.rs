@@ -106,6 +106,7 @@ pub struct RenderBuffers {
     pub current: Vec<RenderCell>,
     pub previous: Vec<RenderCell>,
     pub ground: Vec<RenderCell>,
+    pub overlay_priority: Vec<u8>,
     pub previous_ground: Vec<RenderCell>,
     pub objects: Vec<ObjectCell>,
     /// What each frame cell shows while seen; `None` when not seen now.
@@ -131,6 +132,7 @@ impl RenderBuffers {
             current: vec![RenderCell::default(); n],
             previous: vec![RenderCell::default(); n],
             ground: vec![RenderCell::default(); n],
+            overlay_priority: vec![0; n],
             previous_ground: vec![RenderCell::default(); n],
             objects: Vec::with_capacity(n),
             seen: vec![None; n],
@@ -218,3 +220,29 @@ impl Default for StaticLight {
 pub fn is_hex_pos(p: IVec2) -> bool {
     (p.x + p.y % 2) % 2 == 0
 }
+
+/// Generic world-cell annotation, visible only while its owner is visible.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct CellOverlay {
+    pub cells: [Option<IVec2>; super::MAX_ATTACK_CELLS],
+    pub cell: RenderCell,
+    pub priority: u8,
+}
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Unlit;
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct GuardMarker;
+
+/// Concrete labels and glyphs are supplied by the application's spawn presets.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct AttackPresentation {
+    pub name: &'static str,
+    pub glyph: char,
+    pub attack: &'static str,
+    pub idle_hint: &'static str,
+    pub ready_hint: &'static str,
+    pub avoid_hint: &'static str,
+    pub opening_hint: &'static str,
+}
+#[derive(Component, Clone, Copy, Debug)]
+pub struct DeathGlyph(pub char);

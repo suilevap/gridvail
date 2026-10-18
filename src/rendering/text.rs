@@ -241,7 +241,7 @@ pub(super) fn setup(
     buffers: Res<RenderBuffers>,
     rules: Option<Res<Rules>>,
     fonts: Option<ResMut<Assets<Font>>>,
-    battle: Option<Res<BattleState>>,
+    battle: Option<Res<EncounterOutcome>>,
 ) {
     let camera = commands
         .spawn((
@@ -603,7 +603,7 @@ fn glyph_rotation(camera: &ViewCamera) -> Quat {
 
 #[allow(clippy::too_many_arguments)]
 fn update_hud(
-    battle: Option<Res<BattleState>>,
+    battle: Option<Res<EncounterOutcome>>,
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
     extruded_walls: Option<Res<ExtrudedWalls>>,

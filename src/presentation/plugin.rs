@@ -15,7 +15,13 @@ impl Plugin for PresentationPlugin {
             .add_systems(Update, render_light_layers.in_set(GamePhase::Lighting))
             .add_systems(
                 Update,
-                (resize_frame, compose_frame)
+                (
+                    resize_frame,
+                    super::combat::present_attacks,
+                    super::combat::present_deaths,
+                    super::combat::present_guards,
+                    compose_frame,
+                )
                     .chain()
                     .in_set(GamePhase::Presentation),
             );

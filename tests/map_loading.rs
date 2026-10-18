@@ -291,3 +291,75 @@ fn the_bundled_maps_lead_from_one_to_the_next_and_round() {
         map = expected;
     }
 }
+
+#[test]
+fn loading_an_encounter_composes_new_actors_and_moves_the_reset_anchor() {
+    use pav_ecs_game_bevy_port::app::BattlePlugin;
+    const ENCOUNTER: &str = "XXXXXXXXXXXX\nX...p..s.g.X\nX..b.......X\nXXXXXXXXXXXX";
+    let mut app = boot(FIRST, |app| {
+        app.add_plugins(BattlePlugin);
+    });
+    let hero = player(&mut app);
+    app.world_mut().get_mut::<Health>(hero).unwrap().current = 9;
+    load(&mut app, ENCOUNTER);
+    assert_eq!(player(&mut app), hero);
+    assert_eq!(app.world().get::<Health>(hero).unwrap().current, 9);
+    assert_eq!(
+        app.world().get::<RespawnPoint>(hero).unwrap().0,
+        IVec2::new(4, 1)
+    );
+    let world = app.world_mut();
+    assert_eq!(
+        world
+            .query_filtered::<(&AttackCycle, &ActionTaken, &RespawnPoint), With<Enemy>>()
+            .iter(world)
+            .count(),
+        3
+    );
+    assert_eq!(*world.resource::<TurnMode>(), TurnMode::LeaderDriven);
+    assert_eq!(
+        *world.resource::<EncounterOutcome>(),
+        EncounterOutcome::Ongoing
+    );
+    // Move away, then reset. The anchor belongs to the loaded map, not FIRST.
+    step(&mut app, KeyCode::ArrowLeft);
+    assert_ne!(app.world().get::<Pos>(hero).unwrap().0, IVec2::new(4, 1));
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::KeyR);
+    app.update();
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .reset_all();
+    app.update();
+    assert_eq!(app.world().get::<Pos>(hero).unwrap().0, IVec2::new(4, 1));
+    assert_eq!(app.world().get::<Health>(hero).unwrap().current, 12);
+    assert!(app.world().get::<Active>(hero).is_some());
+}
+
+#[test]
+fn loading_a_map_cancels_old_wait_progress_and_starts_a_fresh_deadline() {
+    use pav_ecs_game_bevy_port::app::BattlePlugin;
+    let mut app = boot(FIRST, |app| {
+        app.add_plugins(BattlePlugin);
+    });
+    app.world_mut()
+        .resource_mut::<TokenTimer>()
+        .0
+        .tick(Duration::from_millis(900));
+    *app.world_mut().resource_mut::<WaitHold>() = WaitHold {
+        elapsed: 0.5,
+        latched: true,
+        touch_held: true,
+    };
+    app.world_mut()
+        .resource_mut::<TurnPacing>()
+        .report_animation(Duration::from_secs(5));
+    load(&mut app, "XXXXXXXX\nXp    sX\nX      X\nXXXXXXXX");
+    assert_eq!(app.world().resource::<WaitHold>().elapsed, 0.0);
+    assert!(!app.world().resource::<WaitHold>().latched);
+    assert!(app.world().resource::<TokenTimer>().0.remaining_secs() > 0.9);
+    assert!(!app.world().resource::<TurnState>().simulation);
+    let hero = player(&mut app);
+    assert_eq!(app.world().get::<Health>(hero).unwrap().current, 12);
+}

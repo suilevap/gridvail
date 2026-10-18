@@ -7,8 +7,8 @@
 use bevy::prelude::*;
 
 use crate::model::*;
-use crate::schedule::GamePhase;
-use crate::simulation::{move_commands, player_input};
+use crate::schedule::TurnPhase;
+use crate::simulation::{hold_to_wait, player_input};
 
 mod pinch;
 mod swipe;
@@ -42,8 +42,8 @@ impl Plugin for TouchControlPlugin {
                 Update,
                 swipe_commands
                     .after(player_input)
-                    .before(move_commands)
-                    .in_set(GamePhase::Simulation),
+                    .before(hold_to_wait)
+                    .in_set(TurnPhase::Input),
             );
     }
 }

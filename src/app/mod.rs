@@ -4,8 +4,11 @@
 //! separately by the executable, so another renderer can consume the same
 //! `RenderBuffers` without changing the game.
 
+mod actors;
+mod battle;
 mod map;
 
+pub use battle::BattlePlugin;
 pub use map::{bundled_index, bundled_map, CurrentMap, LoadMap, MapPlugin, MapText, BUNDLED_MAPS};
 
 use bevy::prelude::*;
@@ -42,6 +45,7 @@ impl Plugin for GamePlugin {
                 GamePhase::FieldOfView,
                 GamePhase::Lighting,
                 GamePhase::Visibility,
+                GamePhase::Planning,
                 GamePhase::Animation,
                 GamePhase::Presentation,
                 GamePhase::Output,

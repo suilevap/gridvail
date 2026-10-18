@@ -18,9 +18,9 @@ use bevy::{
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::ai::PortalPolicy;
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
+use pav_ecs_game_bevy_port::app::BattlePlugin;
 use pav_ecs_game_bevy_port::app::{CurrentMap, GamePlugin, LoadMap, MapText, BUNDLED_MAPS};
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
-use pav_ecs_game_bevy_port::combat::BattlePlugin;
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
     AnimatedPos, CompassMode, Player, Pos, RevealAll, SettingsMenu, ViewCamera, Vis, VisibilityMap,

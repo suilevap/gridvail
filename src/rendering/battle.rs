@@ -138,7 +138,8 @@ fn battle_font() -> TextFont {
 
 #[allow(clippy::type_complexity)]
 pub(super) fn draw_battle_ui(
-    battle: Option<ResMut<BattleState>>,
+    outcome: Option<Res<EncounterOutcome>>,
+    restart: Option<ResMut<RestartRequest>>,
     wait: Option<Res<WaitHold>>,
     turn: Res<TurnState>,
     timer: Res<TokenTimer>,
@@ -146,17 +147,19 @@ pub(super) fn draw_battle_ui(
     scheme: Option<Res<ControlScheme>>,
     grid: Res<MapGrid>,
     frame: Res<RenderBuffers>,
-    player: Query<(&Pos, &Health, &Tokens), With<Player>>,
-    enemies: Query<(&Pos, &Health, &Fighter), (With<Enemy>, With<Active>)>,
+    player: Query<(&Pos, &Health, &Tokens, Option<&Brace>), With<Player>>,
+    enemies: Query<(&Pos, &Health, &AttackCycle, &AttackPresentation), (With<Enemy>, With<Active>)>,
     buttons: Query<&Interaction, (With<RestartBattle>, Changed<Interaction>)>,
     mut labels: Query<(&BattleLabel, &mut Text)>,
     mut panels: Query<&mut Visibility, With<BattlePanel>>,
     mut fills: Query<(&mut Node, &mut BackgroundColor), (With<WaitFill>, Without<TurnFill>)>,
     mut clocks: Query<(&mut Node, &mut BackgroundColor), With<TurnFill>>,
 ) {
-    let (Some(mut battle), Some(wait)) = (battle, wait) else {
+    let (Some(outcome), Some(mut restart), Some(wait)) = (outcome, restart, wait) else {
         return;
     };
+    let defeated = *outcome == EncounterOutcome::Defeat;
+    let won = *outcome == EncounterOutcome::Victory;
     let open = SettingsMenu::is_open(menu.as_deref());
     for mut visibility in &mut panels {
         *visibility = if open {
@@ -170,28 +173,28 @@ pub(super) fn draw_battle_ui(
             .iter()
             .any(|interaction| *interaction == Interaction::Pressed)
     {
-        battle.restart_requested = true;
+        restart.0 = true;
     }
-    let Ok((pos, health, tokens)) = player.single() else {
+    let Ok((pos, health, tokens, brace)) = player.single() else {
         return;
     };
     let nearest = enemies
         .iter()
-        .filter(|(enemy_pos, health, _)| {
+        .filter(|(enemy_pos, health, _, _)| {
             health.current > 0
                 && grid
                     .idx(enemy_pos.0)
                     .is_some_and(|index| frame.seen_first[index] != RenderBuffers::NO_CELL)
         })
-        .min_by_key(|(enemy_pos, _, _)| (enemy_pos.0 - pos.0).abs().element_sum());
+        .min_by_key(|(enemy_pos, _, _, _)| (enemy_pos.0 - pos.0).abs().element_sum());
     for (label, mut text) in &mut labels {
         text.0.clear();
         match label {
             BattleLabel::Status => {
                 write!(text.0, "HP {}/{}", health.current, health.maximum).unwrap();
-                if battle.defeated {
+                if defeated {
                     write!(text.0, " | Defeated").unwrap();
-                } else if battle.won {
+                } else if won {
                     write!(text.0, " | Victory").unwrap();
                 } else if turn.simulation || tokens.count <= 0 {
                     write!(text.0, " | Acting").unwrap();
@@ -199,39 +202,33 @@ pub(super) fn draw_battle_ui(
                     write!(text.0, " | ACT {:.1}s", timer.0.remaining_secs()).unwrap();
                 }
             }
-            BattleLabel::Threat if !battle.defeated && !battle.won => {
-                if let Some((_, enemy_health, fighter)) = nearest {
+            BattleLabel::Threat if !defeated && !won => {
+                if let Some((_, enemy_health, cycle, display)) = nearest {
                     write!(
                         text.0,
                         "{} {}/{} | ",
-                        match fighter.role {
-                            BattleRole::Skirmisher => "Foe",
-                            BattleRole::Spearman => "Spear",
-                            BattleRole::ShieldBearer => "Shield",
-                            BattleRole::Brute => "Brute",
-                        },
-                        enemy_health.current,
-                        enemy_health.maximum
+                        display.name, enemy_health.current, enemy_health.maximum
                     )
                     .unwrap();
-                    if fighter.intent == BattleIntent::Recover {
-                        write!(
+                    match cycle.phase {
+                        AttackPhase::Recovering(left) => {
+                            write!(text.0, "OPEN {} turns | {}", left, display.opening_hint)
+                                .unwrap()
+                        }
+                        AttackPhase::Windup(left) => write!(
                             text.0,
-                            "OPEN {} turns | {}",
-                            fighter.recovery_left + 1,
-                            if fighter.role == BattleRole::ShieldBearer {
-                                "any side"
-                            } else {
-                                "counter"
-                            }
+                            "{} {} turns | {}",
+                            display.attack,
+                            left + 1,
+                            display.avoid_hint
                         )
-                        .unwrap();
-                    } else {
-                        write!(text.0, "{}", enemy_hint(fighter)).unwrap();
+                        .unwrap(),
+                        AttackPhase::Ready => write!(text.0, "{}", display.ready_hint).unwrap(),
+                        AttackPhase::Idle => write!(text.0, "{}", display.idle_hint).unwrap(),
                     }
                 }
             }
-            BattleLabel::Wait if !battle.defeated && !battle.won => {
+            BattleLabel::Wait if !defeated && !won => {
                 if wait.latched && wait.progress() == 1.0 {
                     write!(text.0, "WAIT COUNTED | release").unwrap();
                 } else if wait.elapsed > 0.0 {
@@ -253,7 +250,11 @@ pub(super) fn draw_battle_ui(
                             "Space"
                         },
                         WaitHold::SECONDS,
-                        if health.guarded { "BRACED" } else { "brace" }
+                        if brace.is_some_and(|brace| brace.charges > 0) {
+                            "BRACED"
+                        } else {
+                            "brace"
+                        }
                     )
                     .unwrap();
                 }
@@ -270,7 +271,7 @@ pub(super) fn draw_battle_ui(
         };
     }
     for (mut node, mut color) in &mut clocks {
-        node.width = Val::Percent(if battle.defeated || battle.won {
+        node.width = Val::Percent(if defeated || won {
             0.0
         } else {
             timer.0.fraction_remaining() * 100.0
@@ -280,18 +281,5 @@ pub(super) fn draw_battle_ui(
         } else {
             Color::srgb(1.0, 0.7, 0.2)
         };
-    }
-}
-
-fn enemy_hint(fighter: &Fighter) -> &'static str {
-    match (fighter.role, fighter.intent) {
-        (_, BattleIntent::WindUp { .. }) => "SLAM 2 turns | out",
-        (_, BattleIntent::Slam { .. }) => "SLAM NEXT | get out",
-        (BattleRole::Spearman, BattleIntent::Strike { .. }) => "LUNGE | sidestep",
-        (BattleRole::ShieldBearer, BattleIntent::Strike { .. }) => "BASH | sidestep",
-        (BattleRole::Spearman, _) => "bait its lane",
-        (BattleRole::ShieldBearer, _) => "front guarded | bait bash",
-        (BattleRole::Brute, _) => "bait slam, then retreat",
-        _ => "dodge ! or interrupt",
     }
 }

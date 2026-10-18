@@ -22,6 +22,8 @@ thread_local! {
 }
 
 static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
+// The allocator counter is shared even though tracking is thread-local.
+static MEASUREMENTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -85,6 +87,7 @@ fn boot() -> App {
 
 #[test]
 fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
+    let _measurement = MEASUREMENTS.lock().unwrap();
     let mut baseline = App::new();
     // Bevy's single-threaded executor performs bookkeeping allocations based
     // on schedule shape. Use a comparable number of chained no-op systems so
@@ -162,5 +165,71 @@ fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
     assert!(
         turn_allocations <= idle_allocations.div_ceil(4) + 2,
         "player turns added allocations: idle={idle_allocations}, turns={turn_allocations}"
+    );
+}
+
+#[test]
+fn warmed_combat_actions_reuse_attack_and_defence_storage() {
+    let _measurement = MEASUREMENTS.lock().unwrap();
+    use pav_ecs_game_bevy_port::app::{BattlePlugin, MapText};
+    use pav_ecs_game_bevy_port::model::{
+        ActionTaken, AttackWindow, DirectionalGuard, Enemy, Health,
+    };
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .init_resource::<ButtonInput<KeyCode>>()
+        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
+            16,
+        )))
+        .insert_resource(MapText("XXXXXXXX\nX ps   X\nX      X\nXXXXXXXX"))
+        .add_plugins((GamePlugin, BattlePlugin));
+    single_threaded(&mut app);
+    app.update();
+    let world = app.world_mut();
+    for mut health in world.query::<&mut Health>().iter_mut(world) {
+        *health = Health::new(1_000_000); // Keep destruction out of ordinary turns.
+    }
+    let enemy = world
+        .query_filtered::<Entity, With<Enemy>>()
+        .single(world)
+        .unwrap();
+    world.entity_mut(enemy).insert(DirectionalGuard {
+        window: AttackWindow::OutsideRecovery,
+    });
+    for _ in 0..256 {
+        app.update();
+    }
+    let idle = measured(|| {
+        for _ in 0..128 {
+            app.update();
+        }
+    });
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(KeyCode::ArrowRight);
+    for _ in 0..32 {
+        app.update();
+    } // Warm the bump/guard/interruption paths too.
+    let world = app.world_mut();
+    let before = world
+        .query_filtered::<&ActionTaken, With<Player>>()
+        .single(world)
+        .unwrap()
+        .serial;
+    let turns = measured(|| {
+        for _ in 0..128 {
+            app.update();
+        }
+    });
+    let world = app.world_mut();
+    let after = world
+        .query_filtered::<&ActionTaken, With<Player>>()
+        .single(world)
+        .unwrap()
+        .serial;
+    assert_eq!(after - before, 128);
+    assert!(
+        turns <= idle + 2,
+        "combat added allocations: idle={idle}, turns={turns}"
     );
 }

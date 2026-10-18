@@ -3,9 +3,9 @@ use rand::SeedableRng;
 
 use crate::model::{
     CollisionBuffer, ControlScheme, MapGrid, PortalCrossings, SharedRng, Tile, TokenTimer,
-    TurnPacing, TurnState,
+    TurnDeadline, TurnMode, TurnPacing, TurnState,
 };
-use crate::schedule::{GamePhase, StartupPhase};
+use crate::schedule::{GamePhase, StartupPhase, TurnPhase};
 
 use super::*;
 
@@ -24,6 +24,8 @@ impl SimulationPlugin {
 impl Plugin for SimulationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TurnState>()
+            .init_resource::<TurnMode>()
+            .init_resource::<TurnDeadline>()
             .init_resource::<ControlScheme>()
             .init_resource::<TokenTimer>()
             .init_resource::<TurnPacing>()
@@ -38,14 +40,50 @@ impl Plugin for SimulationPlugin {
                     .chain()
                     .in_set(StartupPhase::Derive),
             )
+            .configure_sets(
+                Update,
+                (
+                    TurnPhase::Input,
+                    TurnPhase::Start,
+                    TurnPhase::Decide,
+                    TurnPhase::Follow,
+                    TurnPhase::Attacks,
+                    TurnPhase::Spend,
+                    TurnPhase::Move,
+                    TurnPhase::Damage,
+                    TurnPhase::Cleanup,
+                )
+                    .chain()
+                    .in_set(GamePhase::Simulation),
+            )
+            .add_systems(
+                Update,
+                (sync_portals, turn_tick, recharge_tokens)
+                    .chain()
+                    .before(TurnPhase::Input)
+                    .in_set(GamePhase::Simulation),
+            )
+            .add_systems(
+                Update,
+                (player_input, hold_to_wait)
+                    .chain()
+                    .in_set(TurnPhase::Input),
+            )
+            .add_systems(
+                Update,
+                (accept_turn, cancel_expired_wait)
+                    .chain()
+                    .in_set(TurnPhase::Start),
+            )
+            .add_systems(
+                Update,
+                (stop_dead_actions, synchronize_idle_actors, move_commands)
+                    .chain()
+                    .in_set(TurnPhase::Spend),
+            )
             .add_systems(
                 Update,
                 (
-                    sync_portals,
-                    turn_tick,
-                    recharge_tokens,
-                    player_input,
-                    move_commands,
                     update_direction,
                     movement,
                     friction,
@@ -54,6 +92,14 @@ impl Plugin for SimulationPlugin {
                     resolve_commit,
                     turn_portal_crossers,
                     relative_position,
+                )
+                    .chain()
+                    .in_set(TurnPhase::Move),
+            )
+            .add_systems(
+                Update,
+                (
+                    deactivate_dead,
                     verify_map,
                     open_doors,
                     pick_up_items,
@@ -68,7 +114,7 @@ impl Plugin for SimulationPlugin {
                     direction_tiles,
                 )
                     .chain()
-                    .in_set(GamePhase::Simulation),
+                    .in_set(TurnPhase::Cleanup),
             )
             .add_systems(
                 PreUpdate,
@@ -76,6 +122,7 @@ impl Plugin for SimulationPlugin {
                     .after(bevy::input::InputSystems)
                     .run_if(resource_exists::<ButtonInput<KeyCode>>),
             )
+            .add_systems(PreUpdate, request_restart.after(bevy::input::InputSystems))
             .add_systems(Update, turn_update.in_set(GamePhase::Finalize));
     }
 }
