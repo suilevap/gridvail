@@ -87,7 +87,9 @@ fn boot() -> App {
 
 #[test]
 fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
-    let _measurement = MEASUREMENTS.lock().unwrap();
+    let _measurement = MEASUREMENTS
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     let mut baseline = App::new();
     // Bevy's single-threaded executor performs bookkeeping allocations based
     // on schedule shape. Use a comparable number of chained no-op systems so
@@ -170,17 +172,21 @@ fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
 
 #[test]
 fn warmed_combat_actions_reuse_attack_and_defence_storage() {
-    let _measurement = MEASUREMENTS.lock().unwrap();
+    let _measurement = MEASUREMENTS
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
     use pav_ecs_game_bevy_port::app::{BattlePlugin, MapText};
     use pav_ecs_game_bevy_port::model::{
         ActionTaken, AttackWindow, DirectionalGuard, Enemy, Health,
     };
+    // Exact fixed-step windows must do equal executor work. A 16ms frame
+    // drifts against Bevy's default 1/64s timestep and can add a fixed tick
+    // (and its bookkeeping allocations) to just one of the measured windows.
+    let frame = Time::<Fixed>::default().timestep();
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .init_resource::<ButtonInput<KeyCode>>()
-        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
-            16,
-        )))
+        .insert_resource(TimeUpdateStrategy::ManualDuration(frame))
         .insert_resource(MapText("XXXXXXXX\nX ps   X\nX      X\nXXXXXXXX"))
         .add_plugins((GamePlugin, BattlePlugin));
     single_threaded(&mut app);
@@ -199,11 +205,13 @@ fn warmed_combat_actions_reuse_attack_and_defence_storage() {
     for _ in 0..256 {
         app.update();
     }
+    let fixed_before_idle = app.world().resource::<Time<Fixed>>().elapsed();
     let idle = measured(|| {
         for _ in 0..128 {
             app.update();
         }
     });
+    let idle_fixed = app.world().resource::<Time<Fixed>>().elapsed() - fixed_before_idle;
     app.world_mut()
         .resource_mut::<ButtonInput<KeyCode>>()
         .press(KeyCode::ArrowRight);
@@ -216,11 +224,14 @@ fn warmed_combat_actions_reuse_attack_and_defence_storage() {
         .single(world)
         .unwrap()
         .serial;
+    let fixed_before_turns = app.world().resource::<Time<Fixed>>().elapsed();
     let turns = measured(|| {
         for _ in 0..128 {
             app.update();
         }
     });
+    let turns_fixed = app.world().resource::<Time<Fixed>>().elapsed() - fixed_before_turns;
+    assert_eq!(turns_fixed, idle_fixed, "measure equal fixed-update work");
     let world = app.world_mut();
     let after = world
         .query_filtered::<&ActionTaken, With<Player>>()
