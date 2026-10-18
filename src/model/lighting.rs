@@ -88,3 +88,37 @@ impl LightStyle {
         }
     }
 }
+
+/// How a floor cell on the edge of a shadow shows the part of it the light
+/// reaches, finer than the grid: not at all, as braille dots where it is
+/// lit, as one dot moved to the middle of the lit part, or as quarter
+/// blocks.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ShadowEdges {
+    #[default]
+    Off,
+    Dots,
+    Offset,
+    Blocks,
+}
+
+impl ShadowEdges {
+    const ALL: [Self; 4] = [Self::Off, Self::Dots, Self::Offset, Self::Blocks];
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|edges| edges.name() == name)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Dots => "dots",
+            Self::Offset => "offset",
+            Self::Blocks => "blocks",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        Self::ALL[(self as usize + 1) % Self::ALL.len()]
+    }
+}

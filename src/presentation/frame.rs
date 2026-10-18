@@ -1,9 +1,10 @@
 use bevy::prelude::*;
 
-use super::DynamicLight;
+use super::{DynamicLight, LightEdges};
 use crate::foundation::portal::CellTransform;
 use crate::lighting::{
-    dimmed, dimmed_rgb, light_to_palette, light_to_rgb, DARK_MAGENTA, DARK_RED, MAGENTA,
+    dimmed, dimmed_rgb, light_to_palette, light_to_rgb, lit_blocks, lit_dot, lit_dots,
+    DARK_MAGENTA, DARK_RED, MAGENTA,
 };
 use crate::model::*;
 
@@ -35,6 +36,8 @@ pub fn compose_frame(
     grid: Res<MapGrid>,
     dynamic: Res<DynamicLight>,
     style: Option<Res<LightStyle>>,
+    light_edges: Option<Res<LightEdges>>,
+    shadow_edges: Option<Res<ShadowEdges>>,
     reveal: Option<Res<RevealAll>>,
     viewers: Query<(&Pos, &VisibilityMap, Option<&PlayerView>), With<Player>>,
     glyphs: Query<(
@@ -161,6 +164,19 @@ pub fn compose_frame(
     }
 
     let smooth = style.is_some_and(|style| *style == LightStyle::Smooth);
+    let shadow_edges = shadow_edges.map_or(ShadowEdges::Off, |edges| *edges);
+    let edge_glyph = |p: IVec2| {
+        let edge = grid
+            .idx(p)
+            .and_then(|i| light_edges.as_ref()?.cells.get(i))
+            .filter(|edge| edge.is_edge())?;
+        match shadow_edges {
+            ShadowEdges::Off => None,
+            ShadowEdges::Dots => Some(lit_dots(edge.lit)),
+            ShadowEdges::Offset => Some(lit_dot(edge.lit)),
+            ShadowEdges::Blocks => Some(lit_blocks(edge.lit)),
+        }
+    };
     let light_at = |p: IVec2| {
         grid.idx(p)
             .and_then(|i| dynamic.data.get(i))
@@ -173,7 +189,7 @@ pub fn compose_frame(
         let seen = buffers.seen[index];
         if seen.is_some() || known(position) {
             let cell = &mut buffers.current[index];
-            light_cell(cell, seen, position, &grid, &light_at, smooth);
+            light_cell(cell, seen, position, &grid, &light_at, smooth, &edge_glyph);
         } else if borders_known_background(&buffers, &known, position) {
             buffers.current[index] = RenderCell {
                 ch: '?',
@@ -212,6 +228,7 @@ pub fn compose_frame(
                 &grid,
                 &light_at,
                 smooth,
+                &edge_glyph,
             );
             buffers.ground[index] = floor;
         }
@@ -223,7 +240,8 @@ pub fn compose_frame(
 /// Lights frame cell `cell` at `position`, seen now through `seen` or else
 /// remembered: an empty one becomes floor (or a portal's threshold), and an
 /// object's glyph takes the light's colour (or a portal's), `smooth`ly
-/// shaded or in palette steps.
+/// shaded or in palette steps. A floor seen directly on the edge of a
+/// shadow shows its `edge_glyph`, if it has one, instead of its dot.
 fn light_cell(
     cell: &mut RenderCell,
     seen: Option<SeenCell>,
@@ -231,12 +249,23 @@ fn light_cell(
     grid: &MapGrid,
     light_at: &impl Fn(IVec2) -> LightCell,
     smooth: bool,
+    edge_glyph: &impl Fn(IVec2) -> Option<char>,
 ) {
     let occupied = !matches!(cell.ch, ' ' | '\0');
     if let Some(seen) = seen {
         let light = light_at(seen.world);
         let rgb = smooth.then(|| light_to_rgb(&light));
         shade(cell, true, light_to_palette(&light), rgb);
+        if !occupied && seen.transform.is_identity() {
+            if let Some(ch) = edge_glyph(seen.world) {
+                cell.ch = ch;
+                // Blocks cover much more of a cell than a dot: dimmer.
+                if is_block(ch) {
+                    cell.color = dimmed(cell.color);
+                    cell.rgb = cell.rgb.map(|rgb| rgb.map(|c| (c as f32 * 0.45) as u8));
+                }
+            }
+        }
         // The threshold's floor, or the portal's own wall when the view
         // does not pass through it.
         if seen.portal && !occupied {
@@ -358,6 +387,10 @@ fn draw(
         quarters,
         cell: drawn,
     });
+}
+
+fn is_block(ch: char) -> bool {
+    ('\u{2580}'..='\u{259F}').contains(&ch)
 }
 
 fn shade(cell: &mut RenderCell, floor: bool, color: u8, rgb: Option<[u8; 3]>) {

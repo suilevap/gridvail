@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 
-use crate::lighting::{merge_light, Bounce, BounceTopology, LightContext, NO_NEIGHBOUR};
+use crate::lighting::{
+    lit_points, merge_light, Bounce, BounceTopology, LightContext, FULLY_LIT, NO_NEIGHBOUR,
+};
 use crate::model::*;
 
 #[derive(Resource, Debug)]
@@ -16,6 +18,31 @@ impl DynamicLight {
     }
 }
 
+/// Per map cell, which part of it its brightest light reaches
+/// ([`lit_points`]), for drawing shadow edges finer than the grid.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LightEdge {
+    /// How much light the brightest light gives the cell.
+    pub amount: f32,
+    /// The points of the cell it reaches.
+    pub lit: u8,
+}
+
+impl LightEdge {
+    /// Whether the cell is on the edge of a shadow: lit only in part.
+    pub fn is_edge(&self) -> bool {
+        self.lit != 0 && self.lit != FULLY_LIT
+    }
+}
+
+/// [`LightEdge`]s of the static lights (kept while they are) and of all
+/// the lights, as `StaticLight` and `DynamicLight` keep their light.
+#[derive(Resource, Debug, Default)]
+pub struct LightEdges {
+    static_cells: Vec<LightEdge>,
+    pub cells: Vec<LightEdge>,
+}
+
 /// The map as bounced light sees it, rebuilt when its blockers or portals
 /// change, and the bounce's scratch storage.
 #[derive(Default)]
@@ -26,10 +53,13 @@ pub struct BounceState {
     built: Option<(i32, i32, u64, u64)>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_light_layers(
     grid: Res<MapGrid>,
     mut static_layer: ResMut<StaticLight>,
     mut dynamic: ResMut<DynamicLight>,
+    edges: Option<ResMut<LightEdges>>,
+    mut no_edges: Local<LightEdges>,
     bounce_light: Option<Res<BounceLight>>,
     mut bounce: Local<BounceState>,
     static_sources: Query<(Entity, &Pos, Ref<LightSource>, &FovResult), Without<Speed>>,
@@ -41,6 +71,14 @@ pub fn render_light_layers(
     }
     if dynamic.data.len() != size {
         dynamic.data = vec![LightCell::default(); size];
+    }
+    let edges = match edges {
+        Some(edges) => edges.into_inner(),
+        None => &mut *no_edges,
+    };
+    if edges.static_cells.len() != size {
+        edges.static_cells = vec![LightEdge::default(); size];
+        static_layer.dirty = true;
     }
     static_layer.current_revisions.clear();
     static_layer.current_revisions.extend(
@@ -66,13 +104,26 @@ pub fn render_light_layers(
             value: 1,
             kind: LightKind::None,
         });
+        edges.static_cells.fill(LightEdge::default());
         for (_, pos, light, fov) in static_sources.iter() {
-            blend_source(&mut static_layer.data, &grid, pos.0, &light, fov);
+            blend_source(
+                &mut static_layer.data,
+                &mut edges.static_cells,
+                &grid,
+                pos.0,
+                &light,
+                fov,
+            );
         }
     }
     dynamic.data.clone_from(&static_layer.data);
+    let LightEdges {
+        static_cells,
+        cells,
+    } = edges;
+    cells.clone_from(static_cells);
     for (pos, light, fov) in dynamic_sources.iter() {
-        blend_source(&mut dynamic.data, &grid, pos.0, light, fov);
+        blend_source(&mut dynamic.data, cells, &grid, pos.0, light, fov);
     }
     if let Some(light) = bounce_light.filter(|light| light.enabled) {
         let built = Some((
@@ -125,8 +176,13 @@ fn build_topology(grid: &MapGrid, topology: &mut BounceTopology) {
 /// fades with the distance it travelled (`delta`), not the straight one
 /// between its cell and the lit map cell, so a lamp lights the far side of a
 /// portal as it would the cells just past it.
+///
+/// It also notes in `edges` which part of each cell it reaches where it is
+/// the brightest light there: where it reaches a cell only in part, which
+/// points of the cell it sees directly.
 fn blend_source(
     layer: &mut [LightCell],
+    edges: &mut [LightEdge],
     grid: &MapGrid,
     center: IVec2,
     light: &LightSource,
@@ -141,6 +197,18 @@ fn blend_source(
             continue;
         };
         let apparent = center + sample.delta;
+        let edge = &mut edges[index];
+        let amount = sample.value * context.reach(apparent.x, apparent.y);
+        if amount > edge.amount {
+            *edge = LightEdge {
+                amount,
+                lit: if sample.value >= 0.999 || !sample.transform.is_identity() {
+                    FULLY_LIT
+                } else {
+                    lit_points(center, sample.world, &|p| grid.blocks_vision(p))
+                },
+            };
+        }
         merge_light(
             &mut layer[index],
             sample.value,

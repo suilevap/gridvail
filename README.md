@@ -155,6 +155,12 @@ next to this file.
   gradient starts at the unlit grey and never gets darker as light grows,
   so a light fades into the dark and into other lights. The palette stays
   the default and is what the agent API and the 3D renderer still use.
+- Shadow edges (an addition, a prototype, opt-in with `--edges` or V in
+  game): a floor cell a light reaches only in part (its field of view
+  value between 0 and 1) is tested at 8 points against the walls, and
+  shows its lit part finer than the grid: `offset` moves its dot into the
+  lit part, `dots` draws braille dots where it is lit, `blocks` dim
+  quarter blocks. `assets/maps/shadows.txt` shows it off.
 - Seeing and lighting through portals (an addition): every field of view
   goes through portals, as the player's does, so enemies notice the player
   through a portal and lamps light the far side of one, fading with the
@@ -226,7 +232,7 @@ tests/enemy_behavior.rs  enemy behavior-tree scenarios on small ASCII maps
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
 tests/reference_parity.rs  independent C# FOV/light/palette fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
-assets/maps/       map1/2/3, map1_test, lightTest, bounce, …
+assets/maps/       map1/2/3, map1_test, lightTest, bounce, shadows, …
 assets/rules/      wall + three direction rules
 assets/fonts/      Unscii-8 square pixel font (public domain)
 assets/shaders/    world-space procedural 3D surface material
@@ -249,7 +255,8 @@ cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same ro
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --map assets/maps/bounce.txt --gi  # bounced light; G toggles it in game
 cargo run -- --light smooth     # smooth light colours; L toggles them in game
-cargo test --workspace   # 256 tests, including allocation and independent C# comparisons
+cargo run -- --map assets/maps/shadows.txt --edges offset  # shadow edges inside cells; V cycles styles
+cargo test --workspace   # 258 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

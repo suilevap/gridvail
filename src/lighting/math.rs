@@ -24,6 +24,20 @@ impl LightContext {
     }
 }
 
+impl LightContext {
+    /// How much light reaches cell `x`, `y` seen in full: none past the
+    /// radius.
+    pub fn reach(&self, x: i32, y: i32) -> f32 {
+        let dx = x - self.center_x;
+        let dy = y - self.center_y;
+        let distance_sq = dx * dx + dy * dy;
+        if distance_sq > self.radius_sq {
+            return 0.0;
+        }
+        (1.0 - distance_sq as f32 * self.inv_radius_sq) * self.base_value as f32
+    }
+}
+
 pub fn merge_light(target: &mut LightCell, fov: f32, x: i32, y: i32, context: &LightContext) {
     let dx = x - context.center_x;
     let dy = y - context.center_y;

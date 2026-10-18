@@ -196,3 +196,38 @@ fn smooth_light_starts_unlit_and_never_darkens() {
         }
     }
 }
+
+#[test]
+fn shadow_edges_light_only_the_points_a_light_sees() {
+    use bevy::prelude::IVec2;
+    let open = |_: IVec2| false;
+    assert_eq!(lit_points(IVec2::ZERO, IVec2::new(4, 2), &open), FULLY_LIT);
+    let wall = |p: IVec2| p == IVec2::new(2, 0);
+    assert_eq!(
+        lit_points(IVec2::ZERO, IVec2::new(4, 0), &wall),
+        0,
+        "straight behind the wall"
+    );
+    let corner = |p: IVec2| p == IVec2::new(2, 1);
+    // Rays to the cell's left points pass beside the wall, to its right
+    // points through it.
+    let lit = lit_points(IVec2::ZERO, IVec2::new(3, 3), &corner);
+    assert!(
+        lit != 0 && lit != FULLY_LIT,
+        "half behind the wall: {lit:#010b}"
+    );
+}
+
+#[test]
+fn shadow_edge_glyphs_show_the_lit_part() {
+    assert_eq!(lit_blocks(FULLY_LIT), '█');
+    assert_eq!(lit_blocks(0x03), '▘', "dots 1 and 2: the top left");
+    assert_eq!(lit_blocks(0xA0), '▗', "dots 6 and 8: the bottom right");
+    assert_eq!(lit_dot(0x01), '⠁');
+    assert_eq!(
+        lit_dot(0x08 | 0x10 | 0x80),
+        '⠐',
+        "dots 4, 5 and 8: their middle is nearest dot 5"
+    );
+    assert_eq!(lit_dots(FULLY_LIT), '⢕', "a checkerboard of four");
+}
