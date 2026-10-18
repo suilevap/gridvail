@@ -87,6 +87,8 @@ pub(super) fn spawn_battle_ui(commands: &mut Commands, camera: Entity) {
             panel.spawn((BattleLabel::Threat, Text::default(), battle_font()));
             panel
                 .spawn(Node {
+                    height: Val::Px(20.0),
+                    flex_shrink: 0.0,
                     align_items: AlignItems::Center,
                     column_gap: Val::Px(8.0),
                     ..default()
@@ -186,20 +188,20 @@ pub(super) fn draw_battle_ui(
             BattleLabel::Status => {
                 write!(text.0, "HP {}/{}", health.current, health.maximum).unwrap();
                 if battle.defeated {
-                    write!(text.0, " · Defeated").unwrap();
+                    write!(text.0, " | Defeated").unwrap();
                 } else if battle.won {
-                    write!(text.0, " · Victory").unwrap();
+                    write!(text.0, " | Victory").unwrap();
                 } else if turn.simulation || tokens.count <= 0 {
-                    write!(text.0, " · Acting").unwrap();
+                    write!(text.0, " | Acting").unwrap();
                 } else {
-                    write!(text.0, " · ACT {:.1}s", timer.0.remaining_secs()).unwrap();
+                    write!(text.0, " | ACT {:.1}s", timer.0.remaining_secs()).unwrap();
                 }
             }
             BattleLabel::Threat if !battle.defeated && !battle.won => {
                 if let Some((_, enemy_health, fighter)) = nearest {
                     write!(
                         text.0,
-                        "{} {}/{} · ",
+                        "{} {}/{} | ",
                         match fighter.role {
                             BattleRole::Skirmisher => "Foe",
                             BattleRole::Spearman => "Spear",
@@ -213,7 +215,7 @@ pub(super) fn draw_battle_ui(
                     if fighter.intent == BattleIntent::Recover {
                         write!(
                             text.0,
-                            "OPEN {} · {}",
+                            "OPEN {} turns | {}",
                             fighter.recovery_left + 1,
                             if fighter.role == BattleRole::ShieldBearer {
                                 "any side"
@@ -229,11 +231,11 @@ pub(super) fn draw_battle_ui(
             }
             BattleLabel::Wait if !battle.defeated && !battle.won => {
                 if wait.latched && wait.progress() == 1.0 {
-                    write!(text.0, "WAIT COUNTED · release").unwrap();
+                    write!(text.0, "WAIT COUNTED | release").unwrap();
                 } else if wait.elapsed > 0.0 {
                     write!(
                         text.0,
-                        "WAIT {:.1}s · hold",
+                        "WAIT {:.1}s | hold",
                         (WaitHold::SECONDS - wait.elapsed).max(0.0)
                     )
                     .unwrap();
@@ -242,7 +244,7 @@ pub(super) fn draw_battle_ui(
                 } else {
                     write!(
                         text.0,
-                        "{} {:.1}s · {}",
+                        "{} {:.1}s | {}",
                         if scheme.as_deref() == Some(&ControlScheme::Touch) {
                             "Hold"
                         } else {
@@ -281,12 +283,12 @@ pub(super) fn draw_battle_ui(
 
 fn enemy_hint(fighter: &Fighter) -> &'static str {
     match (fighter.role, fighter.intent) {
-        (_, BattleIntent::WindUp { .. }) => "SLAM 2 · leave area",
-        (_, BattleIntent::Slam { .. }) => "SLAM NEXT · get out",
-        (BattleRole::Spearman, BattleIntent::Strike { .. }) => "LUNGE · sidestep",
-        (BattleRole::ShieldBearer, BattleIntent::Strike { .. }) => "BASH · sidestep",
+        (_, BattleIntent::WindUp { .. }) => "SLAM 2 turns | out",
+        (_, BattleIntent::Slam { .. }) => "SLAM NEXT | get out",
+        (BattleRole::Spearman, BattleIntent::Strike { .. }) => "LUNGE | sidestep",
+        (BattleRole::ShieldBearer, BattleIntent::Strike { .. }) => "BASH | sidestep",
         (BattleRole::Spearman, _) => "bait its lane",
-        (BattleRole::ShieldBearer, _) => "front guarded · bait bash",
+        (BattleRole::ShieldBearer, _) => "front guarded | bait bash",
         (BattleRole::Brute, _) => "bait slam, then retreat",
         _ => "dodge ! or interrupt",
     }

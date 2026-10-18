@@ -541,19 +541,19 @@ fn the_hud_explains_the_telegraph_and_counts_the_opening() {
     for (map, next, opening, count) in [
         (
             "XXXXXXXX\nX ps   X\nX      X\nX      X\nXXXXXXXX",
-            "LUNGE · sidestep",
+            "LUNGE | sidestep",
             "counter",
             2,
         ),
         (
             "XXXXXXXX\nX pg   X\nX      X\nX      X\nXXXXXXXX",
-            "BASH · sidestep",
+            "BASH | sidestep",
             "any side",
             2,
         ),
         (
             "XXXXXXXX\nX pb   X\nX      X\nX      X\nXXXXXXXX",
-            "SLAM 2 · leave area",
+            "SLAM 2 turns | out",
             "counter",
             3,
         ),
@@ -568,7 +568,7 @@ fn the_hud_explains_the_telegraph_and_counts_the_opening() {
         };
         assert!(has_text(&mut app, next), "missing {next}");
         press(&mut app, KeyCode::ArrowDown);
-        if next == "SLAM 2 · leave area" {
+        if next == "SLAM 2 turns | out" {
             assert!(has_text(&mut app, "SLAM NEXT"));
             press(&mut app, KeyCode::ArrowDown);
         }

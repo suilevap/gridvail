@@ -243,7 +243,7 @@ the next decision. Red `!` cells show where an enemy will strike on the next
 action or timeout. Yellow `?` cells give an extra
 action of warning; blue `+` cells show a spent attack. Recovering enemies turn
 blue and lowercase. The compact battle panel shows health and the deadline,
-one nearby enemy's action/counter cue, and wait progress. `OPEN 2` means two
+one nearby enemy's action/counter cue, and wait progress. `OPEN 2 turns` means two
 actions remain to counter; `any side` marks a lowered shield.
 
 - **Spear:** bait its two-cell lane, then step sideways. It lunges one cell
