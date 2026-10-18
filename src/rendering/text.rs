@@ -129,6 +129,7 @@ impl Plugin for TextRendererPlugin {
                 (
                     super::settings::settings_input,
                     cycle_motion,
+                    toggle_bounce_light,
                     fit_frame_to_window,
                     match_cells_to_frame,
                     place_cells,
@@ -504,6 +505,22 @@ fn cycle_motion(
     }
 }
 
+/// G turns bounced light on and off.
+fn toggle_bounce_light(
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    menu: Res<SettingsMenu>,
+    light: Option<ResMut<BounceLight>>,
+) {
+    if menu.open {
+        return;
+    }
+    if let Some(mut light) = light {
+        if keys.is_some_and(|keys| keys.just_pressed(KeyCode::KeyG)) {
+            light.enabled = !light.enabled;
+        }
+    }
+}
+
 /// Objects draw above the ground cells, deeper glyphs on top.
 fn object_translation(sprite: &ObjectSprite, camera: &ViewCamera) -> Vec3 {
     view_translation(camera, sprite.position) + Vec3::Z * (1.0 + sprite.depth as f32 * 0.1)
@@ -585,6 +602,7 @@ fn update_hud(
     enemies: Query<Entity, (With<Enemy>, Without<DestroyRequested>)>,
     collisions: Res<CollisionBuffer>,
     motion: Option<Res<MotionStyle>>,
+    bounce_light: Option<Res<BounceLight>>,
     operator: Option<Res<CameraOperator>>,
     scheme: Option<Res<ControlScheme>>,
     mut hud: Query<&mut Text, With<HudText>>,
@@ -609,13 +627,18 @@ fn update_hud(
         match scheme {
             ControlScheme::Keyboard => writeln!(
                 text.0,
-                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | Esc settings",
+                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | G light: {} | Esc settings",
                 if extruded_walls.is_some() {
                     " | wheel zoom"
                 } else {
                     ""
                 },
                 motion.as_ref().map_or("off", |motion| motion.name()),
+                if bounce_light.as_ref().is_some_and(|light| light.enabled) {
+                    "bounce"
+                } else {
+                    "direct"
+                },
             ),
             ControlScheme::Touch => writeln!(
                 text.0,

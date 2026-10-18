@@ -115,8 +115,10 @@ and renderers must not import it.
   needs `GetKey`, which needs `FetchKey(key)` for each known key in turn
   and fails only when every one has; with a key, door pricing lets the next
   plan through the door.
-- `lighting/` contains light blending and palette conversion. It does not know
-  about Bevy text entities or the application schedule.
+- `lighting/` contains light blending, bounced light (`Bounce`, over a
+  `BounceTopology` of open cells and their neighbours that `presentation`
+  builds from the map, portals included) and palette conversion. It does not
+  know about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for
   every positioned object (actors, walls, decor). Each object plays one
   `Move` at a time (start, end, `Path` shape, timing, secondary motion such as

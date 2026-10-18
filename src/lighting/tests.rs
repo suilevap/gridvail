@@ -1,5 +1,5 @@
 use super::*;
-use crate::model::{LightCell, LightKind};
+use crate::model::{BounceLight, LightCell, LightKind};
 
 fn context(kind: LightKind, value: u8) -> LightContext {
     LightContext::new((0, 0), 4, value, kind)
@@ -69,4 +69,110 @@ fn remembered_colours_are_darker() {
     assert_eq!(dimmed(GRAY), DARK_GRAY);
     assert_eq!(dimmed(DARK_YELLOW), DARK_GRAY);
     assert_eq!(dimmed(BLACK), BLACK);
+}
+
+/// A topology from rows of `#` (walls) and `.` (open cells), and a layer
+/// lit by `light` on the cells marked `*` (open) or `@` (walls).
+fn bounce_map(rows: &[&str], light: LightCell) -> (BounceTopology, Vec<LightCell>, usize) {
+    let width = rows[0].len();
+    let mut topology = BounceTopology::default();
+    let mut layer = Vec::new();
+    for (y, row) in rows.iter().enumerate() {
+        for (x, ch) in row.chars().enumerate() {
+            topology.open.push(matches!(ch, '.' | '*'));
+            layer.push(if matches!(ch, '*' | '@') {
+                light
+            } else {
+                LightCell {
+                    value: 1,
+                    kind: LightKind::None,
+                }
+            });
+            let mut neighbours = [NO_NEIGHBOUR; 4];
+            let steps = [(0, -1), (1, 0), (0, 1), (-1, 0)];
+            for (slot, (dx, dy)) in steps.into_iter().enumerate() {
+                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if nx >= 0 && ny >= 0 && (nx as usize) < width && (ny as usize) < rows.len() {
+                    neighbours[slot] = (ny as usize * width + nx as usize) as u32;
+                }
+            }
+            topology.neighbours.push(neighbours);
+        }
+    }
+    (topology, layer, width)
+}
+
+fn bounced() -> BounceLight {
+    BounceLight {
+        enabled: true,
+        ..BounceLight::default()
+    }
+}
+
+#[test]
+fn bounced_light_reaches_round_a_corner() {
+    let fire = LightCell {
+        value: 200,
+        kind: LightKind::Fire,
+    };
+    let (topology, mut layer, width) = bounce_map(
+        &[
+            "#@@@@#", //
+            "@****@", //
+            "#@@@*@", //
+            "####.#", //
+            "####.#", //
+        ],
+        fire,
+    );
+    Bounce::default().apply(&mut layer, &topology, &bounced());
+    let around = layer[4 * width + 4];
+    assert_eq!(around.kind, LightKind::Fire);
+    assert!(around.value > 1, "the corridor gets bounced light");
+    assert!(
+        layer[3 * width + 4].value > around.value,
+        "fading on the way"
+    );
+    assert_eq!(layer[width + 1], fire, "lit cells keep their own light");
+}
+
+#[test]
+fn a_wall_gives_light_back_only_to_its_lit_side() {
+    let fire = LightCell {
+        value: 200,
+        kind: LightKind::Fire,
+    };
+    let (topology, mut layer, width) = bounce_map(
+        &[
+            "**@..", //
+            "**@..", //
+            "**@..", //
+        ],
+        fire,
+    );
+    Bounce::default().apply(&mut layer, &topology, &bounced());
+    assert_eq!(layer[width + 3].value, 1, "nothing shines through the wall");
+}
+
+#[test]
+fn bounced_light_tints_a_dimmer_light_of_another_kind() {
+    let (topology, mut layer, width) = bounce_map(
+        &[
+            "@@@@@", //
+            "*****", //
+            ".....", //
+        ],
+        LightCell {
+            value: 255,
+            kind: LightKind::Fire,
+        },
+    );
+    let acid = 2 * width + 2;
+    layer[acid] = LightCell {
+        value: 10,
+        kind: LightKind::Acid,
+    };
+    Bounce::default().apply(&mut layer, &topology, &bounced());
+    assert_eq!(layer[acid].kind, LightKind::Fire);
+    assert!(layer[acid].value > 10);
 }

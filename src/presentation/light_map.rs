@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::lighting::{merge_light, LightContext};
+use crate::lighting::{merge_light, Bounce, BounceTopology, LightContext, NO_NEIGHBOUR};
 use crate::model::*;
 
 #[derive(Resource, Debug)]
@@ -16,10 +16,22 @@ impl DynamicLight {
     }
 }
 
+/// The map as bounced light sees it, rebuilt when its blockers or portals
+/// change, and the bounce's scratch storage.
+#[derive(Default)]
+pub struct BounceState {
+    topology: BounceTopology,
+    bounce: Bounce,
+    /// The map size and `MapGrid` revisions `topology` was built from.
+    built: Option<(i32, i32, u64, u64)>,
+}
+
 pub fn render_light_layers(
     grid: Res<MapGrid>,
     mut static_layer: ResMut<StaticLight>,
     mut dynamic: ResMut<DynamicLight>,
+    bounce_light: Option<Res<BounceLight>>,
+    mut bounce: Local<BounceState>,
     static_sources: Query<(Entity, &Pos, Ref<LightSource>, &FovResult), Without<Speed>>,
     dynamic_sources: Query<(&Pos, &LightSource, &FovResult), With<Speed>>,
 ) {
@@ -61,6 +73,51 @@ pub fn render_light_layers(
     dynamic.data.clone_from(&static_layer.data);
     for (pos, light, fov) in dynamic_sources.iter() {
         blend_source(&mut dynamic.data, &grid, pos.0, light, fov);
+    }
+    if let Some(light) = bounce_light.filter(|light| light.enabled) {
+        let built = Some((
+            grid.width,
+            grid.height,
+            grid.blocker_revision,
+            grid.portal_revision,
+        ));
+        let BounceState {
+            topology,
+            bounce,
+            built: last,
+        } = &mut *bounce;
+        if *last != built {
+            *last = built;
+            build_topology(&grid, topology);
+        }
+        bounce.apply(&mut dynamic.data, topology, &light);
+    }
+}
+
+/// Which cells let light through, and each one's four neighbours: stepping
+/// into a portal face from the floor in front of it leads to the floor in
+/// front of its exit, so bounced light goes through portals as sight does.
+fn build_topology(grid: &MapGrid, topology: &mut BounceTopology) {
+    topology.clear();
+    for y in 0..grid.height {
+        for x in 0..grid.width {
+            let at = IVec2::new(x, y);
+            topology.open.push(!grid.blocks_vision(at));
+            let mut neighbours = [NO_NEIGHBOUR; 4];
+            for (slot, step) in [IVec2::NEG_Y, IVec2::X, IVec2::Y, IVec2::NEG_X]
+                .into_iter()
+                .enumerate()
+            {
+                let mut next = at + step;
+                if let Some(face) = grid.portal_at(next).filter(|face| face.side == -step) {
+                    next = face.through.apply(next);
+                }
+                if let Some(index) = grid.idx(next) {
+                    neighbours[slot] = index as u32;
+                }
+            }
+            topology.neighbours.push(neighbours);
+        }
     }
 }
 

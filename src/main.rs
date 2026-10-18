@@ -22,7 +22,8 @@ use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
-    AnimatedPos, CompassMode, Player, Pos, RevealAll, SettingsMenu, ViewCamera, Vis, VisibilityMap,
+    AnimatedPos, BounceLight, CompassMode, Player, Pos, RevealAll, SettingsMenu, ViewCamera, Vis,
+    VisibilityMap,
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
@@ -83,6 +84,10 @@ fn main() -> AppExit {
             enemies: options.enemy_portals,
         })
         .insert_resource(RoomPlanners::default().with_default(&options.room_planner))
+        .insert_resource(BounceLight {
+            enabled: options.bounce_light,
+            ..default()
+        })
         .add_plugins(plugins)
         .add_plugins(GamePlugin)
         .add_plugins((
@@ -173,6 +178,8 @@ struct Options {
     reveal: bool,
     /// Whether enemies plan paths through portals.
     enemy_portals: bool,
+    /// Whether light bounces off lit walls and floors.
+    bounce_light: bool,
     /// What the view does through turning portals.
     portal_turn: PortalTurn,
     /// When the compass shows.
@@ -238,6 +245,7 @@ impl Options {
         let mut map = None;
         let mut reveal = false;
         let mut enemy_portals = false;
+        let mut bounce_light = false;
         let mut portal_turn = None;
         let mut compass = None;
         let mut room_planner = None;
@@ -271,6 +279,9 @@ impl Options {
             },
             "--enemy-portals": flag => {
                 enemy_portals = true;
+            },
+            "--gi": flag => {
+                bounce_light = true;
             },
             "--portal-view": value if portal_turn.is_none() => {
                 let name = args.next().expect("--portal-view requires turn or north");
@@ -334,6 +345,7 @@ impl Options {
             map,
             reveal,
             enemy_portals,
+            bounce_light,
             portal_turn: portal_turn.unwrap_or_default(),
             compass: compass.unwrap_or_default(),
             room_planner: room_planner.unwrap_or(RoomPlanners::default().default),

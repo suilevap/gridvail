@@ -141,6 +141,14 @@ next to this file.
 - Enemies through portals (an addition, opt-in with `--enemy-portals`):
   enemies plan paths through portals too, with an A* estimate that knows
   the portals, so searches stay narrow.
+- Bounced light (an addition, a prototype, opt-in with `--gi` or G in
+  game): lit walls and floors give back a share of their light, which
+  spreads cell by cell through open cells, through portals too, fading at
+  each step. It fills shadows (a cell keeps its direct light where that is
+  brighter), so light creeps round corners and a coloured light tints what
+  is near it. A wall gives light back only to lit cells beside it, so it
+  does not shine through to its dark side. `assets/maps/bounce.txt` shows
+  it off.
 - Seeing and lighting through portals (an addition): every field of view
   goes through portals, as the player's does, so enemies notice the player
   through a portal and lamps light the far side of one, fading with the
@@ -212,7 +220,7 @@ tests/enemy_behavior.rs  enemy behavior-tree scenarios on small ASCII maps
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
 tests/reference_parity.rs  independent C# FOV/light/palette fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
-assets/maps/       map1/2/3, map1_test, lightTest
+assets/maps/       map1/2/3, map1_test, lightTest, bounce, …
 assets/rules/      wall + three direction rules
 assets/fonts/      Unscii-8 square pixel font (public domain)
 assets/shaders/    world-space procedural 3D surface material
@@ -233,7 +241,8 @@ cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up 
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 252 tests, including allocation and independent C# comparisons
+cargo run -- --map assets/maps/bounce.txt --gi  # bounced light; G toggles it in game
+cargo test --workspace   # 255 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
