@@ -227,7 +227,8 @@ pub fn is_hex_pos(p: IVec2) -> bool {
 ///
 /// Floor seen directly is lit by the shader from `lamps`, each a ray to
 /// every pixel through the cells that block light, so shadows have exact
-/// edges and light fades smoothly inside cells. Other floor (remembered,
+/// edges and light fades smoothly inside cells; a ray from the `viewer`
+/// tells which part of such a cell they see. Other floor (remembered,
 /// or seen through a portal) shows its cell's light from `light`.
 #[derive(Resource, Debug, Default)]
 pub struct FloorLight {
@@ -244,6 +245,9 @@ pub struct FloorLight {
     pub info: Vec<u8>,
     /// The lights that may reach the window.
     pub lamps: Vec<FloorLamp>,
+    /// Where the player is shown on the map: what they see of a cell they
+    /// see is lit, the rest of it drawn as remembered.
+    pub viewer: Vec2,
 }
 
 /// A light as a floor shader casts it.

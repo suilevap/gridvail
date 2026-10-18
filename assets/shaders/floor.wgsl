@@ -6,8 +6,9 @@
 //
 // Floor seen directly is lit here a pixel at a time: a ray from each lamp
 // to the pixel through the cells that block light, and the game's falloff,
-// so shadows have exact edges and light fades smoothly inside cells. Other
-// floor shows its cell's light.
+// so shadows have exact edges and light fades smoothly inside cells. A ray
+// from the player tells which part of such a cell they see; the rest is
+// drawn as remembered. Other floor shows its cell's light.
 
 #import bevy_sprite::mesh2d_vertex_output::VertexOutput
 
@@ -34,6 +35,8 @@ struct Lamps {
 @group(#{MATERIAL_BIND_GROUP}) @binding(5) var<uniform> lamps: Lamps;
 // Per cell: blocks light (r), lit here from the lamps (g), bounced light (b).
 @group(#{MATERIAL_BIND_GROUP}) @binding(6) var info: texture_2d<f32>;
+// x, y: where the player is, in cells from the window's top-left corner.
+@group(#{MATERIAL_BIND_GROUP}) @binding(7) var<uniform> viewer: vec4<f32>;
 
 const CELL: f32 = 16.0;
 
@@ -181,6 +184,10 @@ fn lit(local: vec2<f32>) -> vec4<f32> {
     let here = cell_info(vec2<i32>(floor(local)));
     if here.g < 0.5 {
         return own;
+    }
+    if !clear_line(viewer.xy, local) {
+        // The part of a seen cell the player does not see: as remembered.
+        return vec4<f32>(own.rgb * 0.3, own.a * 0.5);
     }
     var kinds = vec4<f32>(0.0);
     let count = i32(lamps.count.x);

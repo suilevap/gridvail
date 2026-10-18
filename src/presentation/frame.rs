@@ -35,10 +35,11 @@ pub fn compose_frame(
     grid: Res<MapGrid>,
     dynamic: Res<DynamicLight>,
     style: Option<Res<LightStyle>>,
-    (floor_style, floor_light, lamps): (
+    (floor_style, floor_light, lamps, shown_viewer): (
         Option<Res<FloorStyle>>,
         Option<ResMut<FloorLight>>,
         Query<(&Pos, Option<&AnimatedPos>, &LightSource)>,
+        Query<&AnimatedPos, With<Player>>,
     ),
     reveal: Option<Res<RevealAll>>,
     viewers: Query<(&Pos, &VisibilityMap, Option<&PlayerView>), With<Player>>,
@@ -233,6 +234,10 @@ pub fn compose_frame(
                 .unwrap_or_default()
         };
         fill_floor(buffers, &grid, &light_at, &direct_at, &mut floor);
+        floor.viewer = shown_viewer
+            .iter()
+            .next()
+            .map_or(player.0.as_vec2(), |shown| shown.position);
         floor.lamps.clear();
         let window = Rect::from_corners(
             buffers.origin.as_vec2(),

@@ -160,7 +160,8 @@ next to this file.
   directly is lit a pixel at a time: a ray from each nearby light to the
   pixel through the cells that block light, with the game's falloff, so
   shadows have exact edges, light fades smoothly inside cells, a moving
-  light's shadows glide with it, fire flickers, electricity buzzes and
+  light's shadows glide with it, the player sees the part of a cell their
+  line of sight reaches (the rest drawn as remembered), fire flickers, electricity buzzes and
   acid pulses. Bounced light, remembered cells and cells seen through a
   portal show their cell's light. Styles: `dots` (four dots a cell,
   larger where brighter), `dither` (ordered dithering), `scanlines` (light

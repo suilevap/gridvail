@@ -67,6 +67,10 @@ struct FloorMaterial {
     /// `FloorLight::info`, read a cell at a time.
     #[texture(6)]
     info: Handle<Image>,
+    /// x, y: where the player is, in cells from the window's top-left
+    /// corner.
+    #[uniform(7)]
+    viewer: Vec4,
 }
 
 impl Material2d for FloorMaterial {
@@ -114,6 +118,7 @@ fn setup(
                 kind: [Vec4::ZERO; MAX_LAMPS],
             },
             info: images.add(cell_image(UVec2::ONE, TextureFormat::Rgba8Unorm)),
+            viewer: Vec4::ZERO,
         })),
         Transform::from_xyz(0.0, 0.0, FLOOR_DEPTH),
         Visibility::Hidden,
@@ -228,13 +233,16 @@ fn draw_floor(
         time.elapsed_secs_wrapped(),
         style as u32 as f32,
     );
+    // Cell (x, y) spans x - 0.5 to x + 0.5; the window's corner is at its
+    // top-left cell's corner.
+    let corner = floor.origin.as_vec2() - 0.5;
+    let viewer = floor.viewer - corner;
+    material.viewer = Vec4::new(viewer.x, viewer.y, 0.0, 0.0);
     let lamps = &mut material.lamps;
     let used = floor.lamps.len().min(MAX_LAMPS);
     lamps.count = Vec4::new(used as f32, 0.0, 0.0, 0.0);
     for (slot, lamp) in floor.lamps.iter().take(MAX_LAMPS).enumerate() {
-        // Cell (x, y) spans x - 0.5 to x + 0.5; the window's corner is at
-        // its top-left cell's corner.
-        let at = lamp.position - floor.origin.as_vec2() + 0.5;
+        let at = lamp.position - corner;
         lamps.at[slot] = Vec4::new(at.x, at.y, lamp.radius, lamp.value);
         let kind = match lamp.kind {
             LightKind::None => 0.0,
