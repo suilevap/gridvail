@@ -275,8 +275,8 @@ and brute (heavy strike), respectively. Existing `e` enemies are skirmishers.
 `BattlePlugin` adds these rules to the base `GamePlugin`, so the original
 simulation and AI remain available for existing library users.
 
-[Watch the browser demonstration](docs/media/tactical-battle.mp4): wait-meter
-cancellation and commitment, spear dodging, shield flanking, bracing, and reset.
+[Watch the browser demonstration](docs/media/tactical-battle.mp4): the decision
+deadline, continuous held movement, deliberate bracing, and touch movement.
 
 ```sh
 cargo run    # arrows or WASD to step the @ player
