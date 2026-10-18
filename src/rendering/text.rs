@@ -131,6 +131,7 @@ impl Plugin for TextRendererPlugin {
                     cycle_motion,
                     toggle_bounce_light,
                     cycle_light_style,
+                    advance_sun,
                     fit_frame_to_window,
                     match_cells_to_frame,
                     place_cells,
@@ -531,6 +532,22 @@ fn cycle_light_style(
     }
 }
 
+/// T moves the sun on to the next time of day.
+fn advance_sun(
+    keys: Option<Res<ButtonInput<KeyCode>>>,
+    menu: Res<SettingsMenu>,
+    sky: Option<ResMut<SkyLight>>,
+) {
+    if menu.open {
+        return;
+    }
+    if let Some(mut sky) = sky {
+        if keys.is_some_and(|keys| keys.just_pressed(KeyCode::KeyT)) {
+            sky.time = sky.time.next();
+        }
+    }
+}
+
 /// G turns bounced light on and off.
 fn toggle_bounce_light(
     keys: Option<Res<ButtonInput<KeyCode>>>,
@@ -630,6 +647,8 @@ fn update_hud(
     motion: Option<Res<MotionStyle>>,
     bounce_light: Option<Res<BounceLight>>,
     light_style: Option<Res<LightStyle>>,
+    sky: Option<Res<SkyLight>>,
+    roofs: Option<Res<Roofs>>,
     operator: Option<Res<CameraOperator>>,
     scheme: Option<Res<ControlScheme>>,
     mut hud: Query<&mut Text, With<HudText>>,
@@ -654,7 +673,7 @@ fn update_hud(
         match scheme {
             ControlScheme::Keyboard => writeln!(
                 text.0,
-                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | G light: {} | L colours: {} | Esc settings",
+                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | G light: {} | L colours: {}{}{} | Esc settings",
                 if extruded_walls.is_some() {
                     " | wheel zoom"
                 } else {
@@ -667,6 +686,10 @@ fn update_hud(
                     "direct"
                 },
                 light_style.as_ref().map_or("palette", |style| style.name()),
+                if roofs.is_some() { " | T sun: " } else { "" },
+                sky.as_ref()
+                    .filter(|_| roofs.is_some())
+                    .map_or("", |sky| sky.time.name()),
             ),
             ControlScheme::Touch => writeln!(
                 text.0,

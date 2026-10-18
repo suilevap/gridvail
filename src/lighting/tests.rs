@@ -1,5 +1,5 @@
 use super::*;
-use crate::model::{BounceLight, LightCell, LightKind};
+use crate::model::{BounceLight, LightCell, LightKind, SkyLight, SunTime};
 
 fn context(kind: LightKind, value: u8) -> LightContext {
     LightContext::new((0, 0), 4, value, kind)
@@ -185,6 +185,8 @@ fn smooth_light_starts_unlit_and_never_darkens() {
         LightKind::Fire,
         LightKind::Electricity,
         LightKind::Acid,
+        LightKind::Sky,
+        LightKind::Sun,
     ] {
         let rgb = |value| light_to_rgb(&LightCell { value, kind });
         assert_eq!(rgb(1), [64, 64, 64], "{kind:?} fades into the unlit grey");
@@ -195,4 +197,89 @@ fn smooth_light_starts_unlit_and_never_darkens() {
             );
         }
     }
+}
+
+/// Daylight on rows of `X` (walls), `.` (open sky), `#` (roofed walls)
+/// and `,` (roofed floor), at `time`: the layer and its width.
+fn daylight(rows: &[&str], time: SunTime) -> (Vec<LightCell>, usize) {
+    let width = rows[0].len();
+    let cells: Vec<char> = rows.iter().flat_map(|row| row.chars()).collect();
+    let blocks: Vec<bool> = cells.iter().map(|&c| matches!(c, 'X' | '#')).collect();
+    let roofed: Vec<bool> = cells.iter().map(|&c| matches!(c, '#' | ',')).collect();
+    let mut layer = vec![
+        LightCell {
+            value: 1,
+            kind: LightKind::None,
+        };
+        cells.len()
+    ];
+    let sky = SkyLight {
+        time,
+        ..SkyLight::default()
+    };
+    Daylight::default().apply(&mut layer, width as i32, &blocks, &roofed, &sky);
+    (layer, width)
+}
+
+#[test]
+fn walls_cast_shadows_away_from_the_sun() {
+    // At dusk the sun is in the west: the shadow falls east of the wall.
+    let (layer, _) = daylight(&["......X......"], SunTime::Dusk);
+    assert_eq!(
+        layer[5].kind,
+        LightKind::Sun,
+        "west of the wall, in the sun"
+    );
+    for east in 7..=10 {
+        assert_eq!(layer[east].kind, LightKind::Sky, "{east} is in its shadow");
+        assert!(layer[east].value < layer[5].value);
+    }
+    assert_eq!(layer[11].kind, LightKind::Sun, "past the shadow's reach");
+    let (noon, _) = daylight(&["......X......"], SunTime::Noon);
+    assert!(noon.iter().all(|cell| cell.kind == LightKind::Sun));
+}
+
+#[test]
+fn daylight_goes_under_a_roof_only_through_an_opening_and_fades() {
+    let (layer, width) = daylight(
+        &[
+            "...........",
+            ".#####.###.",
+            ".#,,,,,,,#.",
+            ".#########.",
+            ".#,,,,,,,#.",
+            ".#########.",
+        ],
+        SunTime::Noon,
+    );
+    let row = |y: usize| &layer[y * width..(y + 1) * width];
+    assert_eq!(row(2)[6].kind, LightKind::Sun);
+    assert!(row(2)[5].value > row(2)[2].value, "darker further in");
+    assert!(row(2)[2].value > 1, "but still lit");
+    assert!(
+        row(4)[2..9].iter().all(|cell| cell.value == 1),
+        "a closed room stays dark"
+    );
+}
+
+#[test]
+fn low_sun_shines_in_through_a_doorway() {
+    // At dusk, from the west: a patch on the floor in line with the door.
+    let (layer, width) = daylight(
+        &["..#########", "...,,,,,,,#", "..#########"],
+        SunTime::Dusk,
+    );
+    // The sun's 150 at 85% for the four cells of the patch, where daylight
+    // spreading in would fade at once.
+    for x in 3..=6 {
+        assert_eq!(
+            layer[x + width],
+            LightCell {
+                value: 128,
+                kind: LightKind::Sun
+            },
+            "{x} is in the patch"
+        );
+    }
+    assert!(layer[7 + width].value < 128, "past the patch it fades");
 }

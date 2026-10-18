@@ -11,6 +11,10 @@
 //! it in order. `@room <x> <y> <planner>` also names the strategy for how
 //! its walls get from one layout to the next (any of its blocks may name
 //! it, and they must agree).
+//!
+//! An `@roof` block marks which cells are under a roof: its lines cover the
+//! map from its top-left corner, `#` for roofed and anything else for open
+//! sky. Sky light reaches only maps that have one.
 
 use bevy::prelude::*;
 
@@ -105,6 +109,10 @@ pub fn parse_rooms(text: &str, cells: &[SpawnCell]) -> Result<Vec<RoomSpec>, Str
         .peekable();
     while let Some(header) = lines.next() {
         let fields: Vec<&str> = header.split_whitespace().collect();
+        if fields[..] == ["@roof"] {
+            while lines.next_if(|line| !line.starts_with('@')).is_some() {}
+            continue;
+        }
         let (origin, planner) = match fields[..] {
             ["@room", x, y, ref planner @ ..] if planner.len() <= 1 => (
                 x.parse()
@@ -114,7 +122,7 @@ pub fn parse_rooms(text: &str, cells: &[SpawnCell]) -> Result<Vec<RoomSpec>, Str
             ),
             _ => {
                 return Err(format!(
-                    "unknown block `{header}`; expected `@room <x> <y> [planner]`"
+                    "unknown block `{header}`; expected `@room <x> <y> [planner]` or `@roof`"
                 ))
             }
         };
@@ -195,6 +203,24 @@ pub fn parse_rooms(text: &str, cells: &[SpawnCell]) -> Result<Vec<RoomSpec>, Str
     Ok(rooms)
 }
 
+/// Reads the `@roof` block after the map, if it has one: for each cell of
+/// a `width` by `height` map, row by row, whether it is under a roof.
+pub fn parse_roof(text: &str, width: i32, height: i32) -> Option<Vec<bool>> {
+    let mut lines = lines_of(text).skip_while(|line| line.trim() != "@roof");
+    lines.next()?;
+    let mut roofed = vec![false; (width * height) as usize];
+    for (y, row) in lines
+        .take_while(|line| !line.starts_with('@'))
+        .take(height as usize)
+        .enumerate()
+    {
+        for (x, c) in row.chars().take(width as usize).enumerate() {
+            roofed[y * width as usize + x] = c == '#';
+        }
+    }
+    Some(roofed)
+}
+
 /// One portal wall: its cell, its open side (towards the only floor cell
 /// next to it), and the cell of the portal wall it leads to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -257,6 +283,23 @@ pub fn portal_links(
         });
     }
     Ok(links)
+}
+
+#[cfg(test)]
+mod roof_tests {
+    use super::*;
+
+    #[test]
+    fn the_roof_block_marks_roofed_cells_and_rooms_skip_it() {
+        let text = "XXX\nX.X\n@roof\n.#\n##.\n@room 0 0\n.X\n";
+        assert_eq!(
+            parse_roof(text, 3, 2),
+            Some(vec![false, true, false, true, true, false])
+        );
+        assert_eq!(parse_roof("X.\n", 2, 1), None);
+        let (_, _, cells) = parse_map(text);
+        assert_eq!(parse_rooms(text, &cells).unwrap().len(), 1);
+    }
 }
 
 #[cfg(test)]

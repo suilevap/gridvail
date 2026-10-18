@@ -10,14 +10,16 @@
 use crate::model::{BounceLight, LightCell, LightKind};
 
 /// Light kinds, one channel each.
-const KINDS: [LightKind; 4] = [
+const KINDS: [LightKind; 6] = [
     LightKind::None,
     LightKind::Fire,
     LightKind::Electricity,
     LightKind::Acid,
+    LightKind::Sky,
+    LightKind::Sun,
 ];
 
-type Energy = [f32; 4];
+type Energy = [f32; KINDS.len()];
 
 fn channel(kind: LightKind) -> usize {
     match kind {
@@ -25,6 +27,8 @@ fn channel(kind: LightKind) -> usize {
         LightKind::Fire => 1,
         LightKind::Electricity => 2,
         LightKind::Acid => 3,
+        LightKind::Sky => 4,
+        LightKind::Sun => 5,
     }
 }
 
@@ -81,7 +85,7 @@ impl Bounce {
         self.source.clear();
         for (cell, &open) in layer.iter().zip(&topology.open) {
             let lit = cell.value > AMBIENT;
-            let mut source = [0.0; 4];
+            let mut source = [0.0; KINDS.len()];
             if lit {
                 let share = if open { light.floor } else { light.wall };
                 source[channel(cell.kind)] = cell.value as f32 / 255.0 * share;
@@ -90,14 +94,14 @@ impl Bounce {
             self.source.push(source);
         }
         self.energy.clear();
-        self.energy.resize(cells, [0.0; 4]);
+        self.energy.resize(cells, [0.0; KINDS.len()]);
         self.next.clear();
-        self.next.resize(cells, [0.0; 4]);
+        self.next.resize(cells, [0.0; KINDS.len()]);
 
         for _ in 0..light.steps {
             for cell in 0..cells {
                 let open = topology.open[cell];
-                let mut brightest = [0.0f32; 4];
+                let mut brightest = [0.0f32; KINDS.len()];
                 for &neighbour in &topology.neighbours[cell] {
                     if neighbour == NO_NEIGHBOUR {
                         continue;
@@ -122,7 +126,7 @@ impl Bounce {
         }
 
         for (cell, bounced) in layer.iter_mut().zip(&self.energy) {
-            let brightest = (0..4)
+            let brightest = (0..KINDS.len())
                 .max_by(|&a, &b| bounced[a].total_cmp(&bounced[b]))
                 .unwrap_or(0);
             let value = bounced[brightest] * 255.0;

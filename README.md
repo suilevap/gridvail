@@ -155,6 +155,15 @@ next to this file.
   gradient starts at the unlit grey and never gets darker as light grows,
   so a light fades into the dark and into other lights. The palette stays
   the default and is what the agent API and the 3D renderer still use.
+- Daylight (an addition, a prototype): a map with an `@roof` block (`#`
+  for roofed cells) has a sun and sky. Open cells get warm sunlight, or
+  the sky's cooler light in a wall's shadow, which falls away from the sun
+  and grows as it gets lower. The slanting sun shines in through doorways
+  as a patch on the floor, and under the roofs daylight spreads in from
+  the openings, fading with each cell. `--sun` (or T in game) picks the
+  time of day: night, dawn, morning, noon, afternoon or dusk. Static
+  light, so it is relit only when the sun or the walls move.
+  `assets/maps/daylight.txt` shows it off; best with `--light smooth`.
 - Seeing and lighting through portals (an addition): every field of view
   goes through portals, as the player's does, so enemies notice the player
   through a portal and lamps light the far side of one, fading with the
@@ -226,7 +235,7 @@ tests/enemy_behavior.rs  enemy behavior-tree scenarios on small ASCII maps
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
 tests/reference_parity.rs  independent C# FOV/light/palette fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
-assets/maps/       map1/2/3, map1_test, lightTest, bounce, …
+assets/maps/       map1/2/3, map1_test, lightTest, bounce, daylight, …
 assets/rules/      wall + three direction rules
 assets/fonts/      Unscii-8 square pixel font (public domain)
 assets/shaders/    world-space procedural 3D surface material
@@ -249,7 +258,8 @@ cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same ro
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --map assets/maps/bounce.txt --gi  # bounced light; G toggles it in game
 cargo run -- --light smooth     # smooth light colours; L toggles them in game
-cargo test --workspace   # 256 tests, including allocation and independent C# comparisons
+cargo run -- --map assets/maps/daylight.txt --light smooth --sun dusk  # sun and roofs; T moves the sun
+cargo test --workspace   # 260 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

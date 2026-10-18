@@ -117,7 +117,8 @@ and renderers must not import it.
   plan through the door.
 - `lighting/` contains light blending, bounced light (`Bounce`, over a
   `BounceTopology` of open cells and their neighbours that `presentation`
-  builds from the map, portals included) and palette conversion. It does not
+  builds from the map, portals included), daylight under roofs (`Daylight`)
+  and palette conversion. It does not
   know about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for
   every positioned object (actors, walls, decor). Each object plays one

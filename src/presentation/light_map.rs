@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::lighting::{merge_light, Bounce, BounceTopology, LightContext, NO_NEIGHBOUR};
+use crate::lighting::{merge_light, Bounce, BounceTopology, Daylight, LightContext, NO_NEIGHBOUR};
 use crate::model::*;
 
 #[derive(Resource, Debug)]
@@ -26,12 +26,25 @@ pub struct BounceState {
     built: Option<(i32, i32, u64, u64)>,
 }
 
+/// Daylight's scratch storage, and the blockers it was last lit with.
+#[derive(Default)]
+pub struct DaylightState {
+    daylight: Daylight,
+    blocks: Vec<bool>,
+    /// The `MapGrid::blocker_revision` of `blocks`.
+    built: Option<u64>,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn render_light_layers(
     grid: Res<MapGrid>,
     mut static_layer: ResMut<StaticLight>,
     mut dynamic: ResMut<DynamicLight>,
     bounce_light: Option<Res<BounceLight>>,
     mut bounce: Local<BounceState>,
+    sky: Option<Res<SkyLight>>,
+    roofs: Option<Res<Roofs>>,
+    mut daylight: Local<DaylightState>,
     static_sources: Query<(Entity, &Pos, Ref<LightSource>, &FovResult), Without<Speed>>,
     dynamic_sources: Query<(&Pos, &LightSource, &FovResult), With<Speed>>,
 ) {
@@ -49,8 +62,14 @@ pub fn render_light_layers(
             .map(|(entity, _, _, fov)| (entity, fov.revision)),
     );
     let revisions_changed = static_layer.current_revisions != static_layer.last_seen_revisions;
+    // Daylight is static light: relit when the sun moves or walls do.
+    let sky = sky.zip(roofs.filter(|roofs| roofs.0.len() == size));
+    let daylight_changed = sky.as_ref().is_some_and(|(sky, roofs)| {
+        sky.is_changed() || roofs.is_changed() || daylight.built != Some(grid.blocker_revision)
+    });
     if static_layer.dirty
         || revisions_changed
+        || daylight_changed
         || static_sources
             .iter()
             .any(|(_, _, light, _)| light.is_changed())
@@ -66,6 +85,21 @@ pub fn render_light_layers(
             value: 1,
             kind: LightKind::None,
         });
+        if let Some((sky, roofs)) = &sky {
+            let DaylightState {
+                daylight,
+                blocks,
+                built,
+            } = &mut *daylight;
+            if *built != Some(grid.blocker_revision) {
+                *built = Some(grid.blocker_revision);
+                blocks.clear();
+                blocks.extend((0..size).map(|i| {
+                    grid.blocks_vision(IVec2::new(i as i32 % grid.width, i as i32 / grid.width))
+                }));
+            }
+            daylight.apply(&mut static_layer.data, grid.width, blocks, &roofs.0, sky);
+        }
         for (_, pos, light, fov) in static_sources.iter() {
             blend_source(&mut static_layer.data, &grid, pos.0, &light, fov);
         }

@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use flatbt_bevy::prelude::Behavior;
 
 use crate::ai::{enemy_tree, hunter_tree};
-use crate::content::map::{parse_map, parse_rooms, portal_links, SpawnKind};
+use crate::content::map::{parse_map, parse_roof, parse_rooms, portal_links, SpawnKind};
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::lighting::{GRAY, RED, WHITE, YELLOW};
 use crate::model::*;
@@ -49,6 +49,9 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
     let (width, height, cells) = parse_map(map.0);
     let links = portal_links(width, height, &cells).unwrap_or_else(|error| panic!("map: {error}"));
     let rooms = parse_rooms(map.0, &cells).unwrap_or_else(|error| panic!("map: {error}"));
+    if let Some(roofed) = parse_roof(map.0, width, height) {
+        commands.insert_resource(Roofs(roofed));
+    }
     let cell_count = (width * height) as usize;
     let mut grid = MapGrid::new(width, height);
     let mut portal_walls = Vec::with_capacity(links.len());

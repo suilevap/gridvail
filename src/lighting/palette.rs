@@ -53,7 +53,7 @@ pub fn light_to_palette(cell: &LightCell) -> u8 {
         LightKind::Fire => by_rate(FIRE, cell.value),
         LightKind::Electricity => by_rate(ELECTRO, cell.value),
         LightKind::Acid => by_rate(ACID, cell.value),
-        LightKind::None => by_rate(NONE, cell.value),
+        LightKind::None | LightKind::Sky | LightKind::Sun => by_rate(NONE, cell.value),
     }
 }
 
@@ -98,6 +98,21 @@ const NONE_GRADIENT: &[(f32, [f32; 3])] = &[
     (48.0, [0.55, 0.55, 0.55]),
     (255.0, [1.0, 1.0, 1.0]),
 ];
+const SKY_GRADIENT: &[(f32, [f32; 3])] = &[
+    (1.0, UNLIT),
+    (70.0, [0.4, 0.45, 0.58]),
+    (150.0, [0.6, 0.67, 0.82]),
+    (255.0, [0.8, 0.86, 1.0]),
+];
+/// Low sun is orange, high sun white.
+const SUN_GRADIENT: &[(f32, [f32; 3])] = &[
+    (1.0, UNLIT),
+    (70.0, [0.55, 0.38, 0.25]),
+    (150.0, [1.0, 0.62, 0.3]),
+    (200.0, [1.0, 0.88, 0.62]),
+    (240.0, [1.0, 0.98, 0.9]),
+    (255.0, [1.0, 1.0, 1.0]),
+];
 
 fn along(gradient: &[(f32, [f32; 3])], value: f32) -> [f32; 3] {
     let mut previous = gradient[0];
@@ -127,6 +142,8 @@ pub fn light_to_rgb(cell: &LightCell) -> [u8; 3] {
         LightKind::Electricity => ELECTRO_GRADIENT,
         LightKind::Acid => ACID_GRADIENT,
         LightKind::None => NONE_GRADIENT,
+        LightKind::Sky => SKY_GRADIENT,
+        LightKind::Sun => SUN_GRADIENT,
     };
     along(gradient, cell.value as f32).map(|channel| (channel * 255.0).round() as u8)
 }

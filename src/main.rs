@@ -23,7 +23,7 @@ use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
     AnimatedPos, BounceLight, CompassMode, LightStyle, Player, Pos, RevealAll, SettingsMenu,
-    ViewCamera, Vis, VisibilityMap,
+    SkyLight, SunTime, ViewCamera, Vis, VisibilityMap,
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
@@ -85,6 +85,10 @@ fn main() -> AppExit {
         })
         .insert_resource(RoomPlanners::default().with_default(&options.room_planner))
         .insert_resource(options.light_style)
+        .insert_resource(SkyLight {
+            time: options.sun,
+            ..default()
+        })
         .insert_resource(BounceLight {
             enabled: options.bounce_light,
             ..default()
@@ -183,6 +187,8 @@ struct Options {
     bounce_light: bool,
     /// How light colours cells.
     light_style: LightStyle,
+    /// Where the sun is, on maps with roofs.
+    sun: SunTime,
     /// What the view does through turning portals.
     portal_turn: PortalTurn,
     /// When the compass shows.
@@ -250,6 +256,7 @@ impl Options {
         let mut enemy_portals = false;
         let mut bounce_light = false;
         let mut light_style = None;
+        let mut sun = None;
         let mut portal_turn = None;
         let mut compass = None;
         let mut room_planner = None;
@@ -292,6 +299,12 @@ impl Options {
                 light_style = Some(
                     LightStyle::from_name(&name).expect("--light must be palette or smooth"),
                 );
+            },
+            "--sun": value if sun.is_none() => {
+                let name = args.next().expect("--sun requires a time of day");
+                sun = Some(SunTime::from_name(&name).expect(
+                    "--sun must be night, dawn, morning, noon, afternoon or dusk",
+                ));
             },
             "--portal-view": value if portal_turn.is_none() => {
                 let name = args.next().expect("--portal-view requires turn or north");
@@ -357,6 +370,7 @@ impl Options {
             enemy_portals,
             bounce_light,
             light_style: light_style.unwrap_or_default(),
+            sun: sun.unwrap_or_default(),
             portal_turn: portal_turn.unwrap_or_default(),
             compass: compass.unwrap_or_default(),
             room_planner: room_planner.unwrap_or(RoomPlanners::default().default),
