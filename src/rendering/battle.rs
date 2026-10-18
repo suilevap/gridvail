@@ -1,5 +1,5 @@
-//! A persistent wait meter: time remaining, an explicit commitment message,
-//! health and feedback. Shared by the top-down and perspective backends.
+//! Compact battle status, nearest threat, and separate decision/wait meters.
+//! Shared by the top-down and perspective backends.
 
 use crate::model::*;
 use bevy::prelude::*;
@@ -8,7 +8,11 @@ use std::fmt::Write;
 #[derive(Component)]
 pub(super) struct BattlePanel;
 #[derive(Component)]
-pub(super) struct BattleLabel;
+pub(super) enum BattleLabel {
+    Status,
+    Threat,
+    Wait,
+}
 #[derive(Component)]
 pub(super) struct WaitFill;
 #[derive(Component)]
@@ -23,13 +27,13 @@ pub(super) fn spawn_battle_ui(commands: &mut Commands, camera: Entity) {
             UiTargetCamera(camera),
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(12.0),
-                bottom: Val::Px(12.0),
-                width: Val::Percent(85.0),
-                max_width: Val::Px(540.0),
-                padding: UiRect::all(Val::Px(12.0)),
+                left: Val::Px(8.0),
+                bottom: Val::Px(8.0),
+                width: Val::Percent(94.0),
+                max_width: Val::Px(360.0),
+                padding: UiRect::all(Val::Px(8.0)),
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(8.0),
+                row_gap: Val::Px(4.0),
                 ..default()
             },
             BackgroundColor(Color::srgba(0.01, 0.025, 0.04, 0.94)),
@@ -37,9 +41,33 @@ pub(super) fn spawn_battle_ui(commands: &mut Commands, camera: Entity) {
         ))
         .with_children(|panel| {
             panel
+                .spawn(Node {
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::SpaceBetween,
+                    column_gap: Val::Px(8.0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    row.spawn((BattleLabel::Status, Text::default(), battle_font()));
+                    row.spawn((
+                        RestartBattle,
+                        Button,
+                        Node {
+                            min_height: Val::Px(32.0),
+                            padding: UiRect::horizontal(Val::Px(8.0)),
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgb(0.16, 0.21, 0.25)),
+                    ))
+                    .with_children(|button| {
+                        button.spawn((Text::new("Reset"), battle_font()));
+                    });
+                });
+            panel
                 .spawn((
                     Node {
-                        height: Val::Px(6.0),
+                        height: Val::Px(3.0),
                         width: Val::Percent(100.0),
                         ..default()
                     },
@@ -56,55 +84,52 @@ pub(super) fn spawn_battle_ui(commands: &mut Commands, camera: Entity) {
                         BackgroundColor(Color::srgb(1.0, 0.7, 0.2)),
                     ));
                 });
-            panel.spawn((
-                BattleLabel,
-                Text::new(String::with_capacity(512)),
-                TextFont {
-                    font_size: FontSize::Px(16.0),
+            panel.spawn((BattleLabel::Threat, Text::default(), battle_font()));
+            panel
+                .spawn(Node {
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(8.0),
                     ..default()
-                },
-            ));
-            panel
-                .spawn((
-                    Node {
-                        height: Val::Px(12.0),
-                        width: Val::Percent(100.0),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgb(0.12, 0.17, 0.21)),
-                ))
-                .with_children(|bar| {
-                    bar.spawn((
-                        WaitFill,
+                })
+                .with_children(|row| {
+                    row.spawn((
+                        BattleLabel::Wait,
+                        Text::default(),
+                        battle_font(),
                         Node {
-                            height: Val::Percent(100.0),
-                            width: Val::Percent(0.0),
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgb(0.25, 0.75, 0.95)),
-                    ));
-                });
-            panel
-                .spawn((
-                    RestartBattle,
-                    Button,
-                    Node {
-                        align_self: AlignSelf::FlexStart,
-                        padding: UiRect::all(Val::Px(6.0)),
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgb(0.16, 0.21, 0.25)),
-                ))
-                .with_children(|button| {
-                    button.spawn((
-                        Text::new("Reset encounter (R)"),
-                        TextFont {
-                            font_size: FontSize::Px(13.0),
+                            width: Val::Px(190.0),
+                            flex_shrink: 0.0,
                             ..default()
                         },
                     ));
+                    row.spawn((
+                        Node {
+                            height: Val::Px(6.0),
+                            flex_grow: 1.0,
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgb(0.12, 0.17, 0.21)),
+                    ))
+                    .with_children(|bar| {
+                        bar.spawn((
+                            WaitFill,
+                            Node {
+                                height: Val::Percent(100.0),
+                                width: Val::Percent(0.0),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgb(0.25, 0.75, 0.95)),
+                        ));
+                    });
                 });
         });
+}
+
+fn battle_font() -> TextFont {
+    TextFont {
+        font_size: FontSize::Px(14.0),
+        ..default()
+    }
 }
 
 #[allow(clippy::type_complexity)]
@@ -120,7 +145,7 @@ pub(super) fn draw_battle_ui(
     player: Query<(&Pos, &Health, &Tokens), With<Player>>,
     enemies: Query<(&Pos, &Health, &Fighter), (With<Enemy>, With<Active>)>,
     buttons: Query<&Interaction, (With<RestartBattle>, Changed<Interaction>)>,
-    mut labels: Query<&mut Text, With<BattleLabel>>,
+    mut labels: Query<(&BattleLabel, &mut Text)>,
     mut panels: Query<&mut Visibility, With<BattlePanel>>,
     mut fills: Query<(&mut Node, &mut BackgroundColor), (With<WaitFill>, Without<TurnFill>)>,
     mut clocks: Query<(&mut Node, &mut BackgroundColor), With<TurnFill>>,
@@ -146,108 +171,90 @@ pub(super) fn draw_battle_ui(
     let Ok((pos, health, tokens)) = player.single() else {
         return;
     };
-    for mut text in &mut labels {
+    let nearest = enemies
+        .iter()
+        .filter(|(enemy_pos, health, _)| {
+            health.current > 0
+                && grid
+                    .idx(enemy_pos.0)
+                    .is_some_and(|index| frame.seen_first[index] != RenderBuffers::NO_CELL)
+        })
+        .min_by_key(|(enemy_pos, _, _)| (enemy_pos.0 - pos.0).abs().element_sum());
+    for (label, mut text) in &mut labels {
         text.0.clear();
-        if !battle.defeated && !battle.won {
-            if turn.simulation || tokens.count <= 0 {
-                writeln!(text.0, "TURN: resolving action").unwrap();
-            } else {
-                writeln!(
-                    text.0,
-                    "ACT IN {:.1}s | timeout: enemies act",
-                    timer.0.remaining_secs()
-                )
-                .unwrap();
-            }
-        }
-        writeln!(
-            text.0,
-            "HP {}/{}  |  Round {}  |  Enemies {}{}",
-            health.current,
-            health.maximum,
-            battle.round,
-            enemies
-                .iter()
-                .filter(|(_, health, _)| health.current > 0)
-                .count(),
-            if health.guarded { "  |  BRACED" } else { "" }
-        )
-        .unwrap();
-        if battle.defeated {
-            write!(text.0, "Defeated - reset to try again").unwrap();
-        } else if battle.won {
-            write!(text.0, "Battle won!").unwrap();
-        } else if wait.latched && wait.progress() == 1.0 {
-            write!(text.0, "WAIT COUNTED - release to wait again").unwrap();
-        } else if turn.simulation || tokens.count <= 0 {
-            write!(text.0, "Resolving action...").unwrap();
-        } else if wait.elapsed > 0.0 {
-            write!(
-                text.0,
-                "Hold... {:.1}s until WAIT counts",
-                (WaitHold::SECONDS - wait.elapsed).max(0.0)
-            )
-            .unwrap();
-        } else if wait.latched {
-            write!(text.0, "Release wait input to brace again").unwrap();
-        } else {
-            write!(
-                text.0,
-                "{} {:.1}s to WAIT + brace",
-                if scheme.as_deref() == Some(&ControlScheme::Touch) {
-                    "Hold a finger still for"
+        match label {
+            BattleLabel::Status => {
+                write!(text.0, "HP {}/{}", health.current, health.maximum).unwrap();
+                if battle.defeated {
+                    write!(text.0, " · Defeated").unwrap();
+                } else if battle.won {
+                    write!(text.0, " · Victory").unwrap();
+                } else if turn.simulation || tokens.count <= 0 {
+                    write!(text.0, " · Acting").unwrap();
                 } else {
-                    "Hold SPACE for"
-                },
-                WaitHold::SECONDS
-            )
-            .unwrap();
-        }
-        write!(
-            text.0,
-            "\n{}\n?: wind-up | !: next action | +: spent attack",
-            battle.feedback
-        )
-        .unwrap();
-        if let Some((_, enemy_health, fighter)) = enemies
-            .iter()
-            .filter(|(enemy_pos, health, _)| {
-                health.current > 0
-                    && grid
-                        .idx(enemy_pos.0)
-                        .is_some_and(|index| frame.seen_first[index] != RenderBuffers::NO_CELL)
-            })
-            .min_by_key(|(enemy_pos, _, _)| (enemy_pos.0 - pos.0).abs().element_sum())
-        {
-            write!(
-                text.0,
-                "\n{} HP {}/{}: ",
-                match fighter.role {
-                    BattleRole::Skirmisher => "Skirmisher",
-                    BattleRole::Spearman => "Spear",
-                    BattleRole::ShieldBearer => "Shield",
-                    BattleRole::Brute => "Brute",
-                },
-                enemy_health.current,
-                enemy_health.maximum
-            )
-            .unwrap();
-            if fighter.intent == BattleIntent::Recover {
-                write!(
-                    text.0,
-                    "{} - {} action{} OPEN; bump for 3 damage",
-                    match fighter.role {
-                        BattleRole::Spearman => "EXTENDED",
-                        BattleRole::ShieldBearer => "SHIELD DOWN (any side)",
-                        _ => "RECOVERING",
-                    },
-                    fighter.recovery_left + 1,
-                    if fighter.recovery_left == 0 { "" } else { "s" }
-                )
-                .unwrap();
-            } else {
-                write!(text.0, "{}", enemy_hint(fighter)).unwrap();
+                    write!(text.0, " · ACT {:.1}s", timer.0.remaining_secs()).unwrap();
+                }
             }
+            BattleLabel::Threat if !battle.defeated && !battle.won => {
+                if let Some((_, enemy_health, fighter)) = nearest {
+                    write!(
+                        text.0,
+                        "{} {}/{} · ",
+                        match fighter.role {
+                            BattleRole::Skirmisher => "Foe",
+                            BattleRole::Spearman => "Spear",
+                            BattleRole::ShieldBearer => "Shield",
+                            BattleRole::Brute => "Brute",
+                        },
+                        enemy_health.current,
+                        enemy_health.maximum
+                    )
+                    .unwrap();
+                    if fighter.intent == BattleIntent::Recover {
+                        write!(
+                            text.0,
+                            "OPEN {} · {}",
+                            fighter.recovery_left + 1,
+                            if fighter.role == BattleRole::ShieldBearer {
+                                "any side"
+                            } else {
+                                "counter"
+                            }
+                        )
+                        .unwrap();
+                    } else {
+                        write!(text.0, "{}", enemy_hint(fighter)).unwrap();
+                    }
+                }
+            }
+            BattleLabel::Wait if !battle.defeated && !battle.won => {
+                if wait.latched && wait.progress() == 1.0 {
+                    write!(text.0, "WAIT COUNTED · release").unwrap();
+                } else if wait.elapsed > 0.0 {
+                    write!(
+                        text.0,
+                        "WAIT {:.1}s · hold",
+                        (WaitHold::SECONDS - wait.elapsed).max(0.0)
+                    )
+                    .unwrap();
+                } else if wait.latched {
+                    write!(text.0, "Release to brace again").unwrap();
+                } else {
+                    write!(
+                        text.0,
+                        "{} {:.1}s · {}",
+                        if scheme.as_deref() == Some(&ControlScheme::Touch) {
+                            "Hold"
+                        } else {
+                            "Space"
+                        },
+                        WaitHold::SECONDS,
+                        if health.guarded { "BRACED" } else { "brace" }
+                    )
+                    .unwrap();
+                }
+            }
+            _ => {}
         }
     }
     for (mut node, mut color) in &mut fills {
@@ -274,17 +281,13 @@ pub(super) fn draw_battle_ui(
 
 fn enemy_hint(fighter: &Fighter) -> &'static str {
     match (fighter.role, fighter.intent) {
-        (_, BattleIntent::WindUp { .. }) => "SLAM IN 2 ACTIONS: leave yellow area (armoured)",
-        (_, BattleIntent::Slam { .. }) => "SLAM NEXT: get outside red !; counter after",
-        (BattleRole::Spearman, BattleIntent::Strike { .. }) => {
-            "LUNGE NEXT: sidestep, then punish the miss"
-        }
-        (BattleRole::ShieldBearer, BattleIntent::Strike { .. }) => {
-            "BASH NEXT: sidestep; shield drops after"
-        }
-        (BattleRole::Spearman, _) => "Bait its lane, sidestep, punish while EXTENDED",
-        (BattleRole::ShieldBearer, _) => "Bait its bash; attack any side while shield DOWN",
-        (BattleRole::Brute, _) => "Bait the slam, leave its area, then punish",
-        _ => "Dodge red ! or bump to interrupt",
+        (_, BattleIntent::WindUp { .. }) => "SLAM 2 · leave area",
+        (_, BattleIntent::Slam { .. }) => "SLAM NEXT · get out",
+        (BattleRole::Spearman, BattleIntent::Strike { .. }) => "LUNGE · sidestep",
+        (BattleRole::ShieldBearer, BattleIntent::Strike { .. }) => "BASH · sidestep",
+        (BattleRole::Spearman, _) => "bait its lane",
+        (BattleRole::ShieldBearer, _) => "front guarded · bait bash",
+        (BattleRole::Brute, _) => "bait slam, then retreat",
+        _ => "dodge ! or interrupt",
     }
 }

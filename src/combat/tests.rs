@@ -16,7 +16,7 @@ fn wait_meter_shows_remaining_time_and_confirms_commitment() {
     assert!(world
         .query::<&Text>()
         .iter(world)
-        .any(|text| text.0.contains("until WAIT counts")));
+        .any(|text| text.0.contains("WAIT 0.3s")));
     assert!(world
         .query::<&Node>()
         .iter(world)
@@ -314,7 +314,7 @@ fn the_hud_shows_the_decision_countdown_and_urgent_clock_bar() {
     assert!(world
         .query::<&Text>()
         .iter(world)
-        .any(|text| text.0.contains("ACT IN 0.2s")));
+        .any(|text| text.0.contains("ACT 0.2s")));
     assert!(world.query::<(&Node, &BackgroundColor)>().iter(world).any(
         |(node, color)| matches!(node.width, Val::Percent(p) if (p - 20.0).abs() < 0.1)
             && color.0 == Color::srgb(1.0, 0.25, 0.25)
@@ -541,21 +541,21 @@ fn the_hud_explains_the_telegraph_and_counts_the_opening() {
     for (map, next, opening, count) in [
         (
             "XXXXXXXX\nX ps   X\nX      X\nX      X\nXXXXXXXX",
-            "LUNGE NEXT",
-            "EXTENDED",
-            "2 actions OPEN",
+            "LUNGE · sidestep",
+            "counter",
+            2,
         ),
         (
             "XXXXXXXX\nX pg   X\nX      X\nX      X\nXXXXXXXX",
-            "BASH NEXT",
-            "SHIELD DOWN (any side)",
-            "2 actions OPEN",
+            "BASH · sidestep",
+            "any side",
+            2,
         ),
         (
             "XXXXXXXX\nX pb   X\nX      X\nX      X\nXXXXXXXX",
-            "SLAM IN 2 ACTIONS",
-            "RECOVERING",
-            "3 actions OPEN",
+            "SLAM 2 · leave area",
+            "counter",
+            3,
         ),
     ] {
         let mut app = game_with_ui(map, true);
@@ -568,21 +568,14 @@ fn the_hud_explains_the_telegraph_and_counts_the_opening() {
         };
         assert!(has_text(&mut app, next), "missing {next}");
         press(&mut app, KeyCode::ArrowDown);
-        if next == "SLAM IN 2 ACTIONS" {
+        if next == "SLAM 2 · leave area" {
             assert!(has_text(&mut app, "SLAM NEXT"));
             press(&mut app, KeyCode::ArrowDown);
         }
         assert!(has_text(&mut app, opening), "missing {opening}");
-        assert!(has_text(&mut app, count), "missing {count}");
+        assert!(has_text(&mut app, &format!("OPEN {count}")));
         wait_action(&mut app);
-        assert!(has_text(
-            &mut app,
-            if count.starts_with('3') {
-                "2 actions OPEN"
-            } else {
-                "1 action OPEN"
-            }
-        ));
+        assert!(has_text(&mut app, &format!("OPEN {}", count - 1)));
     }
 }
 
