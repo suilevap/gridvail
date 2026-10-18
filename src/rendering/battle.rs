@@ -97,9 +97,11 @@ pub(super) fn spawn_battle_ui(commands: &mut Commands, camera: Entity) {
                     row.spawn((
                         BattleLabel::Wait,
                         Text::default(),
+                        TextLayout::no_wrap(),
                         battle_font(),
                         Node {
-                            width: Val::Px(190.0),
+                            min_width: Val::Px(176.0),
+                            height: Val::Px(20.0),
                             flex_shrink: 0.0,
                             ..default()
                         },
