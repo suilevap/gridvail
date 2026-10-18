@@ -13,7 +13,6 @@ use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 
 struct CountingAllocator;
 
@@ -60,23 +59,22 @@ fn measured(update: impl FnOnce()) -> usize {
     ALLOCATIONS.load(Ordering::Relaxed)
 }
 
-/// Runs `Update` (where every game and renderer system lives) on the
-/// single-threaded executor. The counter only sees allocations on this
-/// thread, so with the default multi-threaded executor whatever ran on a
-/// worker thread went uncounted and the totals shifted with scheduling.
+/// Keep scheduler work on the measured thread, including Bevy's time and
+/// message schedules. Otherwise worker/main-thread races change the counted
+/// bookkeeping allocations even when gameplay performs identical work.
 fn single_threaded(app: &mut App) {
-    app.edit_schedule(Update, |schedule| {
+    for (_, schedule) in app.world_mut().resource_mut::<Schedules>().iter_mut() {
         schedule.set_executor(bevy::ecs::schedule::SingleThreadedExecutor::new());
-    });
+    }
 }
 
 fn boot() -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .init_resource::<ButtonInput<KeyCode>>()
-        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
-            16,
-        )))
+        .insert_resource(TimeUpdateStrategy::ManualDuration(
+            Time::<Fixed>::default().timestep(),
+        ))
         .add_plugins((GamePlugin, ObjectAnimationPlugin, TextRendererPlugin));
     single_threaded(&mut app);
     for _ in 0..256 {
@@ -94,33 +92,39 @@ fn warmed_up_player_turns_add_no_allocations_to_the_bevy_frame() {
     // Bevy's single-threaded executor performs bookkeeping allocations based
     // on schedule shape. Use a comparable number of chained no-op systems so
     // the comparison isolates allocations made inside our systems.
-    baseline.add_plugins(MinimalPlugins).add_systems(
-        Update,
-        (
+    // Compare the same fixed-update cadence, independent of machine speed.
+    baseline
+        .add_plugins(MinimalPlugins)
+        .insert_resource(TimeUpdateStrategy::ManualDuration(
+            Time::<Fixed>::default().timestep(),
+        ))
+        .add_systems(
+            Update,
             (
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
-                || {},
+                (
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                    || {},
+                )
+                    .chain(),
+                (|| {}, || {}, || {}, || {}, || {}, || {}, || {}, || {}).chain(),
             )
                 .chain(),
-            (|| {}, || {}, || {}, || {}, || {}, || {}, || {}, || {}).chain(),
-        )
-            .chain(),
-    );
+        );
     single_threaded(&mut baseline);
     for _ in 0..256 {
         baseline.update();
