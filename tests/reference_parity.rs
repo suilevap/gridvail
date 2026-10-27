@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use pav_ecs_game_bevy_port::{
     content::map::{parse_map, SpawnKind},
     foundation::fov::FovComputer,
-    lighting::{light_to_palette, merge_light, LightContext},
+    lighting::{merge_light, LightContext},
     model::{LightCell, LightKind},
 };
 use std::collections::HashSet;
@@ -129,26 +129,4 @@ fn light_merge_matches_csharp_for_2880_combinations() {
         count += 1;
     }
     assert_eq!(count, 2880);
-}
-
-#[test]
-fn every_palette_entry_matches_csharp() {
-    let mut count = 0;
-    for line in include_str!("fixtures/palette_reference.tsv")
-        .lines()
-        .filter(|l| !l.starts_with('#'))
-    {
-        let f: Vec<_> = line.split('\t').collect();
-        let cell = LightCell {
-            kind: kind(f[0].parse().unwrap()),
-            value: f[1].parse().unwrap(),
-        };
-        assert_eq!(
-            light_to_palette(&cell),
-            f[2].parse::<u8>().unwrap(),
-            "{line}"
-        );
-        count += 1;
-    }
-    assert_eq!(count, 1024);
 }

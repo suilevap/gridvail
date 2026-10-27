@@ -2,13 +2,13 @@ use bevy::prelude::*;
 
 use super::DynamicLight;
 use crate::foundation::portal::CellTransform;
-use crate::lighting::{dimmed, light_to_palette, DARK_MAGENTA, DARK_RED, MAGENTA};
+use crate::lighting::{dimmed, light_color, DARK_MAGENTA, DARK_RED, MAGENTA};
 use crate::model::*;
 
 /// Colour of a portal's threshold and of portal walls seen from behind or
 /// side-on; remembered ones are dimmer.
-pub const PORTAL_COLOR: u8 = MAGENTA;
-pub const REMEMBERED_PORTAL_COLOR: u8 = DARK_MAGENTA;
+pub const PORTAL_COLOR: Rgb = MAGENTA;
+pub const REMEMBERED_PORTAL_COLOR: Rgb = DARK_MAGENTA;
 /// What an empty threshold shows instead of the floor's dot.
 pub const PORTAL_GLYPH: char = '░';
 
@@ -229,7 +229,7 @@ fn light_cell(
 ) {
     let occupied = !matches!(cell.ch, ' ' | '\0');
     if let Some(seen) = seen {
-        shade(cell, true, light_to_palette(&light_at(seen.world)));
+        shade(cell, true, light_color(&light_at(seen.world)));
         // The threshold's floor, or the portal's own wall when the view
         // does not pass through it.
         if seen.portal && !occupied {
@@ -243,7 +243,7 @@ fn light_cell(
         }
     } else {
         let light = light_at(position);
-        shade(cell, is_hex_pos(position), dimmed(light_to_palette(&light)));
+        shade(cell, is_hex_pos(position), dimmed(light_color(&light)));
         if occupied && grid.portal_at(position).is_some() {
             cell.color = REMEMBERED_PORTAL_COLOR;
         }
@@ -348,7 +348,7 @@ fn draw(
     });
 }
 
-fn shade(cell: &mut RenderCell, floor: bool, color: u8) {
+fn shade(cell: &mut RenderCell, floor: bool, color: Rgb) {
     if cell.ch == ' ' || cell.ch == '\0' {
         if floor {
             cell.ch = '.';

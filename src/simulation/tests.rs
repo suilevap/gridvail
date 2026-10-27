@@ -152,7 +152,7 @@ fn spawn_door(app: &mut App, at: IVec2) -> Entity {
             Collider,
             Door::default(),
             Pos(at),
-            Glyph::new(Door::CLOSED_GLYPH, 1, 0),
+            Glyph::new(Door::CLOSED_GLYPH, 1, Rgb::BLACK),
         ))
         .id();
     app.world_mut()

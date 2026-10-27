@@ -1,10 +1,12 @@
-//! Engine-independent light accumulation and palette conversion.
+//! Engine-independent light accumulation and light colour lookup.
 
+mod colors;
+mod lut;
 mod math;
-mod palette;
 
+pub use colors::*;
+pub use lut::*;
 pub use math::*;
-pub use palette::*;
 
 #[cfg(test)]
 mod tests;
