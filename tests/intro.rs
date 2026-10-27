@@ -5,9 +5,10 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::animation::ObjectAnimationPlugin;
-use pav_ecs_game_bevy_port::app::{GamePlugin, Intro, IntroLayout, MapText, TransitionRoom};
+use pav_ecs_game_bevy_port::app::{GamePlugin, Intro, IntroLayout, MapText};
 use pav_ecs_game_bevy_port::content::map::{parse_map, SpawnKind};
 use pav_ecs_game_bevy_port::model::*;
+use pav_ecs_game_bevy_port::transition::TransitionRoom;
 
 const MAP: &str = include_str!("../assets/maps/map1.txt");
 
@@ -157,7 +158,7 @@ fn the_title_stands_then_the_view_closes_onto_the_player_then_the_map_forms() {
         .resource_mut::<ButtonInput<KeyCode>>()
         .press(KeyCode::ArrowRight);
     let mut frames = 0;
-    let mut radii = area.radii;
+    let mut radii = area.oval.radii;
     let mut focused = false;
     let mut switched = false;
     let mut known_before = 0;
@@ -170,8 +171,8 @@ fn the_title_stands_then_the_view_closes_onto_the_player_then_the_map_forms() {
             // The oval only narrows. While it hides the player's own sight
             // (it is all in view), nothing of the map comes.
             Some(area) => {
-                assert!(area.radii.x <= radii.x, "it only narrows");
-                radii = area.radii;
+                assert!(area.oval.radii.x <= radii.x, "it only narrows");
+                radii = area.oval.radii;
                 if area.hides_sight {
                     assert!(!all_walls_in_place(&mut app), "the map waits for the focus");
                 } else {

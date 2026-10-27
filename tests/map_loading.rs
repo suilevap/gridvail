@@ -5,13 +5,12 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::animation::ObjectAnimationPlugin;
-use pav_ecs_game_bevy_port::app::{
-    bundled_map, CurrentMap, GamePlugin, LoadMap, MapText, TransitionRoom,
-};
+use pav_ecs_game_bevy_port::app::{bundled_map, CurrentMap, GamePlugin, LoadMap, MapText};
 use pav_ecs_game_bevy_port::content::map::{parse_map, parse_next, SpawnKind};
 use pav_ecs_game_bevy_port::model::*;
 use pav_ecs_game_bevy_port::navigation::NavMap;
 use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
+use pav_ecs_game_bevy_port::transition::TransitionRoom;
 
 /// A room with a key on the floor, an enemy and a lamp.
 const FIRST: &str = "\
@@ -84,9 +83,6 @@ fn the_player_carries_over_and_the_old_level_goes() {
         .unwrap();
     let enemy_key = world.spawn((Active, Item, Key)).id();
     world.get_mut::<Inventory>(enemy).unwrap().0.push(enemy_key);
-    // The new map has a wall where this one stands: it stays. (Others
-    // slide, sink or rise into the new map: only its walls are left.)
-    let kept_wall = world.resource::<MapGrid>().get(IVec2::ZERO).unwrap();
     let revision = world.resource::<MapGrid>().blocker_revision;
 
     load(&mut app, SECOND);
@@ -115,10 +111,9 @@ fn the_player_carries_over_and_the_old_level_goes() {
     for gone in [enemy, enemy_key] {
         assert!(world.get_entity(gone).is_err(), "the old level is gone");
     }
-    assert_eq!(
-        world.resource::<MapGrid>().get(IVec2::ZERO),
-        Some(kept_wall),
-        "an old wall where the new map has one stays"
+    assert!(
+        world.resource::<MapGrid>().get(IVec2::ZERO).is_some(),
+        "the new map's walls hold their cells"
     );
     let walls_now = walls(&mut app);
     let expected = parse_map(SECOND)

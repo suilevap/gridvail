@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use super::Glyph;
 use crate::foundation::portal::{CellTransform, PortalFace};
 
 pub const TOKEN_RECHARGE_SECS: f32 = 1.0;
@@ -198,6 +199,15 @@ impl Default for TokenTimer {
     fn default() -> Self {
         Self(Timer::from_seconds(TOKEN_RECHARGE_SECS, TimerMode::Once))
     }
+}
+
+/// A map was built, at startup or in place of another: sent by whatever
+/// loads maps, for anything that reacts to a new map (the map transition).
+/// `previous_walls` are the plain walls of the map it replaced, where they
+/// stood and as they were drawn; empty for the first map.
+#[derive(Message, Clone, Debug, Default)]
+pub struct MapLoaded {
+    pub previous_walls: Vec<(IVec2, Glyph)>,
 }
 
 /// A floor cell that leads to the next map: the player stepping onto it

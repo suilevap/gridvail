@@ -21,4 +21,5 @@ pub mod schedule;
 pub mod service;
 pub mod simulation;
 pub mod touch;
+pub mod transition;
 pub mod vision;

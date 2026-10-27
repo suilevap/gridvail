@@ -261,7 +261,7 @@ cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's l
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --intro noise   # the map comes together from noise instead of the title
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 275 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 278 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

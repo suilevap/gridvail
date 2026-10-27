@@ -1,14 +1,17 @@
 //! The game's intro: what its first map comes together from. It only picks
-//! a layout source (`layout`: the title as text art, or noise) and shows
-//! its walls in their frame (an [`Arrival::Shown`]); how they become the map
-//! is the transition's job (`transition`).
+//! a layout source (`layout`: the title as text art, or noise) and asks for
+//! its walls to be shown in their frame first (a [`NextArrival`]); how they
+//! become the map is the transition's job (`transition`).
 
 use bevy::prelude::*;
 
-use super::transition::Arrival;
+use super::map::MapText;
 use crate::content::map::{parse_map, SpawnKind};
+use crate::foundation::oval::Oval;
 use crate::layout::{Art, ArtLayout, Fallback, LayoutRequest, LayoutSource, ScatterLayout};
 use crate::model::RevealArea;
+use crate::schedule::StartupPhase;
+use crate::transition::{Arrival, NextArrival};
 
 /// The game's title, as text art.
 const TITLE: &str = include_str!("../../assets/intro.txt");
@@ -66,6 +69,22 @@ impl IntroLayout {
     }
 }
 
+/// Plays the [`Intro`], if there is one, when the game starts.
+pub struct IntroPlugin;
+
+impl Plugin for IntroPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, ask_for_intro.in_set(StartupPhase::Content));
+    }
+}
+
+/// Asks for the first map to come together from the intro's walls.
+fn ask_for_intro(mut commands: Commands, intro: Option<Res<Intro>>, map: Res<MapText>) {
+    if let Some(intro) = intro {
+        commands.insert_resource(NextArrival(intro_arrival(intro.0, map.0)));
+    }
+}
+
 /// What the map `text` comes together from with `layout`, around its start
 /// (or its middle): its walls, shown in their frame. A layout that cannot
 /// be laid out arrives as nothing to show.
@@ -81,13 +100,12 @@ pub fn intro_arrival(layout: IntroLayout, text: &str) -> Arrival {
         .source()
         .layout(&request)
         .map_or((Vec::new(), None), |laid| (laid.walls, Some(laid.frame)));
-    let frame = frame.unwrap_or(crate::layout::Oval {
+    let oval = frame.unwrap_or(Oval {
         centre: centre.as_vec2(),
         radii: Vec2::ZERO,
     });
     let area = RevealArea {
-        centre: frame.centre,
-        radii: frame.radii,
+        oval,
         hides_sight: true,
     };
     Arrival::Shown { walls, area }
@@ -100,7 +118,7 @@ mod tests {
     fn shown(arrival: Arrival) -> (Vec<IVec2>, RevealArea) {
         match arrival {
             Arrival::Shown { walls, area } => (walls, area),
-            Arrival::Walls(_) => panic!("the intro shows its walls"),
+            Arrival::Standing(_) => panic!("the intro shows its walls"),
         }
     }
 
@@ -122,7 +140,7 @@ mod tests {
         let small = "XXXXXXXXXX\nX...p....X\nXXXXXXXXXX\n";
         let (walls, area) = shown(intro_arrival(IntroLayout::Title, small));
         assert!(!walls.is_empty());
-        assert_eq!(area.centre, Vec2::new(4.0, 1.0));
+        assert_eq!(area.oval.centre, Vec2::new(4.0, 1.0));
         assert!(walls.iter().all(|&p| area.contains(p)));
         assert_eq!(
             shown(intro_arrival(IntroLayout::Noise, small)).0,

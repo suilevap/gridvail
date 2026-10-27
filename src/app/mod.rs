@@ -6,11 +6,9 @@
 
 mod intro;
 mod map;
-mod transition;
 
-pub use intro::{intro_arrival, Intro, IntroLayout};
+pub use intro::{intro_arrival, Intro, IntroLayout, IntroPlugin};
 pub use map::{bundled_index, bundled_map, CurrentMap, LoadMap, MapPlugin, MapText, BUNDLED_MAPS};
-pub use transition::{Arrival, TransitionPhase, TransitionRoom};
 
 use bevy::prelude::*;
 
@@ -22,6 +20,7 @@ use crate::presentation::PresentationPlugin;
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::service::ServicesPlugin;
 use crate::simulation::SimulationPlugin;
+use crate::transition::TransitionPlugin;
 use crate::vision::VisionPlugin;
 
 pub struct GamePlugin;
@@ -55,7 +54,8 @@ impl Plugin for GamePlugin {
         )
         .add_plugins((
             MapPlugin,
-            transition::TransitionPlugin,
+            IntroPlugin,
+            TransitionPlugin,
             SimulationPlugin::new(42),
             NavigationPlugin,
             ServicesPlugin,

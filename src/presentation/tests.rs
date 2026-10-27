@@ -69,8 +69,10 @@ fn a_reveal_area_shows_only_the_cells_within_it() {
     app.insert_resource(DynamicLight::sized(64))
         .insert_resource(RenderBuffers::new(8, 8))
         .insert_resource(RevealArea {
-            centre: Vec2::new(5.0, 5.0),
-            radii: Vec2::new(2.0, 1.0),
+            oval: crate::foundation::oval::Oval {
+                centre: Vec2::new(5.0, 5.0),
+                radii: Vec2::new(2.0, 1.0),
+            },
             hides_sight: false,
         });
     app.world_mut().spawn((
