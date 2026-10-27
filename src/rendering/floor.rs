@@ -3,9 +3,10 @@
 //! One quad covers the window behind the text. Its fragment shader turns
 //! each pixel back into the map position it shows (the inverse of where
 //! the text renderer puts cells, so it turns and zooms with the view) and
-//! draws the floor there in the chosen `FloorStyle`. Floor seen directly is
-//! lit a pixel at a time from the frame's `FloorLight` lamps, a ray to each
-//! through the cells that block light, so shadows have exact edges.
+//! draws the floor there as tiles in the chosen `FloorStyle`: glyphs from
+//! `assets/floor_tiles.txt`, laid out by its styles, each lit as a whole.
+//! Floor seen directly is lit from the frame's `FloorLight` lamps, a ray to
+//! each glyph through the cells that block light.
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -18,6 +19,7 @@ use bevy::{
     window::PrimaryWindow,
 };
 
+use crate::content::floor_tiles::{parse_floor_tiles, FloorTiles, Pick, MAX_STYLE_GLYPHS};
 use crate::model::{FloorLight, FloorStyle, LightKind, ViewCamera};
 use crate::schedule::{GamePhase, StartupPhase};
 
@@ -25,6 +27,29 @@ use super::extruded::ExtrudedWalls;
 use super::text::CELL_SIZE;
 
 const FLOOR_SHADER: &str = "shaders/floor.wgsl";
+
+/// The bundled floor tiles: glyphs and the styles that lay them out.
+pub const FLOOR_TILES: &str = include_str!("../../assets/floor_tiles.txt");
+
+/// The floor tiles, parsed.
+#[derive(Resource, Debug)]
+pub(super) struct FloorTileSet(pub FloorTiles);
+
+/// A floor tile style, as the shader reads it.
+#[derive(ShaderType, Clone, Debug)]
+struct Tiles {
+    /// x: slots along a cell's side; y: jitter, in glyph pixels; z: the
+    /// share left empty; w: how many slots every other row moves along.
+    arrange: Vec4,
+    /// x, y: the block's width and height in slots; z: how many glyphs;
+    /// w: how it picks them: 0 at random, 1 as a block, 2 by brightness.
+    pick: Vec4,
+    /// x: how bright lit glyphs are.
+    gain: Vec4,
+    /// The glyphs it uses, four to an element, as indices into the glyph
+    /// atlas.
+    glyphs: [Vec4; MAX_STYLE_GLYPHS / 4],
+}
 
 /// Behind every glyph.
 const FLOOR_DEPTH: f32 = -1.0;
@@ -54,8 +79,7 @@ struct FloorMaterial {
     /// z, w: the map cell at the window's top left.
     #[uniform(1)]
     window: Vec4,
-    /// x, y: the window's size in cells; z: seconds, for animation; w: the
-    /// style (`FloorStyle` as a number, 1 and up).
+    /// x, y: the window's size in cells; z: seconds, for animation.
     #[uniform(2)]
     style: Vec4,
     /// `FloorLight::light`, blended between cells.
@@ -71,6 +95,11 @@ struct FloorMaterial {
     /// corner.
     #[uniform(7)]
     viewer: Vec4,
+    #[uniform(8)]
+    tiles: Tiles,
+    /// The glyphs side by side, 8 by 8 pixels each, read a pixel at a time.
+    #[texture(9)]
+    glyphs: Handle<Image>,
 }
 
 impl Material2d for FloorMaterial {
@@ -92,13 +121,16 @@ pub struct FloorShaderPlugin;
 
 impl Plugin for FloorShaderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(Material2dPlugin::<FloorMaterial>::default())
+        let tiles = parse_floor_tiles(FLOOR_TILES).expect("the bundled floor tiles parse");
+        app.insert_resource(FloorTileSet(tiles))
+            .add_plugins(Material2dPlugin::<FloorMaterial>::default())
             .add_systems(Startup, setup.in_set(StartupPhase::Renderer))
             .add_systems(Update, draw_floor.in_set(GamePhase::Output));
     }
 }
 
 fn setup(
+    tiles: Res<FloorTileSet>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<FloorMaterial>>,
@@ -119,10 +151,46 @@ fn setup(
             },
             info: images.add(cell_image(UVec2::ONE, TextureFormat::Rgba8Unorm)),
             viewer: Vec4::ZERO,
+            tiles: Tiles {
+                arrange: Vec4::ZERO,
+                pick: Vec4::ZERO,
+                gain: Vec4::ZERO,
+                glyphs: [Vec4::ZERO; MAX_STYLE_GLYPHS / 4],
+            },
+            glyphs: images.add(glyph_atlas(&tiles.0)),
         })),
         Transform::from_xyz(0.0, 0.0, FLOOR_DEPTH),
         Visibility::Hidden,
     ));
+}
+
+/// Every glyph side by side, 8 by 8 pixels each: on is white.
+fn glyph_atlas(tiles: &FloorTiles) -> Image {
+    let width = 8 * tiles.glyphs.len().max(1);
+    let mut pixels = vec![0; width * 8 * 4];
+    for (glyph, rows) in tiles.glyphs.iter().enumerate() {
+        for (y, row) in rows.iter().enumerate() {
+            for x in 0..8 {
+                if row & (0x80 >> x) != 0 {
+                    let at = (y * width + glyph * 8 + x) * 4;
+                    pixels[at..at + 4].fill(255);
+                }
+            }
+        }
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: width as u32,
+            height: 8,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        pixels,
+        TextureFormat::Rgba8Unorm,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = ImageSampler::nearest();
+    image
 }
 
 /// A texture a texel per cell of a window `size` cells large.
@@ -175,6 +243,7 @@ fn upload(
 #[allow(clippy::too_many_arguments)]
 fn draw_floor(
     style: Option<Res<FloorStyle>>,
+    tile_set: Res<FloorTileSet>,
     floor: Option<Res<FloorLight>>,
     camera: Res<ViewCamera>,
     time: Res<Time>,
@@ -191,9 +260,11 @@ fn draw_floor(
     mut materials: ResMut<Assets<FloorMaterial>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let style = style.map_or(FloorStyle::Text, |style| *style);
+    let style = style
+        .and_then(|style| style.0)
+        .and_then(|style| tile_set.0.styles.get(style));
     let (handle, transform, visibility) = &mut *quad;
-    let shown = style != FloorStyle::Text
+    let shown = style.is_some()
         && extruded_walls.is_none()
         && floor.as_ref().is_some_and(|floor| !floor.light.is_empty());
     visibility.set_if_neq(if shown {
@@ -201,7 +272,7 @@ fn draw_floor(
     } else {
         Visibility::Hidden
     });
-    let (Some(floor), true) = (floor, shown) else {
+    let (Some(floor), Some(style), true) = (floor, style, shown) else {
         return;
     };
     if let Some(window) = window {
@@ -231,8 +302,31 @@ fn draw_floor(
         floor.cells.x as f32,
         floor.cells.y as f32,
         time.elapsed_secs_wrapped(),
-        style as u32 as f32,
+        0.0,
     );
+    let (block, pick) = match style.pick {
+        Pick::Random => (UVec2::ONE, 0.0),
+        Pick::Block(width, height) => (UVec2::new(width, height), 1.0),
+        Pick::Ramp => (UVec2::ONE, 2.0),
+    };
+    let tiles = &mut material.tiles;
+    tiles.arrange = Vec4::new(
+        style.slots as f32,
+        style.jitter as f32,
+        style.empty,
+        style.shift,
+    );
+    tiles.pick = Vec4::new(
+        block.x as f32,
+        block.y as f32,
+        style.glyphs.len() as f32,
+        pick,
+    );
+    tiles.gain = Vec4::new(style.gain, 0.0, 0.0, 0.0);
+    tiles.glyphs = [Vec4::ZERO; MAX_STYLE_GLYPHS / 4];
+    for (slot, &glyph) in style.glyphs.iter().enumerate() {
+        tiles.glyphs[slot / 4][slot % 4] = glyph as f32;
+    }
     // Cell (x, y) spans x - 0.5 to x + 0.5; the window's corner is at its
     // top-left cell's corner.
     let corner = floor.origin.as_vec2() - 0.5;

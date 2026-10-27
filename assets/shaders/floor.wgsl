@@ -29,7 +29,7 @@ struct Lamps {
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> camera: vec4<f32>;
 // x, y: the camera's offset in view cells; z, w: the window's top-left cell.
 @group(#{MATERIAL_BIND_GROUP}) @binding(1) var<uniform> window: vec4<f32>;
-// x, y: the window's size in cells; z: seconds; w: the style.
+// x, y: the window's size in cells; z: seconds.
 @group(#{MATERIAL_BIND_GROUP}) @binding(2) var<uniform> style: vec4<f32>;
 // Per cell: colour (sRGB) and brightness (alpha); no brightness where there
 // is no floor.
@@ -225,104 +225,33 @@ fn hash(p: vec2<f32>) -> f32 {
     return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
 }
 
-// The marks, each a few pixels from its top-left pixel.
-const SPECK: i32 = 0;
-const DOT: i32 = 1;
-const DASH: i32 = 2;
-const CROSS: i32 = 3;
-const SQUARE: i32 = 4;
-const COMMA: i32 = 5;
-const TICK: i32 = 6;
-const COLON: i32 = 7;
-
-// Whether pixel `d` from a mark's top-left pixel is on the mark.
-fn on_mark(mark: i32, d: vec2<f32>) -> bool {
-    let inside = all(d >= vec2<f32>(0.0));
-    if mark == SPECK {
-        return all(d == vec2<f32>(0.0));
-    } else if mark == DOT {
-        return inside && all(d <= vec2<f32>(1.0));
-    } else if mark == DASH {
-        return inside && d.y == 0.0 && d.x <= 2.0;
-    } else if mark == CROSS {
-        return (d.x == 1.0 && d.y >= 0.0 && d.y <= 2.0) || (d.y == 1.0 && d.x >= 0.0 && d.x <= 2.0);
-    } else if mark == SQUARE {
-        return inside && all(d <= vec2<f32>(2.0));
-    } else if mark == COMMA {
-        return (inside && all(d <= vec2<f32>(1.0))) || all(d == vec2<f32>(0.0, 2.0));
-    } else if mark == TICK {
-        return all(d == vec2<f32>(1.0, 0.0)) || all(d == vec2<f32>(0.0, 1.0));
-    } else if mark == COLON {
-        return d.x == 0.0 && (d.y == 0.0 || d.y == 2.0);
-    }
-    return false;
+struct Tiles {
+    // x: slots along a cell's side; y: jitter, in glyph pixels; z: the
+    // share left empty; w: how many slots every other row moves along.
+    arrange: vec4<f32>,
+    // x, y: the block's size in slots; z: how many glyphs; w: how they are
+    // picked: 0 at random, 1 as a block, 2 by brightness.
+    pick: vec4<f32>,
+    // x: how bright lit glyphs are.
+    gain: vec4<f32>,
+    // Glyph indices, four to an element.
+    glyphs: array<vec4<f32>, 16>,
 }
 
-const POINTS: f32 = 1.0;
-const PEBBLES: f32 = 2.0;
-const BRICKS: f32 = 3.0;
-const CROSSES: f32 = 4.0;
-const MOSAIC: f32 = 5.0;
-const RAMP: f32 = 6.0;
-const SCATTER: f32 = 7.0;
+@group(#{MATERIAL_BIND_GROUP}) @binding(8) var<uniform> tiles: Tiles;
+// The glyphs side by side, 8 by 8 pixels each.
+@group(#{MATERIAL_BIND_GROUP}) @binding(9) var glyph_atlas: texture_2d<f32>;
 
-// The mark of the tile at `pixel` (map pixels), as its top-left pixel (x,
-// y) and its mark (z), or z below 0 for none. The ramp's is the square its
-// mark grows to with the light.
-fn tile(pixel: vec2<f32>) -> vec3<f32> {
-    if style.w == POINTS {
-        // The text renderer's dot: a little below the middle of a cell.
-        return vec3<f32>(floor(pixel / CELL) * CELL + vec2<f32>(7.0, 9.0), f32(DOT));
-    }
-    if style.w == BRICKS {
-        let row = floor(pixel.y / 8.0);
-        let shift = (row - 2.0 * floor(row / 2.0)) * 4.0;
-        let column = floor((pixel.x + shift) / 8.0);
-        return vec3<f32>(column * 8.0 - shift + 2.0, row * 8.0 + 4.0, f32(DASH));
-    }
-    if style.w == MOSAIC {
-        return vec3<f32>(floor(pixel / 4.0) * 4.0, f32(SQUARE));
-    }
-    let cell = floor(pixel / 8.0);
-    let corner = cell * 8.0;
-    if style.w == CROSSES {
-        return vec3<f32>(corner + 2.0, f32(CROSS));
-    }
-    let jitter = floor((vec2<f32>(hash(cell), hash(cell + 31.0)) - 0.5) * 5.0);
-    let pick = hash(cell + 13.0);
-    if style.w == PEBBLES {
-        var mark = DOT;
-        if pick > 0.75 {
-            mark = DASH;
-        } else if pick > 0.5 {
-            mark = SPECK;
-        }
-        return vec3<f32>(corner + 3.0 + jitter, f32(mark));
-    }
-    if style.w == SCATTER {
-        if pick < 0.35 {
-            return vec3<f32>(0.0, 0.0, -1.0);
-        }
-        let marks = array<i32, 6>(SPECK, DOT, COMMA, TICK, DASH, COLON);
-        let mark = marks[min(i32((pick - 0.35) / 0.65 * 6.0), 5)];
-        return vec3<f32>(corner + 3.0 + jitter, f32(mark));
-    }
-    if style.w == RAMP {
-        return vec3<f32>(corner + 2.0, f32(SQUARE));
-    }
-    return vec3<f32>(0.0, 0.0, -1.0);
+fn glyph(index: i32) -> i32 {
+    return i32(tiles.glyphs[index / 4][index % 4]);
 }
 
-// The ramp's mark for light `brightness`: speck, dot, cross, square.
-fn ramp_mark(brightness: f32) -> i32 {
-    if brightness < 0.2 {
-        return SPECK;
-    } else if brightness < 0.45 {
-        return DOT;
-    } else if brightness < 0.7 {
-        return CROSS;
-    }
-    return SQUARE;
+fn glyph_pixel(glyph: i32, pixel: vec2<f32>) -> bool {
+    return textureLoad(glyph_atlas, vec2<i32>(glyph * 8 + i32(pixel.x), i32(pixel.y)), 0).r > 0.5;
+}
+
+fn whole_mod(value: f32, by: f32) -> f32 {
+    return value - by * floor(value / by);
 }
 
 @fragment
@@ -341,36 +270,44 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         return NOTHING;
     }
     let pixel = floor((map + 0.5) * CELL);
-    let found = tile(pixel);
-    if found.z < 0.0 {
+
+    // The slot the pixel is in: every other row moved along.
+    let slot = CELL / tiles.arrange.x;
+    let row = floor(pixel.y / slot);
+    let shift = whole_mod(row, 2.0) * tiles.arrange.w * slot;
+    let column = floor((pixel.x + shift) / slot);
+    let place = vec2<f32>(column, row);
+    if hash(place + 71.0) < tiles.arrange.z {
         return NOTHING;
     }
-    var mark = i32(found.z);
-    // A tile is lit as a whole, by the light at its middle.
-    let middle = (found.xy + 1.5) / CELL - window.zw;
-    if style.w == RAMP {
-        if !on_mark(SQUARE, pixel - found.xy) {
-            return NOTHING;
-        }
-        let here = lit(middle);
-        mark = ramp_mark(here.a);
-        // Smaller marks sit in the middle of the square.
-        var offset = vec2<f32>(0.0);
-        if mark == SPECK {
-            offset = vec2<f32>(1.0);
-        } else if mark == DOT {
-            offset = vec2<f32>(1.0);
-        }
-        if !on_mark(mark, pixel - found.xy - offset) {
-            return NOTHING;
-        }
-        return vec4<f32>(min(here.rgb * 1.7, vec3<f32>(1.0)), 1.0);
-    }
-    if !on_mark(mark, pixel - found.xy) {
+    // Where in its glyph, which may stray by up to the jitter.
+    let within = vec2<f32>(pixel.x + shift - column * slot, pixel.y - row * slot);
+    let reach = tiles.arrange.y;
+    let jitter = floor((vec2<f32>(hash(place), hash(place + 31.0))) * (2.0 * reach + 1.0)) - reach;
+    let at = floor(within * 8.0 / slot) - jitter;
+    if any(at < vec2<f32>(0.0)) || any(at > vec2<f32>(7.0)) {
         return NOTHING;
     }
-    let here = lit(middle);
-    // The mosaic covers most of the floor: dimmer, or it outshines the glyphs.
-    let gain = select(1.7, 0.6, style.w == MOSAIC);
-    return vec4<f32>(min(here.rgb * gain, vec3<f32>(1.0)), 1.0);
+    // A glyph is lit as a whole, by the light at its slot's middle.
+    let middle = (vec2<f32>(column * slot - shift, row * slot) + slot / 2.0) / CELL - window.zw;
+
+    let count = i32(tiles.pick.z);
+    var index = 0;
+    var here = vec4<f32>(0.0);
+    if tiles.pick.w == 2.0 {
+        here = lit(middle);
+        index = min(i32(here.a * f32(count) * 1.4), count - 1);
+    } else if tiles.pick.w == 1.0 {
+        let block = vec2<f32>(whole_mod(column, tiles.pick.x), whole_mod(row, tiles.pick.y));
+        index = i32(block.x + block.y * tiles.pick.x);
+    } else {
+        index = min(i32(hash(place + 13.0) * f32(count)), count - 1);
+    }
+    if !glyph_pixel(glyph(index), at) {
+        return NOTHING;
+    }
+    if tiles.pick.w != 2.0 {
+        here = lit(middle);
+    }
+    return vec4<f32>(min(here.rgb * tiles.gain.x, vec3<f32>(1.0)), 1.0);
 }

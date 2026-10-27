@@ -34,7 +34,7 @@ and renderers must not import it.
   `crates/gridvail-path`, with no dependencies: its core searches any graph
   (`Space`), and its `grid` feature adds the grid the game uses.
 - `content/` parses external map and tile-rule formats (and the `@room`
-  layout blocks after a map). It does not spawn ECS
+  layout blocks after a map), and the floor tiles' glyphs and styles. It does not spawn ECS
   entities or decide which map is active.
 - `model/` contains ECS data, split into actors, spatial state, vision,
   lighting, world resources, and presentation buffers. It contains no systems.
@@ -200,8 +200,9 @@ and renderers must not import it.
   needs a GPU) draws the floor under the text with
   `assets/shaders/floor.wgsl`: one quad over the window whose shader turns
   each pixel back into the map point it shows, so it turns and zooms with
-  the glyphs, as tiles in the chosen `FloorStyle`, each lit by a ray from
-  each light through the cells to its middle.
+  the glyphs, as glyphs from `assets/floor_tiles.txt` laid out by the
+  chosen `FloorStyle`, each lit by a ray from each light through the
+  cells to its middle.
 - `agent_api/` contains the optional loopback Bevy Remote transport and custom
   control/state methods. It reads the composed frame and writes normal player
   command components, keeping agent actions inside the gameplay pipeline.

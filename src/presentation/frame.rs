@@ -225,7 +225,7 @@ pub fn compose_frame(
     });
     buffers.objects = objects;
 
-    let shader_floor = floor_style.is_some_and(|style| *style != FloorStyle::Text);
+    let shader_floor = floor_style.is_some_and(|style| style.0.is_some());
     if let Some(mut floor) = floor_light.filter(|_| shader_floor) {
         let direct_at = |p: IVec2| {
             grid.idx(p)

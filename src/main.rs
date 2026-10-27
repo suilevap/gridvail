@@ -20,6 +20,7 @@ use pav_ecs_game_bevy_port::ai::PortalPolicy;
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
 use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
+use pav_ecs_game_bevy_port::content::floor_tiles::parse_floor_tiles;
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
     AnimatedPos, BounceLight, CompassMode, FloorStyle, LightStyle, Player, Pos, RevealAll,
@@ -27,7 +28,7 @@ use pav_ecs_game_bevy_port::model::{
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
-use pav_ecs_game_bevy_port::rendering::{FloorShaderPlugin, TextRendererPlugin};
+use pav_ecs_game_bevy_port::rendering::{FloorShaderPlugin, TextRendererPlugin, FLOOR_TILES};
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
 use pav_ecs_game_bevy_port::simulation::room_plans::RoomPlanners;
 use pav_ecs_game_bevy_port::touch::TouchControlPlugin;
@@ -300,9 +301,15 @@ impl Options {
             },
             "--floor": value if floor_style.is_none() => {
                 let name = args.next().expect("--floor requires a style");
-                floor_style = Some(FloorStyle::from_name(&name).expect(
-                    "--floor must be text, points, pebbles, bricks, crosses, mosaic, ramp or scatter",
-                ));
+                let tiles = parse_floor_tiles(FLOOR_TILES).expect("the bundled floor tiles parse");
+                floor_style = Some(FloorStyle(match name.as_str() {
+                    "text" => None,
+                    _ => Some(tiles.style(&name).unwrap_or_else(|| {
+                        let names: Vec<_> =
+                            tiles.styles.iter().map(|style| style.name.as_str()).collect();
+                        panic!("--floor must be text or one of: {}", names.join(", "))
+                    })),
+                }));
             },
             "--portal-view": value if portal_turn.is_none() => {
                 let name = args.next().expect("--portal-view requires turn or north");

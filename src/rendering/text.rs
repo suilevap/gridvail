@@ -13,6 +13,7 @@ use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::Rules;
 
 use super::extruded::{billboard_pattern, ExtrudedWalls};
+use super::floor::FloorTileSet;
 use crate::animation::MotionStyle;
 use crate::camera::{CameraOperator, ZOOM_RANGE};
 
@@ -305,9 +306,7 @@ fn flush_cells(
     stats.changed_cells = 0;
     // A floor shader draws the floor instead of its dots; switching between
     // them redraws every cell.
-    let shader_floor = floor_style
-        .as_ref()
-        .is_some_and(|style| **style != FloorStyle::Text);
+    let shader_floor = floor_style.as_ref().is_some_and(|style| style.0.is_some());
     let restyled = floor_style.as_ref().is_some_and(|style| style.is_changed());
     for (cell, mut text, mut color) in cells.iter_mut() {
         let index = cell.0;
@@ -539,10 +538,12 @@ fn cycle_light_style(
     }
 }
 
-/// V switches how the floor is drawn.
+/// V switches how the floor is drawn: the next floor tile style, then
+/// the text renderer's dots.
 fn cycle_floor_style(
     keys: Option<Res<ButtonInput<KeyCode>>>,
     menu: Res<SettingsMenu>,
+    tiles: Option<Res<FloorTileSet>>,
     style: Option<ResMut<FloorStyle>>,
 ) {
     if menu.open {
@@ -550,7 +551,7 @@ fn cycle_floor_style(
     }
     if let Some(mut style) = style {
         if keys.is_some_and(|keys| keys.just_pressed(KeyCode::KeyV)) {
-            *style = style.next();
+            *style = style.next(tiles.map_or(0, |tiles| tiles.0.styles.len()));
         }
     }
 }
@@ -655,6 +656,7 @@ fn update_hud(
     bounce_light: Option<Res<BounceLight>>,
     light_style: Option<Res<LightStyle>>,
     floor_style: Option<Res<FloorStyle>>,
+    tiles: Option<Res<FloorTileSet>>,
     operator: Option<Res<CameraOperator>>,
     scheme: Option<Res<ControlScheme>>,
     mut hud: Query<&mut Text, With<HudText>>,
@@ -692,7 +694,11 @@ fn update_hud(
                     "direct"
                 },
                 light_style.as_ref().map_or("palette", |style| style.name()),
-                floor_style.as_ref().map_or("text", |style| style.name()),
+                floor_style
+                    .as_ref()
+                    .and_then(|style| style.0)
+                    .and_then(|style| tiles.as_ref()?.0.styles.get(style))
+                    .map_or("text", |style| style.name.as_str()),
             ),
             ControlScheme::Touch => writeln!(
                 text.0,

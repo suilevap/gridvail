@@ -89,60 +89,18 @@ impl LightStyle {
     }
 }
 
-/// How the floor is drawn: as the text renderer's dot per cell, or by a
-/// floor shader from [`FloorLight`] as tiles: small marks like glyphs,
-/// several a cell or off the grid, each lit as a whole by the light at its
-/// middle, so shadows fall tile by tile.
+/// How the floor is drawn: as the text renderer's dot per cell (`None`),
+/// or by a floor shader from [`FloorLight`] in one of the floor tile
+/// styles (`assets/floor_tiles.txt`), by its index.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum FloorStyle {
-    #[default]
-    Text = 0,
-    /// A dot a cell, as the text renderer draws it.
-    Points = 1,
-    /// Four a cell, jittered: dots, specks and dashes.
-    Pebbles = 2,
-    /// Dashes in rows, every other row offset by half.
-    Bricks = 3,
-    /// A small cross every half cell.
-    Crosses = 4,
-    /// Sixteen small squares a cell.
-    Mosaic = 5,
-    /// Four a cell, growing with the light: speck, dot, cross, square.
-    Ramp = 6,
-    /// Marks scattered off the grid: dots, commas, ticks, dashes, colons.
-    Scatter = 7,
-}
+pub struct FloorStyle(pub Option<usize>);
 
 impl FloorStyle {
-    const ALL: [Self; 8] = [
-        Self::Text,
-        Self::Points,
-        Self::Pebbles,
-        Self::Bricks,
-        Self::Crosses,
-        Self::Mosaic,
-        Self::Ramp,
-        Self::Scatter,
-    ];
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|style| style.name() == name)
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Text => "text",
-            Self::Points => "points",
-            Self::Pebbles => "pebbles",
-            Self::Bricks => "bricks",
-            Self::Crosses => "crosses",
-            Self::Mosaic => "mosaic",
-            Self::Ramp => "ramp",
-            Self::Scatter => "scatter",
-        }
-    }
-
-    pub fn next(self) -> Self {
-        Self::ALL[(self as usize + 1) % Self::ALL.len()]
+    /// The next of `styles` floor tile styles, then the text renderer's.
+    pub fn next(self, styles: usize) -> Self {
+        Self(match self.0 {
+            None => (styles > 0).then_some(0),
+            Some(style) => (style + 1 < styles).then_some(style + 1),
+        })
     }
 }

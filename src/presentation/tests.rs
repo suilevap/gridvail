@@ -643,7 +643,7 @@ fn the_floor_light_marks_what_the_shader_lights_and_what_bounced() {
         kind: LightKind::Fire,
     };
     app.insert_resource(light)
-        .insert_resource(FloorStyle::Pebbles)
+        .insert_resource(FloorStyle(Some(0)))
         .insert_resource(FloorLight::default())
         .insert_resource(RenderBuffers::new(8, 8));
     let seen = Vis::VISIBLE | Vis::KNOWN;

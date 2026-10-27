@@ -9,7 +9,7 @@ mod text;
 #[cfg(not(target_family = "wasm"))]
 mod walls_3d;
 
-pub use floor::FloorShaderPlugin;
+pub use floor::{FloorShaderPlugin, FLOOR_TILES};
 pub use text::{TextRenderStats, TextRendererPlugin};
 #[cfg(not(target_family = "wasm"))]
 pub use walls_3d::ExtrudedWallRendererPlugin;
