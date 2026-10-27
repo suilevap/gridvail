@@ -23,7 +23,7 @@ use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
     AnimatedPos, CompassMode, Player, Pos, RevealAll, SettingsMenu, ViewCamera, Vis, VisibilityMap,
-    WallVolume,
+    WallLight, WallVolume,
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
@@ -82,6 +82,7 @@ fn main() -> AppExit {
         .insert_resource(options.motion)
         .insert_resource(options.compass)
         .insert_resource(options.walls)
+        .insert_resource(options.wall_light)
         .insert_resource(PortalPolicy {
             enemies: options.enemy_portals,
         })
@@ -183,6 +184,8 @@ struct Options {
     compass: CompassMode,
     /// How walls stand out of the floor in the text renderer.
     walls: WallVolume,
+    /// How the sides of standing objects are lit.
+    wall_light: WallLight,
     /// How rooms that name no planner move their walls between layouts.
     room_planner: String,
 }
@@ -247,6 +250,7 @@ impl Options {
         let mut portal_turn = None;
         let mut compass = None;
         let mut walls = None;
+        let mut wall_light = None;
         let mut room_planner = None;
         parse_options!(source, args;
             "--screenshot": native if capture.is_none() => {
@@ -281,6 +285,12 @@ impl Options {
                 walls = Some(
                     WallVolume::from_name(&name)
                         .expect("--walls must be flat, stacked or leaning"),
+                );
+            },
+            "--wall-light": value if wall_light.is_none() => {
+                let name = args.next().expect("--wall-light requires gradient or floor");
+                wall_light = Some(
+                    WallLight::from_name(&name).expect("--wall-light must be gradient or floor"),
                 );
             },
             "--enemy-portals": flag => {
@@ -351,6 +361,7 @@ impl Options {
             portal_turn: portal_turn.unwrap_or_default(),
             compass: compass.unwrap_or_default(),
             walls: walls.unwrap_or_default(),
+            wall_light: wall_light.unwrap_or_default(),
             room_planner: room_planner.unwrap_or(RoomPlanners::default().default),
         }
     }

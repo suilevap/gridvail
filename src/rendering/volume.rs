@@ -20,6 +20,7 @@
 use bevy::{
     asset::{embedded_asset, RenderAssetUsages},
     camera::{visibility::RenderLayers, ClearColorConfig, RenderTarget},
+    image::ImageSampler,
     platform::collections::HashMap,
     prelude::*,
     reflect::TypePath,
@@ -36,7 +37,7 @@ use swash::{
 };
 
 use crate::lighting::palette_color;
-use crate::model::{GlyphStatures, RenderBuffers, Stature, ViewCamera, WallVolume};
+use crate::model::{GlyphStatures, RenderBuffers, Stature, ViewCamera, WallLight, WallVolume};
 use crate::schedule::{GamePhase, StartupPhase};
 
 use super::text::{ObjectSprite, TurnedGlyphs, CELL_FONT_BYTES, CELL_SIZE};
@@ -85,13 +86,22 @@ struct WallVolumeMaterial {
     /// xy: the frame's origin, zw: its size, in cells.
     #[uniform(2)]
     frame: Vec4,
-    /// x: wall height in px at zoom 1, y: cell px, z: wall map texels per
-    /// cell.
+    /// x: the tallest stature allowed in px at zoom 1 (the wall map's
+    /// alpha is height over it), y: cell px, z: wall map texels per cell,
+    /// w: the tallest object in the frame in px at zoom 1.
     #[uniform(3)]
     params: Vec4,
-    /// The walls from above: lit colour times height, height as alpha.
+    /// Standing objects from above: lit colour times alpha, height as alpha.
     #[texture(4)]
     wall_map: Handle<Image>,
+    /// x: 1 when sides are lit by the floor in front of them (`WallLight`).
+    #[uniform(5)]
+    shading: Vec4,
+    /// The light on the floor of each frame cell, by its place from the
+    /// frame's origin, sampled smoothly.
+    #[texture(6)]
+    #[sampler(7)]
+    floor_light: Handle<Image>,
 }
 
 impl Material2d for WallVolumeMaterial {
@@ -114,6 +124,8 @@ struct WallVolumeQuad {
     map_size: IVec2,
     /// Sprites drawing walls into the wall map, reused frame to frame.
     sprites: Vec<Entity>,
+    /// The floor light texture's texels, filled each frame.
+    floor_texels: Vec<u8>,
 }
 
 /// The cell font's glyphs, white with their ink as alpha, rasterized as
@@ -139,6 +151,24 @@ fn wall_map_image(size: IVec2) -> Image {
     );
     image.texture_descriptor.usage =
         TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
+    image
+}
+
+fn floor_light_image(size: IVec2) -> Image {
+    let size = size.max(IVec2::ONE);
+    let mut image = Image::new_fill(
+        Extent3d {
+            width: size.x as u32,
+            height: size.y as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        &[0, 0, 0, 255],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+    );
+    // Light spreads smoothly between cells, unlike the pixel-art glyphs.
+    image.sampler = ImageSampler::linear();
     image
 }
 
@@ -170,6 +200,8 @@ fn setup(
         frame: Vec4::ZERO,
         params: Vec4::ZERO,
         wall_map,
+        shading: Vec4::ZERO,
+        floor_light: images.add(floor_light_image(map_size)),
     });
     // The main 2D camera never moves; the quad covers any window.
     let entity = commands
@@ -186,6 +218,7 @@ fn setup(
         map_camera,
         map_size,
         sprites: Vec::new(),
+        floor_texels: Vec::new(),
     });
     let atlas_side = (GLYPH_PX * ATLAS_SLOTS) as u32;
     commands.insert_resource(GlyphAtlas {
@@ -265,6 +298,7 @@ pub(super) fn depth_order(sprite: &ObjectSprite, camera: &ViewCamera, volume: Wa
 fn draw_wall_map(
     mut commands: Commands,
     volume: Res<WallVolume>,
+    wall_light: Res<WallLight>,
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
     turned: Res<TurnedGlyphs>,
@@ -299,6 +333,7 @@ fn draw_wall_map(
             *target = RenderTarget::Image(wall_map.clone().into());
             if let Some(mut material) = materials.get_mut(&quad.material) {
                 material.wall_map = wall_map;
+                material.floor_light = images.add(floor_light_image(size));
             }
         }
         let centre = Vec3::new(size.x as f32, -size.y as f32, 0.0) * texels / 2.0;
@@ -380,6 +415,17 @@ fn draw_wall_map(
         }
     }
 
+    if shown && *wall_light == WallLight::Floor {
+        update_floor_light(
+            quad,
+            &buffers,
+            &statures,
+            &own_statures,
+            &materials,
+            &mut images,
+        );
+    }
+
     let lean = lean(*volume);
     let uniforms = [
         camera.position.extend(camera.rotation).extend(camera.zoom),
@@ -396,6 +442,16 @@ fn draw_wall_map(
             texels,
             tallest * CELL_SIZE.y,
         ),
+        Vec4::new(
+            if *wall_light == WallLight::Floor {
+                1.0
+            } else {
+                0.0
+            },
+            0.0,
+            0.0,
+            0.0,
+        ),
     ];
     let unchanged = materials.get(&quad.material).is_some_and(|material| {
         [
@@ -403,6 +459,7 @@ fn draw_wall_map(
             material.offset_lean,
             material.frame,
             material.params,
+            material.shading,
         ] == uniforms
     });
     if !unchanged {
@@ -412,7 +469,62 @@ fn draw_wall_map(
                 material.offset_lean,
                 material.frame,
                 material.params,
+                material.shading,
             ] = uniforms;
+        }
+    }
+}
+
+/// Fills the floor light texture: the lit colour of each frame cell's
+/// floor, as the frame shows it (dimmer where only remembered), and under a
+/// flat object the light it is lit by. Standing objects' cells stay dark.
+fn update_floor_light(
+    quad: &mut WallVolumeQuad,
+    buffers: &RenderBuffers,
+    statures: &GlyphStatures,
+    own_statures: &Query<&Stature>,
+    materials: &Assets<WallVolumeMaterial>,
+    images: &mut Assets<Image>,
+) {
+    let Some(handle) = materials
+        .get(&quad.material)
+        .map(|material| material.floor_light.clone())
+    else {
+        return;
+    };
+    let texels = &mut quad.floor_texels;
+    texels.clear();
+    texels.resize((buffers.width * buffers.height * 4) as usize, 0);
+    let mut light = |pos: IVec2, color: u8| {
+        let local = pos - buffers.origin;
+        let texel = ((local.y * buffers.width + local.x) * 4) as usize;
+        let color = palette_color(color).to_srgba();
+        texels[texel..texel + 4].copy_from_slice(&[
+            (color.red * 255.0) as u8,
+            (color.green * 255.0) as u8,
+            (color.blue * 255.0) as u8,
+            255,
+        ]);
+    };
+    for (index, cell) in buffers.ground.iter().enumerate() {
+        if !matches!(cell.ch, ' ' | '\0' | '?') {
+            light(buffers.pos_of(index), cell.color);
+        }
+    }
+    for object in &buffers.objects {
+        let stands = statures.of(object.cell.ch, own_statures.get(object.entity).ok()) > 0.0;
+        if !stands {
+            light(object.pos, object.cell.color);
+        }
+    }
+    let unchanged = images
+        .get(&handle)
+        .is_some_and(|image| image.data.as_deref() == Some(texels.as_slice()));
+    if !unchanged {
+        if let Some(mut image) = images.get_mut(&handle) {
+            if image.data.as_ref().map(Vec::len) == Some(texels.len()) {
+                image.data = Some(texels.clone());
+            }
         }
     }
 }

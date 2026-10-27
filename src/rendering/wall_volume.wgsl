@@ -1,4 +1,4 @@
-// Standing walls for the text renderer: see `volume.rs`.
+// Standing objects for the text renderer: see `volume.rs`.
 
 #import bevy_sprite::mesh2d_vertex_output::VertexOutput
 #import bevy_sprite::mesh2d_view_bindings::view
@@ -15,19 +15,35 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> params: vec4<f32>;
 // Standing objects from above: lit colour times alpha, height as alpha.
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var wall_map: texture_2d<f32>;
+// x: 1 when sides are lit by the floor in front of them.
+@group(#{MATERIAL_BIND_GROUP}) @binding(5) var<uniform> shading: vec4<f32>;
+// The light on each frame cell's floor.
+@group(#{MATERIAL_BIND_GROUP}) @binding(6) var floor_light: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(7) var floor_sampler: sampler;
+
+// How fast light from the floor fades as it rises, per cell of height.
+const FLOOR_LIGHT_FALLOFF: f32 = 2.5;
 
 struct Fragment {
     @location(0) color: vec4<f32>,
     @builtin(frag_depth) depth: f32,
 }
 
-// The map point shown at a 2D world point (`ViewCamera::to_map`).
-fn to_map(screen: vec2<f32>) -> vec2<f32> {
-    let view_cells = vec2<f32>(screen.x, -screen.y) / params.y;
-    let v = view_cells / camera.w - offset_lean.xy;
+// A 2D world offset (y up) as a map offset (`ViewCamera::to_map` without
+// the translation).
+fn to_map_offset(screen: vec2<f32>) -> vec2<f32> {
+    let v = vec2<f32>(screen.x, -screen.y) / (params.y * camera.w);
     let c = cos(camera.z);
     let s = sin(camera.z);
-    return vec2<f32>(c * v.x - s * v.y, s * v.x + c * v.y) + camera.xy;
+    return vec2<f32>(c * v.x - s * v.y, s * v.x + c * v.y);
+}
+
+// The map point shown at a 2D world point.
+fn to_map(screen: vec2<f32>) -> vec2<f32> {
+    let v = -offset_lean.xy;
+    let c = cos(camera.z);
+    let s = sin(camera.z);
+    return to_map_offset(screen) + vec2<f32>(c * v.x - s * v.y, s * v.x + c * v.y) + camera.xy;
 }
 
 // Where a map point is shown (`view_translation`).
@@ -47,13 +63,17 @@ fn fragment(in: VertexOutput) -> Fragment {
     let full = params.x * camera.w;
     let top = params.w * camera.w;
     let map_size = vec2<i32>(frame.zw * params.z);
+    // The pixel's ray is a straight line in map space: the map point under
+    // the pixel at height h is `floor_point - toward_viewer * h`.
+    let floor_point = to_map(pixel);
+    let rise = to_map_offset(lean);
     // From the tallest top down to the floor, a screen pixel at a time: the
-    // first wall found is the nearest.
+    // first object found is the nearest.
     let steps = i32(ceil(top));
     var out: Fragment;
     for (var i = 0; i <= steps; i = i + 1) {
         let h = max(top - f32(i), 0.0);
-        let map = to_map(pixel - lean * h);
+        let map = floor_point - rise * h;
         let texel = vec2<i32>(floor((map - frame.xy + 0.5) * params.z));
         if any(texel < vec2<i32>(0)) || any(texel >= map_size) {
             continue;
@@ -63,14 +83,29 @@ fn fragment(in: VertexOutput) -> Fragment {
         if wall.a < 0.004 || h > height {
             continue;
         }
-        // Within a pixel of its height: the wall's top, lit.
+        let own = wall.rgb / wall.a;
+        // Within a pixel of its height: the object's top, in its own light.
         let at_top = h > height - 1.0;
-        let shade = select(0.3 + 0.4 * h / height, 1.0, at_top);
+        var color: vec3<f32>;
+        if at_top {
+            color = own;
+        } else if shading.x > 0.5 {
+            // A side faces the viewer: lit by the floor just in front of
+            // it, fading with height, over a little of its own light.
+            let toward_viewer = -normalize(rise);
+            let lit_from = map + toward_viewer * 0.6;
+            let uv = (lit_from - frame.xy + 0.5) / frame.zw;
+            let floor = textureSampleLevel(floor_light, floor_sampler, uv, 0.0).rgb;
+            let rising = h / (params.y * camera.w);
+            color = own * 0.25 + floor * exp(-rising * FLOOR_LIGHT_FALLOFF);
+        } else {
+            color = own * (0.3 + 0.4 * h / height);
+        }
         // The draw order sprites get (`depth_order`), by the cell it is in.
         let cell = floor(map + 0.5);
         let z = 1.5 - dot(to_screen(cell), lean) / 16384.0;
         let clip = view.clip_from_world * vec4<f32>(pixel, z, 1.0);
-        out.color = vec4<f32>(wall.rgb / wall.a * shade, 1.0);
+        out.color = vec4<f32>(color, 1.0);
         out.depth = clip.z / clip.w;
         return out;
     }
