@@ -45,7 +45,7 @@ pub(super) struct ObjectSprite {
     position: Vec2,
     lift: f32,
     pub(super) depth: u8,
-    /// A wall, which the wall shader draws instead while it stands still.
+    /// A wall, which the wall shader may draw instead.
     pub(super) wall: bool,
     pub(super) shown: bool,
 }
@@ -441,9 +441,8 @@ pub(super) fn place_object_sprites(
         let Ok((mut sprite, mut text, mut color, ..)) = sprites.get_mut(entity) else {
             continue;
         };
-        // The wall shader draws walls standing still (`volume`); moving
-        // ones stay glyphs on the floor until they settle.
-        if volume != WallVolume::Flat && sprite.wall && object.position == object.pos.as_vec2() {
+        // The wall shader draws walls instead (`volume`).
+        if volume != WallVolume::Flat && sprite.wall {
             continue;
         }
         drawn.clear();

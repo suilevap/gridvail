@@ -144,8 +144,9 @@ next to this file.
   nothing of the new map yet. Maps of any size work.
 - Settings (an addition): Esc opens a small menu to choose how the view
   behaves through portals that turn (turn with the player or keep north
-  up), when the compass shows (when the view is turned, always or off) and
-  the motion style. The compass in the bottom-right corner shows where the
+  up), when the compass shows (when the view is turned, always or off),
+  the motion style and how walls stand (flat, stacked or leaning: see
+  `--walls`). The compass in the bottom-right corner shows where the
   map's north, east, south and west lie on screen. While the menu is open,
   movement and camera keys wait.
 - Enemies through portals (an addition, opt-in with `--enemy-portals`):
@@ -243,6 +244,7 @@ cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up 
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --compass always   # compass: when-turned (default), always or off
+cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo test --workspace   # 259 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
@@ -387,8 +389,8 @@ https://suilevap.github.io/gridvail/?motion=overshoot
 https://suilevap.github.io/gridvail/?map=portals&portal-view=north&reveal
 ```
 
-Supported parameters are `motion`, `map`, `reveal`, `portal-view`, `compass`
-and `enemy-portals`,
+Supported parameters are `motion`, `map`, `reveal`, `portal-view`, `compass`,
+`walls` and `enemy-portals`,
 with the same values and defaults as the CLI. `reveal` accepts a bare flag,
 `true`/`1`, or `false`/`0`. Options apply when the page loads.
 Maps are discovered from `assets/maps/*.txt` and embedded at build time;

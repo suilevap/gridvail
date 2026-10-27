@@ -57,11 +57,9 @@ pub enum WallVolume {
     /// One glyph on the floor, seen from straight above.
     #[default]
     Flat,
-    /// The wall's glyph extruded: copies of it stacked up the screen, darker
-    /// toward the floor, so its outline stands as a wall of that shape.
+    /// The wall's glyph extruded up the screen, darker toward the floor, so
+    /// its outline stands as a wall of that shape.
     Stacked,
-    /// Solid blocks: a dark front face up to a lit top with the glyph on it.
-    Solid,
     /// Stacked, with height leaning to the right as well as up (a cavalier
     /// oblique view from the south-west), so walls running up the screen
     /// show a side too.
@@ -69,13 +67,12 @@ pub enum WallVolume {
 }
 
 impl WallVolume {
-    pub const ALL: [Self; 4] = [Self::Flat, Self::Stacked, Self::Solid, Self::Leaning];
+    pub const ALL: [Self; 3] = [Self::Flat, Self::Stacked, Self::Leaning];
 
     pub fn name(self) -> &'static str {
         match self {
             Self::Flat => "flat",
             Self::Stacked => "stacked",
-            Self::Solid => "solid",
             Self::Leaning => "leaning",
         }
     }

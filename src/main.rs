@@ -277,10 +277,10 @@ impl Options {
                 );
             },
             "--walls": value if walls.is_none() => {
-                let name = args.next().expect("--walls requires flat, stacked, solid or leaning");
+                let name = args.next().expect("--walls requires flat, stacked or leaning");
                 walls = Some(
                     WallVolume::from_name(&name)
-                        .expect("--walls must be flat, stacked, solid or leaning"),
+                        .expect("--walls must be flat, stacked or leaning"),
                 );
             },
             "--enemy-portals": flag => {
