@@ -184,7 +184,7 @@ struct Options {
     compass: CompassMode,
     /// How walls stand out of the floor in the text renderer.
     walls: WallVolume,
-    /// How the sides of standing objects are lit.
+    /// How standing objects are shaded.
     wall_light: WallLight,
     /// How rooms that name no planner move their walls between layouts.
     room_planner: String,

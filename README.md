@@ -153,9 +153,10 @@ next to this file.
   up off the floor, their glyphs extruded up the screen. How tall each
   glyph stands is set in `assets/rules/statures.txt` (walls and closed
   doors by default; any glyph can be listed), and a `Stature` component
-  gives one object its own height. `--wall-light floor` lights their sides
-  with the light on the floor in front of them, fading as it rises,
-  instead of darkening their own light toward the floor (`gradient`).
+  gives one object its own height. `--wall-light floor` shades them by
+  height: their light is full at the floor and fades as they rise, so a
+  tall wall's top is darker than a low wall's under the same light;
+  `gradient` (the default) darkens each side toward the floor instead.
 - Enemies through portals (an addition, opt-in with `--enemy-portals`):
   enemies plan paths through portals too, with an A* estimate that knows
   the portals, so searches stay narrow.

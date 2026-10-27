@@ -182,8 +182,8 @@ and renderers must not import it.
   object's glyph at its animated position into a wall map (8 texels per
   cell, height as alpha), and one full-screen shader (`wall_volume.wgsl`)
   extrudes it up the screen, writing the depth the text sprites are sorted
-  by, so what stands hides actors behind it. With `WallLight::Floor` it
-  lights sides from a texture of the frame's floor light instead.
+  by, so what stands hides actors behind it. With `WallLight::Floor` its
+  light fades with height in cells instead.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
   at its animated position, each placed where the view camera shows it. Its

@@ -89,13 +89,14 @@ impl WallVolume {
     }
 }
 
-/// How the sides of standing objects are lit (`WallVolume`).
+/// How standing objects are shaded (`WallVolume`).
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WallLight {
     /// Their own light, darker toward the floor.
     #[default]
     Gradient,
-    /// The light on the floor in front of them, fading as it rises.
+    /// Their own light, full at the floor and fading with height in
+    /// cells: a taller wall's top is darker than a lower one's.
     Floor,
 }
 
