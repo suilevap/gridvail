@@ -27,7 +27,7 @@ use pav_ecs_game_bevy_port::model::{
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
-use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
+use pav_ecs_game_bevy_port::rendering::{TextRendererPlugin, WallVolumePlugin};
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
 use pav_ecs_game_bevy_port::simulation::room_plans::RoomPlanners;
 use pav_ecs_game_bevy_port::touch::TouchControlPlugin;
@@ -91,6 +91,7 @@ fn main() -> AppExit {
         .add_plugins((
             ObjectAnimationPlugin,
             TextRendererPlugin,
+            WallVolumePlugin,
             TouchControlPlugin,
         ));
     if renderer == Renderer::Walls3d {

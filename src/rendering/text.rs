@@ -26,8 +26,10 @@ const MAX_FRAME_SIDE: i32 = 192;
 /// Cells of slack around the screen on each side: the frame follows the
 /// player, while the camera may trail them or show them off centre.
 const FRAME_MARGIN: i32 = 4;
+/// The cell font, Unscii-8.
+pub(super) const CELL_FONT_BYTES: &[u8] = include_bytes!("../../assets/fonts/unscii-8.ttf");
 /// Unscii-8 is an 8 px pixel font, drawn at twice its size.
-pub(super) const CELL_FONT_SIZE: f32 = 16.0;
+const CELL_FONT_SIZE: f32 = 16.0;
 
 #[derive(Component)]
 struct HudText;
@@ -43,9 +45,7 @@ pub(super) struct ObjectSprite {
     position: Vec2,
     lift: f32,
     pub(super) depth: u8,
-    /// How far it stands out of the floor (`ObjectCell::height`).
-    pub(super) height: f32,
-    /// A wall, which `WallVolume` may draw standing up.
+    /// A wall, which the wall shader draws instead while it stands still.
     pub(super) wall: bool,
     pub(super) shown: bool,
 }
@@ -72,7 +72,7 @@ impl ObjectSprite {
 pub(super) struct ObjectSprites(HashMap<(Entity, u16), Entity>);
 
 #[derive(Resource, Clone)]
-pub(super) struct CellFont(pub(super) Handle<Font>);
+struct CellFont(Handle<Font>);
 
 /// Glyphs that depend on direction (wall shapes, facing markers), each as
 /// drawn in a view turned 0 to 3 quarter turns counter-clockwise, so they
@@ -105,10 +105,14 @@ impl TurnedGlyphs {
     /// `quarters` more (through a portal that turns the view); glyphs
     /// without a direction stay.
     pub(super) fn get(&self, symbol: char, quarters: u8, camera: &ViewCamera) -> char {
-        let turns = (camera.quarter_turns() + quarters as i32).rem_euclid(4);
+        self.turned(symbol, camera.quarter_turns() + quarters as i32)
+    }
+
+    /// `symbol` turned `turns` quarter turns counter-clockwise.
+    pub(super) fn turned(&self, symbol: char, turns: i32) -> char {
         self.0
             .get(&symbol)
-            .map_or(symbol, |glyphs| glyphs[turns as usize])
+            .map_or(symbol, |glyphs| glyphs[turns.rem_euclid(4) as usize])
     }
 }
 
@@ -128,7 +132,6 @@ impl Plugin for TextRendererPlugin {
             .init_resource::<SettingsMenu>()
             .init_resource::<CompassMode>()
             .init_resource::<WallVolume>()
-            .init_resource::<super::volume::WallLayers>()
             .add_systems(Startup, setup.in_set(StartupPhase::Renderer))
             .add_systems(
                 Update,
@@ -143,7 +146,6 @@ impl Plugin for TextRendererPlugin {
                     drop_gone_sprites,
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
-                    super::volume::place_wall_layers,
                     update_hud,
                     super::settings::draw_settings,
                     super::settings::draw_compass,
@@ -262,11 +264,7 @@ pub(super) fn setup(
     // The default Bevy font omits the box-drawing and marker glyphs. Headless
     // tests do not install font assets, so they use the default handle.
     let font = fonts
-        .map(|mut fonts| {
-            fonts.add(Font::from_bytes(
-                include_bytes!("../../assets/fonts/unscii-8.ttf").to_vec(),
-            ))
-        })
+        .map(|mut fonts| fonts.add(Font::from_bytes(CELL_FONT_BYTES.to_vec())))
         .unwrap_or_default();
 
     // One text entity per frame slot; `place_cells` puts each where the
@@ -382,7 +380,6 @@ fn spawn_object_sprites(world: &mut World) {
                     position: object.position,
                     lift: object.lift,
                     depth: object.cell.depth,
-                    height: object.height,
                     wall: world.get::<Wall>(object.entity).is_some(),
                     shown: false,
                 },
@@ -444,6 +441,11 @@ pub(super) fn place_object_sprites(
         let Ok((mut sprite, mut text, mut color, ..)) = sprites.get_mut(entity) else {
             continue;
         };
+        // The wall shader draws walls standing still (`volume`); moving
+        // ones stay glyphs on the floor until they settle.
+        if volume != WallVolume::Flat && sprite.wall && object.position == object.pos.as_vec2() {
+            continue;
+        }
         drawn.clear();
         push_glyph(
             &mut drawn,
@@ -453,7 +455,6 @@ pub(super) fn place_object_sprites(
         sprite.position = object.position;
         sprite.lift = object.lift;
         sprite.depth = object.cell.depth;
-        sprite.height = object.height;
         sprite.shown = true;
         if text.0 != *drawn {
             text.0.clear();
@@ -484,11 +485,8 @@ pub(super) fn place_object_sprites(
             + Vec3::Y * sprite.lift * CELL_SIZE.y * camera.zoom;
         if volume != WallVolume::Flat {
             // Seen at a slant, nearer rows (lower on screen) cover the ones
-            // behind them, and a wall's top stands up the screen.
+            // behind them, walls included.
             translation.z = super::volume::depth_order(&sprite, &camera, volume);
-            if sprite.wall {
-                translation += super::volume::rise(&sprite, &camera, volume).extend(0.0);
-            }
         }
         if transform.translation != translation {
             transform.translation = translation;
@@ -613,7 +611,7 @@ fn view_translation(camera: &ViewCamera, map: Vec2) -> Vec3 {
 /// by the rest of the turn, so they lie in the turning picture. Half way,
 /// a glyph tilted +45° and its quarter-turned glyph tilted -45° are the
 /// same shape, so the swap is not seen; at rest glyphs are upright.
-pub(super) fn glyph_rotation(camera: &ViewCamera) -> Quat {
+fn glyph_rotation(camera: &ViewCamera) -> Quat {
     Quat::from_rotation_z(camera.quarter_remainder())
 }
 

@@ -10,5 +10,6 @@ mod volume;
 mod walls_3d;
 
 pub use text::{TextRenderStats, TextRendererPlugin};
+pub use volume::WallVolumePlugin;
 #[cfg(not(target_family = "wasm"))]
 pub use walls_3d::ExtrudedWallRendererPlugin;
