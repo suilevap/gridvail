@@ -196,6 +196,11 @@ and renderers must not import it.
   `ExtrudedWallRendererPlugin` adds a perspective camera plus shared wall and
   floor meshes beneath that text layer. A small GPU texture carries the same
   visibility and CPU-light results to the procedural floor shader.
+- `rendering/glow.rs` blooms the text renderer as `GlowStyle` says: the
+  text camera renders in HDR with bloom, so bright glyphs spread into a
+  halo of their own colour, and light sources' glyphs are drawn brighter
+  than white. Only
+  the text renderer glows; the 3D renderers draw under its camera.
 - `rendering/voxels.rs` (`VoxelRendererPlugin`, `--renderer voxels`,
   desktop only) is an experiment in a different look: a 3D world of glyph
   voxels under the 3D wall backend's camera. Every glyph is solid, its

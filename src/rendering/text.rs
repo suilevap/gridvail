@@ -14,6 +14,7 @@ use crate::simulation::Rules;
 
 use super::extruded::{billboard_pattern, ExtrudedWalls};
 use super::floor::FloorTileSet;
+use super::glow::glow_color;
 use crate::animation::MotionStyle;
 use crate::camera::{CameraOperator, ZOOM_RANGE};
 
@@ -133,6 +134,8 @@ impl Plugin for TextRendererPlugin {
                     toggle_bounce_light,
                     cycle_light_style,
                     cycle_floor_style,
+                    super::glow::cycle_glow,
+                    super::glow::apply_glow,
                     fit_frame_to_window,
                     match_cells_to_frame,
                     place_cells,
@@ -386,12 +389,15 @@ fn spawn_object_sprites(world: &mut World) {
 }
 
 /// Draws one text sprite per visible object at its animated position.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn place_object_sprites(
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
     index: Res<ObjectSprites>,
     turned: Res<TurnedGlyphs>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
+    glow: Option<Res<GlowStyle>>,
+    lights: Query<&LightSource>,
     mut drawn: Local<String>,
     mut sprites: Query<(
         &mut ObjectSprite,
@@ -402,6 +408,7 @@ pub(super) fn place_object_sprites(
     )>,
 ) {
     let billboards = extruded_walls.is_some();
+    let glow = glow.map(|glow| *glow);
     for (mut sprite, ..) in &mut sprites {
         sprite.shown = false;
     }
@@ -435,7 +442,11 @@ pub(super) fn place_object_sprites(
             text.0.push_str(&drawn);
         }
         // Rising out of the floor or sinking into it, it fades.
-        let desired = cell_color(&object.cell).with_alpha(object.height);
+        // Fire, electricity and acid glow; the player's own light does not.
+        let source = lights
+            .get(object.entity)
+            .is_ok_and(|light| light.kind != LightKind::None);
+        let desired = glow_color(cell_color(&object.cell), glow, source).with_alpha(object.height);
         if color.0 != desired {
             color.0 = desired;
         }
@@ -656,6 +667,7 @@ fn update_hud(
     bounce_light: Option<Res<BounceLight>>,
     light_style: Option<Res<LightStyle>>,
     floor_style: Option<Res<FloorStyle>>,
+    glow: Option<Res<GlowStyle>>,
     tiles: Option<Res<FloorTileSet>>,
     operator: Option<Res<CameraOperator>>,
     scheme: Option<Res<ControlScheme>>,
@@ -681,7 +693,7 @@ fn update_hud(
         match scheme {
             ControlScheme::Keyboard => writeln!(
                 text.0,
-                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | G light: {} | L colours: {} | V floor: {} | Esc settings",
+                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | G light: {} | L colours: {} | V floor: {} | B glow: {} | Esc settings",
                 if extruded_walls.is_some() {
                     " | wheel zoom"
                 } else {
@@ -699,6 +711,7 @@ fn update_hud(
                     .and_then(|style| style.0)
                     .and_then(|style| tiles.as_ref()?.0.styles.get(style))
                     .map_or("text", |style| style.name.as_str()),
+                glow.as_ref().map_or("off", |glow| glow.name()),
             ),
             ControlScheme::Touch => writeln!(
                 text.0,

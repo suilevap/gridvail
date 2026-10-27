@@ -32,6 +32,8 @@ bevy = { version = "0.19.1", default-features = false, features = [
     "bevy_ui",
     "bevy_ui_render",
     "bevy_sprite_render",
+    # Glow: bloom on the text renderer's camera.
+    "bevy_post_process",
 ] }
 rand = "0.10"
 bitflags = "2"
@@ -43,16 +45,15 @@ flatbt-bevy = { git = "https://github.com/suilevap/flatbt", branch = "main" }
 # For `goal_match!`, which the Bevy prelude does not re-export.
 flatbt = { git = "https://github.com/suilevap/flatbt", branch = "main" }
 
-# Desktop only: the 3D walls and voxel renderers (the lookup tables their
-# cameras tonemap with, and the voxels' bloom), the agent API's HTTP
-# server, system diagnostics, PNG saving for `--screenshot` and `--record`,
-# and the Linux window backends. The web build leaves them out.
+# Desktop only: the 3D walls and voxel renderers (and the lookup tables
+# their cameras tonemap with), the agent API's HTTP server, system
+# diagnostics, PNG saving for `--screenshot` and `--record`, and the Linux
+# window backends. The web build leaves them out.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 bevy = { version = "0.19.1", default-features = false, features = [
     "x11",
     "wayland",
     "bevy_pbr",
-    "bevy_post_process",
     "tonemapping_luts",
     "zstd_rust",
     "bevy_remote",

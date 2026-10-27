@@ -2,6 +2,7 @@
 
 mod extruded;
 mod floor;
+mod glow;
 mod settings;
 mod text;
 // Desktop only: the web build leaves 3D rendering out to keep its download

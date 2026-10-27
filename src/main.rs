@@ -23,8 +23,8 @@ use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::content::floor_tiles::parse_floor_tiles;
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
-    AnimatedPos, BounceLight, CompassMode, FloorStyle, LightStyle, Player, Pos, RevealAll,
-    SettingsMenu, ViewCamera, Vis, VisibilityMap,
+    AnimatedPos, BounceLight, CompassMode, FloorStyle, GlowStyle, LightStyle, Player, Pos,
+    RevealAll, SettingsMenu, ViewCamera, Vis, VisibilityMap,
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, VoxelRendererPlugin};
@@ -99,7 +99,11 @@ fn main() -> AppExit {
             FloorShaderPlugin,
             TouchControlPlugin,
         ));
-    if renderer != Renderer::Text {
+    // Glow is the text renderer's: the 3D renderers draw under its camera,
+    // which glow turns HDR.
+    if renderer == Renderer::Text {
+        app.insert_resource(options.glow);
+    } else {
         #[cfg(not(target_family = "wasm"))]
         if renderer == Renderer::Walls3d {
             app.add_plugins(ExtrudedWallRendererPlugin);
@@ -192,6 +196,8 @@ struct Options {
     light_style: LightStyle,
     /// How the floor is drawn.
     floor_style: FloorStyle,
+    /// How bright glyphs glow.
+    glow: GlowStyle,
     /// What the view does through turning portals.
     portal_turn: PortalTurn,
     /// When the compass shows.
@@ -262,6 +268,7 @@ impl Options {
         let mut bounce_light = false;
         let mut light_style = None;
         let mut floor_style = None;
+        let mut glow = None;
         let mut portal_turn = None;
         let mut compass = None;
         let mut room_planner = None;
@@ -316,6 +323,12 @@ impl Options {
                         panic!("--floor must be text or one of: {}", names.join(", "))
                     })),
                 }));
+            },
+            "--glow": value if glow.is_none() => {
+                let name = args.next().expect("--glow requires off, soft or strong");
+                glow = Some(
+                    GlowStyle::from_name(&name).expect("--glow must be off, soft or strong"),
+                );
             },
             "--portal-view": value if portal_turn.is_none() => {
                 let name = args.next().expect("--portal-view requires turn or north");
@@ -383,6 +396,7 @@ impl Options {
             bounce_light,
             light_style: light_style.unwrap_or_default(),
             floor_style: floor_style.unwrap_or_default(),
+            glow: glow.unwrap_or_default(),
             portal_turn: portal_turn.unwrap_or_default(),
             compass: compass.unwrap_or_default(),
             room_planner: room_planner.unwrap_or(RoomPlanners::default().default),

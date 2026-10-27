@@ -89,6 +89,41 @@ impl LightStyle {
     }
 }
 
+/// How much bright glyphs glow: lit ones a little, light sources most.
+/// The text renderer draws them brighter than white and blooms them.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GlowStyle {
+    Off,
+    #[default]
+    Soft,
+    Strong,
+}
+
+impl GlowStyle {
+    pub const ALL: [Self; 3] = [Self::Off, Self::Soft, Self::Strong];
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|style| style.name() == name)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Soft => "soft",
+            Self::Strong => "strong",
+        }
+    }
+
+    /// The style `step` along, round and round.
+    pub fn step(self, step: i32) -> Self {
+        let index = Self::ALL
+            .iter()
+            .position(|&style| style == self)
+            .unwrap_or(0);
+        Self::ALL[(index as i32 + step).rem_euclid(Self::ALL.len() as i32) as usize]
+    }
+}
+
 /// How the floor is drawn: as the text renderer's dot per cell (`None`),
 /// or by a floor shader from [`FloorLight`] in one of the floor tile
 /// styles (`assets/floor_tiles.txt`), by its index.

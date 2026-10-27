@@ -269,6 +269,7 @@ cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up 
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --compass always   # compass: when-turned (default), always or off
+cargo run -- --glow strong      # bright glyphs bloom: off, soft (default) or strong; B cycles it
 cargo run -- --map assets/maps/bounce.txt --gi  # bounced light; G toggles it in game
 cargo run -- --light smooth     # smooth light colours; L toggles them in game
 cargo run -- --map assets/maps/shadows.txt --floor bricks  # floor tiles; V cycles their styles
@@ -415,8 +416,8 @@ https://suilevap.github.io/gridvail/?motion=overshoot
 https://suilevap.github.io/gridvail/?map=portals&portal-view=north&reveal
 ```
 
-Supported parameters are `motion`, `map`, `reveal`, `portal-view`, `compass`
-and `enemy-portals`,
+Supported parameters are `motion`, `map`, `reveal`, `portal-view`, `compass`,
+`glow` and `enemy-portals`,
 with the same values and defaults as the CLI. `reveal` accepts a bare flag,
 `true`/`1`, or `false`/`0`. Options apply when the page loads.
 Maps are discovered from `assets/maps/*.txt` and embedded at build time;
