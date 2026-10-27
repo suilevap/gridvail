@@ -90,51 +90,39 @@ impl LightStyle {
 }
 
 /// How the floor is drawn: as the text renderer's dot per cell, or by a
-/// floor shader from [`FloorLight`]. Most styles are tiles: a pattern that
-/// is the floor's material, lit a pixel at a time as glyphs are lit. The
-/// others draw the light itself as a pattern.
+/// floor shader from [`FloorLight`] as tiles: small marks like glyphs,
+/// several a cell or off the grid, each lit as a whole by the light at its
+/// middle, so shadows fall tile by tile.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FloorStyle {
     #[default]
     Text = 0,
-    /// Light as four dots a cell, larger where it is brighter.
-    Dots = 1,
-    /// Light as ordered dithering.
-    Dither = 2,
-    /// Light only on every third pixel row, with a slow rolling band.
-    Scanlines = 3,
-    /// Rows of lines raised by the light under them, swaying.
-    Ridges = 4,
-    /// Tiles: a dot in each cell, as the text renderer draws it.
-    Points = 5,
-    /// Tiles: square tiles with grout between.
-    Squares = 6,
-    /// Tiles: staggered boards with grain.
-    Planks = 7,
-    /// Tiles: rounded stones of different sizes.
-    Cobble = 8,
-    /// Tiles: flowing lines across the floor, like a map's contours.
-    Contours = 9,
-    /// Tiles: scattered specks.
-    Gravel = 10,
-    /// Tiles: a basket weave of short strokes.
-    Weave = 11,
+    /// A dot a cell, as the text renderer draws it.
+    Points = 1,
+    /// Four a cell, jittered: dots, specks and dashes.
+    Pebbles = 2,
+    /// Dashes in rows, every other row offset by half.
+    Bricks = 3,
+    /// A small cross every half cell.
+    Crosses = 4,
+    /// Sixteen small squares a cell.
+    Mosaic = 5,
+    /// Four a cell, growing with the light: speck, dot, cross, square.
+    Ramp = 6,
+    /// Marks scattered off the grid: dots, commas, ticks, dashes, colons.
+    Scatter = 7,
 }
 
 impl FloorStyle {
-    const ALL: [Self; 12] = [
+    const ALL: [Self; 8] = [
         Self::Text,
         Self::Points,
-        Self::Squares,
-        Self::Planks,
-        Self::Cobble,
-        Self::Contours,
-        Self::Gravel,
-        Self::Weave,
-        Self::Dots,
-        Self::Dither,
-        Self::Scanlines,
-        Self::Ridges,
+        Self::Pebbles,
+        Self::Bricks,
+        Self::Crosses,
+        Self::Mosaic,
+        Self::Ramp,
+        Self::Scatter,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -144,25 +132,17 @@ impl FloorStyle {
     pub fn name(self) -> &'static str {
         match self {
             Self::Text => "text",
-            Self::Dots => "dots",
-            Self::Dither => "dither",
-            Self::Scanlines => "scanlines",
-            Self::Ridges => "ridges",
             Self::Points => "points",
-            Self::Squares => "squares",
-            Self::Planks => "planks",
-            Self::Cobble => "cobble",
-            Self::Contours => "contours",
-            Self::Gravel => "gravel",
-            Self::Weave => "weave",
+            Self::Pebbles => "pebbles",
+            Self::Bricks => "bricks",
+            Self::Crosses => "crosses",
+            Self::Mosaic => "mosaic",
+            Self::Ramp => "ramp",
+            Self::Scatter => "scatter",
         }
     }
 
     pub fn next(self) -> Self {
-        let at = Self::ALL
-            .iter()
-            .position(|&style| style == self)
-            .unwrap_or(0);
-        Self::ALL[(at + 1) % Self::ALL.len()]
+        Self::ALL[(self as usize + 1) % Self::ALL.len()]
     }
 }

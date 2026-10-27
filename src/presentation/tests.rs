@@ -643,7 +643,7 @@ fn the_floor_light_marks_what_the_shader_lights_and_what_bounced() {
         kind: LightKind::Fire,
     };
     app.insert_resource(light)
-        .insert_resource(FloorStyle::Dither)
+        .insert_resource(FloorStyle::Pebbles)
         .insert_resource(FloorLight::default())
         .insert_resource(RenderBuffers::new(8, 8));
     let seen = Vis::VISIBLE | Vis::KNOWN;
@@ -657,10 +657,11 @@ fn the_floor_light_marks_what_the_shader_lights_and_what_bounced() {
             (IVec2::new(2, 0), seen),
         ]),
     ));
+    // Something standing on the lit cell.
     app.world_mut().spawn((
-        Pos(IVec2::new(3, 0)),
-        Glyph::new('#', 1, GRAY),
-        AnimatedPos::at(IVec2::new(3, 0)),
+        Pos(IVec2::new(1, 0)),
+        Glyph::new('e', 1, GRAY),
+        AnimatedPos::at(IVec2::new(1, 0)),
     ));
     app.world_mut().spawn((
         Pos(IVec2::new(5, 5)),
@@ -678,7 +679,11 @@ fn the_floor_light_marks_what_the_shader_lights_and_what_bounced() {
     assert_eq!(info(1)[1], 255, "floor seen directly is lit by the shader");
     assert_eq!(info(1)[2], 0, "with nothing bounced onto it");
     assert_eq!(info(2)[2], 30, "light bounced onto a cell");
-    assert_eq!(brightness(1), 120, "every cell keeps its own light");
+    assert_eq!(
+        brightness(1),
+        120,
+        "the floor goes on under what stands on it"
+    );
     assert_eq!(brightness(4), 0, "no floor where nothing is seen");
     assert_eq!(floor.lamps.len(), 1);
     assert_eq!(floor.lamps[0].position, Vec2::new(5.0, 5.0));

@@ -301,7 +301,7 @@ impl Options {
             "--floor": value if floor_style.is_none() => {
                 let name = args.next().expect("--floor requires a style");
                 floor_style = Some(FloorStyle::from_name(&name).expect(
-                    "--floor must be text, points, squares, planks, cobble, contours, gravel, weave, dots, dither, scanlines or ridges",
+                    "--floor must be text, points, pebbles, bricks, crosses, mosaic, ramp or scatter",
                 ));
             },
             "--portal-view": value if portal_turn.is_none() => {

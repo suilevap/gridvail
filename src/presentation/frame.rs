@@ -233,7 +233,7 @@ pub fn compose_frame(
                 .copied()
                 .unwrap_or_default()
         };
-        fill_floor(buffers, &grid, &light_at, &direct_at, &mut floor);
+        fill_floor(buffers, &grid, &known, &light_at, &direct_at, &mut floor);
         floor.viewer = shown_viewer
             .iter()
             .next()
@@ -261,12 +261,14 @@ pub fn compose_frame(
 }
 
 /// Fills `floor` for the frame: every cell's light and whether it blocks
-/// light, and which floor the shader lights itself, a pixel at a time from
+/// light, which cells have floor (seen or remembered, under objects too),
+/// and which floor the shader lights itself, a pixel at a time from
 /// the lamps: floor seen directly. Its own light then only adds what
 /// bounced onto it (`light_at` brighter than `direct_at`).
 fn fill_floor(
     buffers: &RenderBuffers,
     grid: &MapGrid,
+    known: &impl Fn(IVec2) -> bool,
     light_at: &impl Fn(IVec2) -> LightCell,
     direct_at: &impl Fn(IVec2) -> LightCell,
     floor: &mut FloorLight,
@@ -284,10 +286,19 @@ fn fill_floor(
         let at = (local.y * buffers.width as u32 + local.x) as usize * 4;
         let info = &mut floor.info[at..at + 4];
         info[0] = if grid.blocks_vision(position) { 255 } else { 0 };
-        if buffers.ground[index].ch != '.' {
+        // Floor goes on under whatever stands on it (its ground cell is
+        // blank), but not under walls or a portal's threshold.
+        let seen = buffers.seen[index];
+        let shown = seen.map_or(position, |seen| seen.world);
+        let floor_here = match buffers.ground[index].ch {
+            '.' => true,
+            '\0' | ' ' => (seen.is_some() || known(position)) && !grid.blocks_vision(shown),
+            _ => false,
+        };
+        if !floor_here {
             continue;
         }
-        let (light, remembered) = match buffers.seen[index] {
+        let (light, remembered) = match seen {
             Some(seen) => {
                 if seen.transform.is_identity() {
                     let (light, direct) = (light_at(seen.world), direct_at(seen.world));

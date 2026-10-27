@@ -1,14 +1,17 @@
-// The floor, drawn in one of the `FloorStyle`s.
+// The floor as tiles, in one of the `FloorStyle`s.
 //
 // Each pixel finds the map point it shows, the inverse of where the text
 // renderer puts cells (`ViewCamera::to_map`), so the floor turns and zooms
-// with the glyphs. Patterns are laid out in cell units for the same reason.
+// with the glyphs. A tile is a small mark like a glyph, several a cell or
+// off the grid, laid out by map position so it stays put as the view
+// moves. A tile is lit as a whole by the light at its middle, so shadows
+// fall tile by tile.
 //
-// Floor seen directly is lit here a pixel at a time: a ray from each lamp
-// to the pixel through the cells that block light, and the game's falloff,
-// so shadows have exact edges and light fades smoothly inside cells. A ray
-// from the player tells which part of such a cell they see; the rest is
-// drawn as remembered. Other floor shows its cell's light.
+// Floor seen directly is lit here: a ray from each lamp to the tile's
+// middle through the cells that block light, and the game's falloff. A
+// ray from the player tells whether they see that part of a cell they
+// see; if not, it is drawn as remembered. Other floor shows its cell's
+// light.
 
 #import bevy_sprite::mesh2d_vertex_output::VertexOutput
 
@@ -42,11 +45,6 @@ const CELL: f32 = 16.0;
 
 // Off pixels are left clear: the quad is blended.
 const NOTHING = vec4<f32>(0.0);
-
-const DOTS: f32 = 1.0;
-const DITHER: f32 = 2.0;
-const SCANLINES: f32 = 3.0;
-const RIDGES: f32 = 4.0;
 
 // The light kinds' colour gradients (`lighting::palette`): stops of
 // (light value, sRGB), the last repeated.
@@ -223,245 +221,108 @@ fn floor_at(local: vec2<f32>) -> bool {
     return textureLoad(light, cell, 0).a > 0.0;
 }
 
-// The floor's dot at the middle of every cell, as the text renderer draws
-// it: 2 by 2 pixels a little below the middle.
-fn cell_dot(local: vec2<f32>) -> bool {
-    let pixel = floor(fract(local) * CELL);
-    return all(pixel >= vec2<f32>(7.0, 9.0)) && all(pixel < vec2<f32>(9.0, 11.0));
-}
-
-const BAYER = array<f32, 16>(
-    0.0, 8.0, 2.0, 10.0,
-    12.0, 4.0, 14.0, 6.0,
-    3.0, 11.0, 1.0, 9.0,
-    15.0, 7.0, 13.0, 5.0,
-);
-
-fn dots(local: vec2<f32>) -> vec4<f32> {
-    // Four dots a cell, each as large as the light at it: 1 to 3 pixels.
-    let quarter = floor(local * 2.0);
-    let middle = (quarter + 0.5) / 2.0;
-    let here = lit(middle);
-    let side = 1.0 + floor(2.99 * sqrt(here.a));
-    let distance = abs(local - middle) * CELL;
-    if max(distance.x, distance.y) >= side / 2.0 {
-        return NOTHING;
-    }
-    return vec4<f32>(here.rgb, 1.0);
-}
-
-fn dither(local: vec2<f32>) -> vec4<f32> {
-    // Ordered dithering, a pixel at a time.
-    let pixel = floor(local * CELL);
-    let here = lit((pixel + 0.5) / CELL);
-    let cell = vec2<u32>(pixel - 4.0 * floor(pixel / 4.0));
-    let threshold = (BAYER[cell.y * 4u + cell.x] + 0.5) / 16.0;
-    if here.a * 0.6 > threshold {
-        return vec4<f32>(here.rgb, 1.0);
-    }
-    if cell_dot(local) {
-        return vec4<f32>(here.rgb * 0.45, 1.0);
-    }
-    return NOTHING;
-}
-
-fn scanlines(local: vec2<f32>) -> vec4<f32> {
-    let row = floor(local.y * CELL);
-    if row - 3.0 * floor(row / 3.0) == 0.0 {
-        let here = lit(local);
-        // A brighter band rolls down the window every ten seconds.
-        let band = fract(local.y / style.y - style.z * 0.1);
-        let roll = 0.25 * exp(-pow(band * 12.0, 2.0));
-        let shine = clamp(here.a * 0.9 + roll, 0.0, 1.0);
-        if shine > 0.02 {
-            return vec4<f32>(here.rgb * shine, 1.0);
-        }
-    }
-    if cell_dot(local) {
-        return vec4<f32>(cell_light(local).rgb * 0.45, 1.0);
-    }
-    return NOTHING;
-}
-
-fn ridges(local: vec2<f32>) -> vec4<f32> {
-    // A line every half cell, lifted by the light under it and swaying where
-    // it is lit. Nearer (lower) lines hide the ones behind them, as the
-    // ground under a ridge does.
-    let spacing = 0.5;
-    let lift = 1.2;
-    let half = 0.6 / CELL;
-    var line = ceil((local.y + lift) / spacing);
-    for (var i = 0; i < 6; i++) {
-        let base = line * spacing;
-        let under = lit(vec2<f32>(local.x, base));
-        let sway = 0.05 * under.a * sin(style.z * 1.3 + local.x * 1.7 + line * 0.9);
-        let y = base - lift * under.a + sway;
-        if abs(local.y - y) < half {
-            // Dim where it is dark, so the dark floor stays quiet.
-            return vec4<f32>(under.rgb * (0.35 + 0.65 * sqrt(under.a)), 1.0);
-        }
-        if local.y > y {
-            // Below this line: hidden by it.
-            break;
-        }
-        line -= 1.0;
-    }
-    return NOTHING;
-}
-
-// Tiles: the floor's material, a pattern lit a pixel at a time as glyphs
-// are lit. Each gives how much of a pixel the pattern covers (0 to 1), from
-// the pixel's place on the map, so patterns run on across cells and stay
-// put as the view moves. `at` is in cells, cell (x, y) spanning x to x + 1.
-
-const POINTS: f32 = 5.0;
-const SQUARES: f32 = 6.0;
-const PLANKS: f32 = 7.0;
-const COBBLE: f32 = 8.0;
-const CONTOURS: f32 = 9.0;
-const GRAVEL: f32 = 10.0;
-const WEAVE: f32 = 11.0;
-
 fn hash(p: vec2<f32>) -> f32 {
     return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
 }
 
-fn noise(p: vec2<f32>) -> f32 {
-    let cell = floor(p);
-    let f = fract(p);
-    let blend = f * f * (3.0 - 2.0 * f);
-    return mix(
-        mix(hash(cell), hash(cell + vec2<f32>(1.0, 0.0)), blend.x),
-        mix(hash(cell + vec2<f32>(0.0, 1.0)), hash(cell + vec2<f32>(1.0, 1.0)), blend.x),
-        blend.y,
-    );
+// The marks, each a few pixels from its top-left pixel.
+const SPECK: i32 = 0;
+const DOT: i32 = 1;
+const DASH: i32 = 2;
+const CROSS: i32 = 3;
+const SQUARE: i32 = 4;
+const COMMA: i32 = 5;
+const TICK: i32 = 6;
+const COLON: i32 = 7;
+
+// Whether pixel `d` from a mark's top-left pixel is on the mark.
+fn on_mark(mark: i32, d: vec2<f32>) -> bool {
+    let inside = all(d >= vec2<f32>(0.0));
+    if mark == SPECK {
+        return all(d == vec2<f32>(0.0));
+    } else if mark == DOT {
+        return inside && all(d <= vec2<f32>(1.0));
+    } else if mark == DASH {
+        return inside && d.y == 0.0 && d.x <= 2.0;
+    } else if mark == CROSS {
+        return (d.x == 1.0 && d.y >= 0.0 && d.y <= 2.0) || (d.y == 1.0 && d.x >= 0.0 && d.x <= 2.0);
+    } else if mark == SQUARE {
+        return inside && all(d <= vec2<f32>(2.0));
+    } else if mark == COMMA {
+        return (inside && all(d <= vec2<f32>(1.0))) || all(d == vec2<f32>(0.0, 2.0));
+    } else if mark == TICK {
+        return all(d == vec2<f32>(1.0, 0.0)) || all(d == vec2<f32>(0.0, 1.0));
+    } else if mark == COLON {
+        return d.x == 0.0 && (d.y == 0.0 || d.y == 2.0);
+    }
+    return false;
 }
 
-fn points(at: vec2<f32>) -> f32 {
-    // The text renderer's dot: 2 by 2 pixels a little below the middle.
-    let pixel = floor(fract(at) * CELL);
-    return select(0.0, 1.0, all(pixel >= vec2<f32>(7.0, 9.0)) && all(pixel < vec2<f32>(9.0, 11.0)));
-}
+const POINTS: f32 = 1.0;
+const PEBBLES: f32 = 2.0;
+const BRICKS: f32 = 3.0;
+const CROSSES: f32 = 4.0;
+const MOSAIC: f32 = 5.0;
+const RAMP: f32 = 6.0;
+const SCATTER: f32 = 7.0;
 
-fn squares(at: vec2<f32>) -> f32 {
-    // A tile a cell, a pixel of grout around it, lit on its top and left
-    // edges and shaded on the others.
-    let pixel = floor(fract(at) * CELL);
-    if pixel.x < 1.0 || pixel.y < 1.0 {
-        return 0.0;
-    }
-    if pixel.x < 2.0 || pixel.y < 2.0 {
-        return 0.8;
-    }
-    if pixel.x > 14.0 || pixel.y > 14.0 {
-        return 0.08;
-    }
-    return 0.2 + 0.06 * hash(floor(at));
-}
-
-fn planks(at: vec2<f32>) -> f32 {
-    // Boards half a cell wide and three long, each row staggered, with a
-    // gap between and grain along them.
-    let row = floor(at.y * 2.0);
-    let along = at.x + hash(vec2<f32>(row, 7.0)) * 3.0;
-    let board = vec2<f32>(floor(along / 3.0), row);
-    let x = fract(along / 3.0) * 3.0 * CELL;
-    let y = fract(at.y * 2.0) * CELL / 2.0;
-    if x < 1.0 || y < 1.0 {
-        return 0.0;
-    }
-    let grain = noise(vec2<f32>(along * 1.5, at.y * 14.0) + hash(board) * 50.0);
-    if grain > 0.72 {
-        return 0.55;
-    }
-    return 0.14 + 0.05 * hash(board);
-}
-
-fn cobble(at: vec2<f32>) -> f32 {
-    // A stone a cell, its middle jittered: the nearest stone's and the next
-    // nearest's distances make the gaps between them.
-    let cell = floor(at);
-    var nearest = 9.0;
-    var second = 9.0;
-    var stone = vec2<f32>(0.0);
-    for (var y = -1; y <= 1; y++) {
-        for (var x = -1; x <= 1; x++) {
-            let other = cell + vec2<f32>(f32(x), f32(y));
-            let middle = other + 0.5 + (vec2<f32>(hash(other), hash(other + 17.0)) - 0.5) * 0.7;
-            let distance = length(at - middle);
-            if distance < nearest {
-                second = nearest;
-                nearest = distance;
-                stone = other;
-            } else if distance < second {
-                second = distance;
-            }
-        }
-    }
-    let edge = (second - nearest) * CELL;
-    if edge < 1.5 {
-        return 0.0;
-    }
-    if edge < 2.5 {
-        return 0.65;
-    }
-    return 0.12 + 0.12 * hash(stone);
-}
-
-fn contours(at: vec2<f32>) -> f32 {
-    // Isolines of a slow noise, a pixel wide wherever they run.
-    let height = noise(at * 0.22) + 0.5 * noise(at * 0.5 + 9.0);
-    let step = 1.0 / CELL;
-    let slope = vec2<f32>(
-        noise((at + vec2<f32>(step, 0.0)) * 0.22) + 0.5 * noise((at + vec2<f32>(step, 0.0)) * 0.5 + 9.0) - height,
-        noise((at + vec2<f32>(0.0, step)) * 0.22) + 0.5 * noise((at + vec2<f32>(0.0, step)) * 0.5 + 9.0) - height,
-    );
-    let levels = height * 7.0;
-    let pixels = abs(fract(levels + 0.5) - 0.5) / max(length(slope) * 7.0, 1e-4);
-    return select(0.0, 0.85, pixels < 0.6);
-}
-
-fn gravel(at: vec2<f32>) -> f32 {
-    // Specks, two pixels square, scattered.
-    let speck = floor(at * CELL / 2.0);
-    let chance = hash(speck);
-    return select(0.0, 0.45 + chance * 3.0, chance < 0.13);
-}
-
-fn weave(at: vec2<f32>) -> f32 {
-    // Strokes every four pixels, across in one cell and down in the next.
-    let pixel = floor(fract(at) * CELL);
-    let cell = floor(at);
-    if pixel.x < 1.0 || pixel.y < 1.0 {
-        return 0.0;
-    }
-    let across = (cell.x + cell.y) - 2.0 * floor((cell.x + cell.y) / 2.0) == 0.0;
-    let line = select(pixel.x, pixel.y, across);
-    return select(0.1, 0.6, line - 4.0 * floor(line / 4.0) == 2.0);
-}
-
-fn tiled(local: vec2<f32>, at: vec2<f32>) -> vec4<f32> {
-    var cover = 0.0;
+// The mark of the tile at `pixel` (map pixels), as its top-left pixel (x,
+// y) and its mark (z), or z below 0 for none. The ramp's is the square its
+// mark grows to with the light.
+fn tile(pixel: vec2<f32>) -> vec3<f32> {
     if style.w == POINTS {
-        cover = points(at);
-    } else if style.w == SQUARES {
-        cover = squares(at);
-    } else if style.w == PLANKS {
-        cover = planks(at);
-    } else if style.w == COBBLE {
-        cover = cobble(at);
-    } else if style.w == CONTOURS {
-        cover = contours(at);
-    } else if style.w == GRAVEL {
-        cover = gravel(at);
-    } else if style.w == WEAVE {
-        cover = weave(at);
+        // The text renderer's dot: a little below the middle of a cell.
+        return vec3<f32>(floor(pixel / CELL) * CELL + vec2<f32>(7.0, 9.0), f32(DOT));
     }
-    if cover <= 0.0 {
-        return NOTHING;
+    if style.w == BRICKS {
+        let row = floor(pixel.y / 8.0);
+        let shift = (row - 2.0 * floor(row / 2.0)) * 4.0;
+        let column = floor((pixel.x + shift) / 8.0);
+        return vec3<f32>(column * 8.0 - shift + 2.0, row * 8.0 + 4.0, f32(DASH));
     }
-    let here = lit(local);
-    return vec4<f32>(min(here.rgb * cover * 1.8, vec3<f32>(1.0)), 1.0);
+    if style.w == MOSAIC {
+        return vec3<f32>(floor(pixel / 4.0) * 4.0, f32(SQUARE));
+    }
+    let cell = floor(pixel / 8.0);
+    let corner = cell * 8.0;
+    if style.w == CROSSES {
+        return vec3<f32>(corner + 2.0, f32(CROSS));
+    }
+    let jitter = floor((vec2<f32>(hash(cell), hash(cell + 31.0)) - 0.5) * 5.0);
+    let pick = hash(cell + 13.0);
+    if style.w == PEBBLES {
+        var mark = DOT;
+        if pick > 0.75 {
+            mark = DASH;
+        } else if pick > 0.5 {
+            mark = SPECK;
+        }
+        return vec3<f32>(corner + 3.0 + jitter, f32(mark));
+    }
+    if style.w == SCATTER {
+        if pick < 0.35 {
+            return vec3<f32>(0.0, 0.0, -1.0);
+        }
+        let marks = array<i32, 6>(SPECK, DOT, COMMA, TICK, DASH, COLON);
+        let mark = marks[min(i32((pick - 0.35) / 0.65 * 6.0), 5)];
+        return vec3<f32>(corner + 3.0 + jitter, f32(mark));
+    }
+    if style.w == RAMP {
+        return vec3<f32>(corner + 2.0, f32(SQUARE));
+    }
+    return vec3<f32>(0.0, 0.0, -1.0);
+}
+
+// The ramp's mark for light `brightness`: speck, dot, cross, square.
+fn ramp_mark(brightness: f32) -> i32 {
+    if brightness < 0.2 {
+        return SPECK;
+    } else if brightness < 0.45 {
+        return DOT;
+    } else if brightness < 0.7 {
+        return CROSS;
+    }
+    return SQUARE;
 }
 
 @fragment
@@ -473,23 +334,43 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
         turn.x * from_centre.x - turn.y * from_centre.y,
         turn.y * from_centre.x + turn.x * from_centre.y,
     ) + camera.xy;
-    // Cell (x, y) spans x - 0.5 to x + 0.5.
+    // Cell (x, y) spans x - 0.5 to x + 0.5; `local` counts from the
+    // window's corner, map pixels from the map's.
     let local = map - window.zw + 0.5;
     if !floor_at(local) {
         return NOTHING;
     }
-    if style.w >= POINTS {
-        // Cell (x, y) spans x to x + 1 here.
-        return tiled(local, map + 0.5);
+    let pixel = floor((map + 0.5) * CELL);
+    let found = tile(pixel);
+    if found.z < 0.0 {
+        return NOTHING;
     }
-    if style.w == DOTS {
-        return dots(local);
-    } else if style.w == DITHER {
-        return dither(local);
-    } else if style.w == SCANLINES {
-        return scanlines(local);
-    } else if style.w == RIDGES {
-        return ridges(local);
+    var mark = i32(found.z);
+    // A tile is lit as a whole, by the light at its middle.
+    let middle = (found.xy + 1.5) / CELL - window.zw;
+    if style.w == RAMP {
+        if !on_mark(SQUARE, pixel - found.xy) {
+            return NOTHING;
+        }
+        let here = lit(middle);
+        mark = ramp_mark(here.a);
+        // Smaller marks sit in the middle of the square.
+        var offset = vec2<f32>(0.0);
+        if mark == SPECK {
+            offset = vec2<f32>(1.0);
+        } else if mark == DOT {
+            offset = vec2<f32>(1.0);
+        }
+        if !on_mark(mark, pixel - found.xy - offset) {
+            return NOTHING;
+        }
+        return vec4<f32>(min(here.rgb * 1.7, vec3<f32>(1.0)), 1.0);
     }
-    return NOTHING;
+    if !on_mark(mark, pixel - found.xy) {
+        return NOTHING;
+    }
+    let here = lit(middle);
+    // The mosaic covers most of the floor: dimmer, or it outshines the glyphs.
+    let gain = select(1.7, 0.6, style.w == MOSAIC);
+    return vec4<f32>(min(here.rgb * gain, vec3<f32>(1.0)), 1.0);
 }

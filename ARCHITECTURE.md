@@ -141,9 +141,9 @@ and renderers must not import it.
   finished. It needs no renderer; without it the simulation runs with no
   delay.
 - `presentation/` builds light maps and renderer-neutral composed cell frames,
-  and, for a floor shader, `FloorLight`: per frame cell its light, whether
-  it blocks light and whether the shader lights it itself, and the lights
-  near the window.
+  and, for a floor shader, `FloorLight`: per frame cell its light (floor
+  under objects too), whether it blocks light and whether the shader
+  lights it itself, and the lights near the window.
   Frame cells are in the player's map coordinates; a cell the player sees
   shows the map cell it looks onto (`RenderBuffers::seen`), which behind a
   portal is elsewhere on the map, and objects get one instance per place
@@ -200,8 +200,8 @@ and renderers must not import it.
   needs a GPU) draws the floor under the text with
   `assets/shaders/floor.wgsl`: one quad over the window whose shader turns
   each pixel back into the map point it shows, so it turns and zooms with
-  the glyphs, in the chosen `FloorStyle`, and lights floor seen directly
-  a pixel at a time, a ray from each light through the cells.
+  the glyphs, as tiles in the chosen `FloorStyle`, each lit by a ray from
+  each light through the cells to its middle.
 - `agent_api/` contains the optional loopback Bevy Remote transport and custom
   control/state methods. It reads the composed frame and writes normal player
   command components, keeping agent actions inside the gameplay pipeline.

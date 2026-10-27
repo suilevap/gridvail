@@ -155,23 +155,20 @@ next to this file.
   gradient starts at the unlit grey and never gets darker as light grows,
   so a light fades into the dark and into other lights. The palette stays
   the default and is what the agent API and the 3D renderer still use.
-- Floor shader (an addition, a prototype, opt-in with `--floor` or V in
-  game): instead of a dot per cell, a shader draws the floor. Floor seen
-  directly is lit a pixel at a time: a ray from each nearby light to the
-  pixel through the cells that block light, with the game's falloff, so
-  shadows have exact edges, light fades smoothly inside cells, a moving
-  light's shadows glide with it, the player sees the part of a cell their
-  line of sight reaches (the rest drawn as remembered), fire flickers, electricity buzzes and
-  acid pulses. Bounced light, remembered cells and cells seen through a
-  portal show their cell's light. Most styles are tiles, the floor's
-  material lit a pixel at a time as glyphs are lit: `points` (a dot a
-  cell), `squares`, `planks`, `cobble`, `contours` (flowing lines),
-  `gravel` and `weave`; patterns follow the map, so they run on across
-  cells. Others draw the light itself as a pattern: `dots` (four a cell,
-  larger where brighter), `dither`, `scanlines` (a band rolling down) and
-  `ridges` (lines lifted by the light, swaying). `text` is the dot per
-  cell.
-  The glyphs stay text on top. `assets/maps/shadows.txt` shows it off.
+- Floor tiles (an addition, a prototype, opt-in with `--floor` or V in
+  game): a shader draws the floor as tiles, small marks like glyphs,
+  several a cell or off the grid, under actors and objects too. Each tile
+  is lit as a whole by the light at its middle, so shadows fall tile by
+  tile: for floor seen directly, a ray from each nearby light to the tile
+  through the cells that block light, with the game's falloff (a moving
+  light's shadows glide with it; fire flickers, electricity buzzes, acid
+  pulses), and a ray from the player for whether they see it. Bounced
+  light, remembered cells and cells seen through a portal use their
+  cell's light. Styles: `points` (a dot a cell), `pebbles` (jittered dots,
+  specks and dashes), `bricks`, `crosses`, `mosaic`, `ramp` (marks
+  growing with the light: speck, dot, cross, square) and `scatter`
+  (marks off the grid); `text` is the dot per cell. The glyphs stay text
+  on top. `assets/maps/shadows.txt` shows it off.
 - Seeing and lighting through portals (an addition): every field of view
   goes through portals, as the player's does, so enemies notice the player
   through a portal and lamps light the far side of one, fading with the
@@ -266,7 +263,7 @@ cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same ro
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --map assets/maps/bounce.txt --gi  # bounced light; G toggles it in game
 cargo run -- --light smooth     # smooth light colours; L toggles them in game
-cargo run -- --map assets/maps/shadows.txt --floor cobble  # the floor shader; V cycles its styles
+cargo run -- --map assets/maps/shadows.txt --floor ramp  # floor tiles; V cycles their styles
 cargo test --workspace   # 257 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
