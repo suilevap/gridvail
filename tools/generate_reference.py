@@ -45,9 +45,6 @@ with tempfile.TemporaryDirectory(prefix='pav-reference-') as directory:
     # Extract the exact method and context, omitting the ECS-specific wrapper.
     begin = light.index('        private static void LightMerge(')
     end = light.rfind('\n    }')
-    renderer = (lite / 'Systems/Renders/PrepareForRenderSystem.cs').read_text(encoding='utf-8-sig')
-    colors = renderer[renderer.index('        private static readonly ConsoleColor[] _fireColors'):renderer.index('        public static System.ConsoleColor FromColor')]
-    colors = colors.replace('public ConsoleColor ToConsoleColor', 'public static ConsoleColor ToConsoleColor')
     (work / 'ReferenceLight.cs').write_text('''using PavEcsGame;
 using PavEcsGame.Components;
 using PavEcsGame.Utils;
@@ -61,7 +58,7 @@ public static LightValueComponent Sample(byte value, LightType kind, byte baseVa
     LightMerge(context, new PositionComponent(x, y), ref result, fov);
     return result;
 }
-''' + light[begin:end] + '\n' + colors + '\n}\n')
+''' + light[begin:end] + '\n}\n')
     (work / 'Program.cs').write_text('''using System.Globalization;
 using PavEcsGame.Area;
 using PavEcsGame.Components;
@@ -106,13 +103,6 @@ foreach (int x in new[] {0, 1, radius, radius + 1})
 foreach (float fov in new[] {0f, 0.5f, 1f}) {
     var r = ReferenceLight.Sample(value, (LightType)kind, 196, (LightType)other, radius, x, 0, fov);
     lightFile.WriteLine($"{value}\\t{kind}\\t196\\t{other}\\t{radius}\\t{x}\\t0\\t{fov}\\t{r.Value}\\t{(byte)r.LightType}");
-}
-using var palette = new StreamWriter(Path.Combine(args[1], "palette_reference.tsv"));
-palette.WriteLine("# kind value ConsoleColor");
-foreach (byte kind in new byte[] {0, 1, 2, 4})
-for (int value = 0; value <= 255; value++) {
-    var color = ReferenceLight.ToConsoleColor(new LightValueComponent { Value = (byte)value, LightType = (LightType)kind });
-    palette.WriteLine($"{kind}\\t{value}\\t{(byte)color}");
 }
 ''')
     env = dict(os.environ, DOTNET_CLI_HOME=directory, DOTNET_NOLOGO='1', DOTNET_CLI_TELEMETRY_OPTOUT='1')

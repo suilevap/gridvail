@@ -87,7 +87,9 @@ next to this file.
   Visible/Known layers (threshold 0.1, Known persists).
 - CPU lightmaps: static layer with dirty-flag rebuild + dynamic layer,
   `(1 - sqD/radiusSq)` falloff, 255 saturation, same-kind sum,
-  brighter-kind-wins, and the original fire/electricity/acid/gray palettes.
+  brighter-kind-wins. Light is coloured from a smooth gradient per kind
+  (fire, electricity, acid, plain), baked into a 256-entry lookup table, in
+  place of the original's stepped console-colour palettes.
 - Portals (an addition, in progress, see `PORTALS.md`): digits `1`-`9` in
   a map are portal walls, and the two walls with the same digit are paired.
   Seen from the floor in front of it, a portal wall shows what lies beyond
@@ -230,14 +232,14 @@ src/navigation/            nav map snapshot, game rules and planner for pathfind
 src/ai/                    enemy decisions: behavior trees (FlatBT), wander goals, door prices
 src/locomotion/            walking actors to their destination along planned paths
 crates/gridvail-path/      grid pathfinding crate (A*, per-state paths, no deps)
-src/lighting/              light math and palettes
+src/lighting/              light math and light colour gradients
 src/presentation/          renderer-neutral lighting and frame composition
 src/rendering/             swappable Text2d and extruded-wall output plugins
 tests/full_map.rs  headless map1 boot + settle integration test
 tests/gameplay.rs  timed input, movement, collision, and vision regressions
 tests/enemy_behavior.rs  enemy behavior-tree scenarios on small ASCII maps
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
-tests/reference_parity.rs  independent C# FOV/light/palette fixtures
+tests/reference_parity.rs  independent C# FOV/light fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
 assets/maps/       map1/2/3, map1_test, lightTest
 assets/rules/      wall + three direction rules
@@ -439,8 +441,8 @@ cargo run -- --remote-port 15703       # choose another port
 The server accepts JSON-RPC 2.0 POST requests. `gridvail/state` returns the
 turn phase, whether input is currently accepted, player position and tokens,
 enemy/collision counts, and the exact composed visual grid. `visual.rows`
-contains Unicode glyph rows; `visual.colors` contains matching palette indices
-and `visual.palette` names those indices.
+contains Unicode glyph rows; `visual.colors` contains the matching colours as
+`#rrggbb` strings.
 
 ```sh
 curl http://127.0.0.1:15702 \

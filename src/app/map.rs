@@ -326,7 +326,7 @@ fn link_portals(commands: &mut Commands, walls: &[(IVec2, Entity)], links: Vec<P
 
 /// Spawns what a map cell of `kind` (anything but the player) holds at `at`.
 fn spawn_cell(commands: &mut Commands, kind: SpawnKind, at: IVec2, cell_count: usize) -> Entity {
-    let marker = |glyph: char, color: u8| (Active, Pos(at), Glyph::new(glyph, 0, color));
+    let marker = |glyph: char, color: Rgb| (Active, Pos(at), Glyph::new(glyph, 0, color));
     let light = |kind: LightKind, radius: i32, value: u8| {
         (
             LightSource {

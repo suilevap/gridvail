@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::LightCell;
+use super::{LightCell, Rgb};
 use crate::foundation::oval::Oval;
 use crate::foundation::portal::CellTransform;
 
@@ -8,11 +8,11 @@ use crate::foundation::portal::CellTransform;
 pub struct Glyph {
     pub ch: char,
     pub depth: u8,
-    pub color: u8,
+    pub color: Rgb,
 }
 
 impl Glyph {
-    pub const fn new(ch: char, depth: u8, color: u8) -> Self {
+    pub const fn new(ch: char, depth: u8, color: Rgb) -> Self {
         Self { ch, depth, color }
     }
 }
@@ -20,7 +20,7 @@ impl Glyph {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RenderCell {
     pub ch: char,
-    pub color: u8,
+    pub color: Rgb,
     pub depth: u8,
 }
 
