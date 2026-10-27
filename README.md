@@ -149,6 +149,11 @@ next to this file.
   `--walls`). The compass in the bottom-right corner shows where the
   map's north, east, south and west lie on screen. While the menu is open,
   movement and camera keys wait.
+- Height (an addition): with `--walls stacked` or `leaning`, objects stand
+  up off the floor, their glyphs extruded up the screen. How tall each
+  glyph stands is set in `assets/rules/statures.txt` (walls and closed
+  doors by default; any glyph can be listed), and a `Stature` component
+  gives one object its own height.
 - Enemies through portals (an addition, opt-in with `--enemy-portals`):
   enemies plan paths through portals too, with an A* estimate that knows
   the portals, so searches stay narrow.

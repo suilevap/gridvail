@@ -9,9 +9,11 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(1) var<uniform> offset_lean: vec4<f32>;
 // xy: the frame's origin, zw: its size, in cells.
 @group(#{MATERIAL_BIND_GROUP}) @binding(2) var<uniform> frame: vec4<f32>;
-// x: wall height in px at zoom 1, y: cell px, z: wall map texels per cell.
+// x: the tallest stature allowed, in px at zoom 1 (the wall map's alpha is
+// height over it), y: cell px, z: wall map texels per cell, w: the tallest
+// object in the frame, in px at zoom 1.
 @group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> params: vec4<f32>;
-// The walls from above: lit colour times height, height as alpha.
+// Standing objects from above: lit colour times alpha, height as alpha.
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var wall_map: texture_2d<f32>;
 
 struct Fragment {
@@ -42,7 +44,8 @@ fn to_screen(map: vec2<f32>) -> vec2<f32> {
 fn fragment(in: VertexOutput) -> Fragment {
     let pixel = in.world_position.xy;
     let lean = offset_lean.zw;
-    let top = params.x * camera.w;
+    let full = params.x * camera.w;
+    let top = params.w * camera.w;
     let map_size = vec2<i32>(frame.zw * params.z);
     // From the tallest top down to the floor, a screen pixel at a time: the
     // first wall found is the nearest.
@@ -56,7 +59,7 @@ fn fragment(in: VertexOutput) -> Fragment {
             continue;
         }
         let wall = textureLoad(wall_map, texel, 0);
-        let height = wall.a * top;
+        let height = wall.a * full;
         if wall.a < 0.004 || h > height {
             continue;
         }

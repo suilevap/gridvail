@@ -1,7 +1,25 @@
-use bevy::prelude::*;
+use bevy::{platform::collections::HashMap, prelude::*};
 
 use super::LightCell;
 use crate::foundation::portal::CellTransform;
+
+/// How tall an object stands, in cells, for renderers that show height:
+/// set on an object, it overrides the height of its glyph
+/// (`GlyphStatures`). 0 lies flat on the floor.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
+pub struct Stature(pub f32);
+
+/// How tall objects stand by the glyph they are drawn with, in cells, for
+/// those without a `Stature` of their own. Glyphs not listed lie flat.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct GlyphStatures(pub HashMap<char, f32>);
+
+impl GlyphStatures {
+    /// How tall an object drawn as `ch` stands, given its own `Stature`.
+    pub fn of(&self, ch: char, own: Option<&Stature>) -> f32 {
+        own.map_or_else(|| self.0.get(&ch).copied().unwrap_or(0.0), |own| own.0)
+    }
+}
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Glyph {

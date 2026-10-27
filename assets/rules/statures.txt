@@ -1,0 +1,11 @@
+# How tall objects stand, by the glyph they are drawn with, in cells.
+# Renderers that show height (the text renderer's `--walls stacked` and
+# `--walls leaning`) draw these glyphs standing that tall; glyphs not listed
+# lie flat. An object's own `Stature` component overrides its glyph's.
+#
+# Each line: a height, then the glyphs that stand that tall.
+
+# Walls: every shape of the wall rule.
+0.625 ╔╦╗╥╠╬╣║╞═╡≡╚╩╝╨
+# A closed door is a little lower than the walls around it.
+0.5 +

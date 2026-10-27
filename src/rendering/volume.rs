@@ -36,13 +36,14 @@ use swash::{
 };
 
 use crate::lighting::palette_color;
-use crate::model::{RenderBuffers, ViewCamera, Wall, WallVolume};
+use crate::model::{GlyphStatures, RenderBuffers, Stature, ViewCamera, WallVolume};
 use crate::schedule::{GamePhase, StartupPhase};
 
 use super::text::{ObjectSprite, TurnedGlyphs, CELL_FONT_BYTES, CELL_SIZE};
 
-/// How far a standing wall's top is above the floor, in cells.
-const WALL_HEIGHT: f32 = 0.625;
+/// The tallest an object may stand, in cells: the wall map's alpha is its
+/// stature (times how far it has risen) over this.
+const MAX_STATURE: f32 = 4.0;
 /// The font's design size: one atlas and wall map texel per font pixel.
 const GLYPH_PX: usize = 8;
 /// Atlas slots per side.
@@ -271,7 +272,8 @@ fn draw_wall_map(
     mut atlas: ResMut<GlyphAtlas>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<WallVolumeMaterial>>,
-    walls: Query<(), With<Wall>>,
+    statures: Res<GlyphStatures>,
+    own_statures: Query<&Stature>,
     mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility)>,
     mut quads: Query<&mut Visibility, (With<Mesh2d>, Without<Sprite>)>,
     mut cameras: Query<(&mut RenderTarget, &mut Transform), Without<Sprite>>,
@@ -306,11 +308,16 @@ fn draw_wall_map(
     }
 
     let mut used = 0;
+    let mut tallest: f32 = 0.0;
     if shown {
         for object in &buffers.objects {
-            if walls.get(object.entity).is_err() {
+            let stature = statures
+                .of(object.cell.ch, own_statures.get(object.entity).ok())
+                .min(MAX_STATURE);
+            if stature <= 0.0 {
                 continue;
             }
+            tallest = tallest.max(stature);
             // In map space: only a portal's turn, not the view's.
             let ch = turned.turned(object.cell.ch, object.quarters as i32);
             let next = atlas.slots.len();
@@ -330,7 +337,8 @@ fn draw_wall_map(
                 (slot / ATLAS_SLOTS * GLYPH_PX) as f32,
             );
             let lit = palette_color(object.cell.color).to_linear();
-            let color = Color::LinearRgba(lit.with_alpha(object.height.clamp(0.0, 1.0)));
+            let risen = stature * object.height.clamp(0.0, 1.0);
+            let color = Color::LinearRgba(lit.with_alpha(risen / MAX_STATURE));
             let at = (object.position - buffers.origin.as_vec2() + 0.5) * texels;
             let translation = Vec3::new(at.x, -at.y, 0.0);
             let sprite = Sprite {
@@ -382,7 +390,12 @@ fn draw_wall_map(
             size.x as f32,
             size.y as f32,
         ),
-        Vec4::new(WALL_HEIGHT * CELL_SIZE.y, CELL_SIZE.y, texels, 0.0),
+        Vec4::new(
+            MAX_STATURE * CELL_SIZE.y,
+            CELL_SIZE.y,
+            texels,
+            tallest * CELL_SIZE.y,
+        ),
     ];
     let unchanged = materials.get(&quad.material).is_some_and(|material| {
         [

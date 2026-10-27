@@ -13,6 +13,7 @@ use flatbt_bevy::prelude::Behavior;
 
 use crate::ai::{enemy_tree, hunter_tree};
 use crate::content::map::{parse_map, parse_next, parse_rooms, portal_links, SpawnKind};
+use crate::content::statures::parse_statures;
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::lighting::{CYAN, GRAY, RED, WHITE, YELLOW};
 use crate::model::*;
@@ -23,6 +24,7 @@ const MAP_TEXT: &str = include_str!("../../assets/maps/map1.txt");
 const WALL_RULE_TEXT: &str = include_str!("../../assets/rules/wall_rule.txt");
 const TRIANGLE_RULE_TEXT: &str = include_str!("../../assets/rules/direction_triangle_rule.txt");
 const V_RULE_TEXT: &str = include_str!("../../assets/rules/direction_v_rule.txt");
+const STATURES_TEXT: &str = include_str!("../../assets/rules/statures.txt");
 
 // The generated table of bundled maps.
 include!(concat!(env!("OUT_DIR"), "/bundled_maps.rs"));
@@ -90,6 +92,12 @@ fn construct_map(mut commands: Commands, map: Res<MapText>) {
         triangle: DirectionTileRule::parse(TRIANGLE_RULE_TEXT).expect("triangle rule"),
         v: DirectionTileRule::parse(V_RULE_TEXT).expect("v rule"),
     });
+    commands.insert_resource(GlyphStatures(
+        parse_statures(STATURES_TEXT)
+            .expect("statures")
+            .into_iter()
+            .collect(),
+    ));
 }
 
 /// Plays the map last asked for with [`LoadMap`]. The level goes: everything

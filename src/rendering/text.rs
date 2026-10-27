@@ -45,8 +45,6 @@ pub(super) struct ObjectSprite {
     position: Vec2,
     lift: f32,
     pub(super) depth: u8,
-    /// A wall, which the wall shader may draw instead.
-    pub(super) wall: bool,
     pub(super) shown: bool,
 }
 
@@ -380,7 +378,6 @@ fn spawn_object_sprites(world: &mut World) {
                     position: object.position,
                     lift: object.lift,
                     depth: object.cell.depth,
-                    wall: world.get::<Wall>(object.entity).is_some(),
                     shown: false,
                 },
                 Text2d::new(String::with_capacity(32)),
@@ -411,6 +408,8 @@ pub(super) fn place_object_sprites(
     index: Res<ObjectSprites>,
     turned: Res<TurnedGlyphs>,
     volume: Option<Res<WallVolume>>,
+    statures: Option<Res<GlyphStatures>>,
+    own_statures: Query<&Stature>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
     mut drawn: Local<String>,
     mut sprites: Query<(
@@ -441,8 +440,11 @@ pub(super) fn place_object_sprites(
         let Ok((mut sprite, mut text, mut color, ..)) = sprites.get_mut(entity) else {
             continue;
         };
-        // The wall shader draws walls instead (`volume`).
-        if volume != WallVolume::Flat && sprite.wall {
+        // The volume shader draws whatever stands up instead.
+        let stands = statures.as_ref().is_some_and(|statures| {
+            statures.of(object.cell.ch, own_statures.get(object.entity).ok()) > 0.0
+        });
+        if volume != WallVolume::Flat && stands {
             continue;
         }
         drawn.clear();
