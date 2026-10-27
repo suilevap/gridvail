@@ -90,25 +90,47 @@ impl LightStyle {
 }
 
 /// How the floor is drawn: as the text renderer's dot per cell, or by a
-/// floor shader in one of its styles from [`FloorLight`], light finer than
-/// the grid.
+/// floor shader from [`FloorLight`]. Most styles are tiles: a pattern that
+/// is the floor's material, lit a pixel at a time as glyphs are lit. The
+/// others draw the light itself as a pattern.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FloorStyle {
     #[default]
-    Text,
-    /// Four dots a cell, larger where it is brighter.
-    Dots,
-    /// Ordered dithering in chunky pixels.
-    Dither,
+    Text = 0,
+    /// Light as four dots a cell, larger where it is brighter.
+    Dots = 1,
+    /// Light as ordered dithering.
+    Dither = 2,
     /// Light only on every third pixel row, with a slow rolling band.
-    Scanlines,
+    Scanlines = 3,
     /// Rows of lines raised by the light under them, swaying.
-    Ridges,
+    Ridges = 4,
+    /// Tiles: a dot in each cell, as the text renderer draws it.
+    Points = 5,
+    /// Tiles: square tiles with grout between.
+    Squares = 6,
+    /// Tiles: staggered boards with grain.
+    Planks = 7,
+    /// Tiles: rounded stones of different sizes.
+    Cobble = 8,
+    /// Tiles: flowing lines across the floor, like a map's contours.
+    Contours = 9,
+    /// Tiles: scattered specks.
+    Gravel = 10,
+    /// Tiles: a basket weave of short strokes.
+    Weave = 11,
 }
 
 impl FloorStyle {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 12] = [
         Self::Text,
+        Self::Points,
+        Self::Squares,
+        Self::Planks,
+        Self::Cobble,
+        Self::Contours,
+        Self::Gravel,
+        Self::Weave,
         Self::Dots,
         Self::Dither,
         Self::Scanlines,
@@ -126,10 +148,21 @@ impl FloorStyle {
             Self::Dither => "dither",
             Self::Scanlines => "scanlines",
             Self::Ridges => "ridges",
+            Self::Points => "points",
+            Self::Squares => "squares",
+            Self::Planks => "planks",
+            Self::Cobble => "cobble",
+            Self::Contours => "contours",
+            Self::Gravel => "gravel",
+            Self::Weave => "weave",
         }
     }
 
     pub fn next(self) -> Self {
-        Self::ALL[(self as usize + 1) % Self::ALL.len()]
+        let at = Self::ALL
+            .iter()
+            .position(|&style| style == self)
+            .unwrap_or(0);
+        Self::ALL[(at + 1) % Self::ALL.len()]
     }
 }

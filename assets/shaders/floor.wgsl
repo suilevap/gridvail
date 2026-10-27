@@ -309,6 +309,161 @@ fn ridges(local: vec2<f32>) -> vec4<f32> {
     return NOTHING;
 }
 
+// Tiles: the floor's material, a pattern lit a pixel at a time as glyphs
+// are lit. Each gives how much of a pixel the pattern covers (0 to 1), from
+// the pixel's place on the map, so patterns run on across cells and stay
+// put as the view moves. `at` is in cells, cell (x, y) spanning x to x + 1.
+
+const POINTS: f32 = 5.0;
+const SQUARES: f32 = 6.0;
+const PLANKS: f32 = 7.0;
+const COBBLE: f32 = 8.0;
+const CONTOURS: f32 = 9.0;
+const GRAVEL: f32 = 10.0;
+const WEAVE: f32 = 11.0;
+
+fn hash(p: vec2<f32>) -> f32 {
+    return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
+}
+
+fn noise(p: vec2<f32>) -> f32 {
+    let cell = floor(p);
+    let f = fract(p);
+    let blend = f * f * (3.0 - 2.0 * f);
+    return mix(
+        mix(hash(cell), hash(cell + vec2<f32>(1.0, 0.0)), blend.x),
+        mix(hash(cell + vec2<f32>(0.0, 1.0)), hash(cell + vec2<f32>(1.0, 1.0)), blend.x),
+        blend.y,
+    );
+}
+
+fn points(at: vec2<f32>) -> f32 {
+    // The text renderer's dot: 2 by 2 pixels a little below the middle.
+    let pixel = floor(fract(at) * CELL);
+    return select(0.0, 1.0, all(pixel >= vec2<f32>(7.0, 9.0)) && all(pixel < vec2<f32>(9.0, 11.0)));
+}
+
+fn squares(at: vec2<f32>) -> f32 {
+    // A tile a cell, a pixel of grout around it, lit on its top and left
+    // edges and shaded on the others.
+    let pixel = floor(fract(at) * CELL);
+    if pixel.x < 1.0 || pixel.y < 1.0 {
+        return 0.0;
+    }
+    if pixel.x < 2.0 || pixel.y < 2.0 {
+        return 0.8;
+    }
+    if pixel.x > 14.0 || pixel.y > 14.0 {
+        return 0.08;
+    }
+    return 0.2 + 0.06 * hash(floor(at));
+}
+
+fn planks(at: vec2<f32>) -> f32 {
+    // Boards half a cell wide and three long, each row staggered, with a
+    // gap between and grain along them.
+    let row = floor(at.y * 2.0);
+    let along = at.x + hash(vec2<f32>(row, 7.0)) * 3.0;
+    let board = vec2<f32>(floor(along / 3.0), row);
+    let x = fract(along / 3.0) * 3.0 * CELL;
+    let y = fract(at.y * 2.0) * CELL / 2.0;
+    if x < 1.0 || y < 1.0 {
+        return 0.0;
+    }
+    let grain = noise(vec2<f32>(along * 1.5, at.y * 14.0) + hash(board) * 50.0);
+    if grain > 0.72 {
+        return 0.55;
+    }
+    return 0.14 + 0.05 * hash(board);
+}
+
+fn cobble(at: vec2<f32>) -> f32 {
+    // A stone a cell, its middle jittered: the nearest stone's and the next
+    // nearest's distances make the gaps between them.
+    let cell = floor(at);
+    var nearest = 9.0;
+    var second = 9.0;
+    var stone = vec2<f32>(0.0);
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let other = cell + vec2<f32>(f32(x), f32(y));
+            let middle = other + 0.5 + (vec2<f32>(hash(other), hash(other + 17.0)) - 0.5) * 0.7;
+            let distance = length(at - middle);
+            if distance < nearest {
+                second = nearest;
+                nearest = distance;
+                stone = other;
+            } else if distance < second {
+                second = distance;
+            }
+        }
+    }
+    let edge = (second - nearest) * CELL;
+    if edge < 1.5 {
+        return 0.0;
+    }
+    if edge < 2.5 {
+        return 0.65;
+    }
+    return 0.12 + 0.12 * hash(stone);
+}
+
+fn contours(at: vec2<f32>) -> f32 {
+    // Isolines of a slow noise, a pixel wide wherever they run.
+    let height = noise(at * 0.22) + 0.5 * noise(at * 0.5 + 9.0);
+    let step = 1.0 / CELL;
+    let slope = vec2<f32>(
+        noise((at + vec2<f32>(step, 0.0)) * 0.22) + 0.5 * noise((at + vec2<f32>(step, 0.0)) * 0.5 + 9.0) - height,
+        noise((at + vec2<f32>(0.0, step)) * 0.22) + 0.5 * noise((at + vec2<f32>(0.0, step)) * 0.5 + 9.0) - height,
+    );
+    let levels = height * 7.0;
+    let pixels = abs(fract(levels + 0.5) - 0.5) / max(length(slope) * 7.0, 1e-4);
+    return select(0.0, 0.85, pixels < 0.6);
+}
+
+fn gravel(at: vec2<f32>) -> f32 {
+    // Specks, two pixels square, scattered.
+    let speck = floor(at * CELL / 2.0);
+    let chance = hash(speck);
+    return select(0.0, 0.45 + chance * 3.0, chance < 0.13);
+}
+
+fn weave(at: vec2<f32>) -> f32 {
+    // Strokes every four pixels, across in one cell and down in the next.
+    let pixel = floor(fract(at) * CELL);
+    let cell = floor(at);
+    if pixel.x < 1.0 || pixel.y < 1.0 {
+        return 0.0;
+    }
+    let across = (cell.x + cell.y) - 2.0 * floor((cell.x + cell.y) / 2.0) == 0.0;
+    let line = select(pixel.x, pixel.y, across);
+    return select(0.1, 0.6, line - 4.0 * floor(line / 4.0) == 2.0);
+}
+
+fn tiled(local: vec2<f32>, at: vec2<f32>) -> vec4<f32> {
+    var cover = 0.0;
+    if style.w == POINTS {
+        cover = points(at);
+    } else if style.w == SQUARES {
+        cover = squares(at);
+    } else if style.w == PLANKS {
+        cover = planks(at);
+    } else if style.w == COBBLE {
+        cover = cobble(at);
+    } else if style.w == CONTOURS {
+        cover = contours(at);
+    } else if style.w == GRAVEL {
+        cover = gravel(at);
+    } else if style.w == WEAVE {
+        cover = weave(at);
+    }
+    if cover <= 0.0 {
+        return NOTHING;
+    }
+    let here = lit(local);
+    return vec4<f32>(min(here.rgb * cover * 1.8, vec3<f32>(1.0)), 1.0);
+}
+
 @fragment
 fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     let view = vec2<f32>(mesh.world_position.x, -mesh.world_position.y) / CELL;
@@ -322,6 +477,10 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     let local = map - window.zw + 0.5;
     if !floor_at(local) {
         return NOTHING;
+    }
+    if style.w >= POINTS {
+        // Cell (x, y) spans x to x + 1 here.
+        return tiled(local, map + 0.5);
     }
     if style.w == DOTS {
         return dots(local);

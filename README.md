@@ -163,10 +163,14 @@ next to this file.
   light's shadows glide with it, the player sees the part of a cell their
   line of sight reaches (the rest drawn as remembered), fire flickers, electricity buzzes and
   acid pulses. Bounced light, remembered cells and cells seen through a
-  portal show their cell's light. Styles: `dots` (four dots a cell,
-  larger where brighter), `dither` (ordered dithering), `scanlines` (light
-  on every third row, a band rolling down) and `ridges` (lines lifted by
-  the light under them, swaying where lit); `text` is the dot per cell.
+  portal show their cell's light. Most styles are tiles, the floor's
+  material lit a pixel at a time as glyphs are lit: `points` (a dot a
+  cell), `squares`, `planks`, `cobble`, `contours` (flowing lines),
+  `gravel` and `weave`; patterns follow the map, so they run on across
+  cells. Others draw the light itself as a pattern: `dots` (four a cell,
+  larger where brighter), `dither`, `scanlines` (a band rolling down) and
+  `ridges` (lines lifted by the light, swaying). `text` is the dot per
+  cell.
   The glyphs stay text on top. `assets/maps/shadows.txt` shows it off.
 - Seeing and lighting through portals (an addition): every field of view
   goes through portals, as the player's does, so enemies notice the player
@@ -262,7 +266,7 @@ cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same ro
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --map assets/maps/bounce.txt --gi  # bounced light; G toggles it in game
 cargo run -- --light smooth     # smooth light colours; L toggles them in game
-cargo run -- --map assets/maps/shadows.txt --floor ridges  # the floor shader; V cycles its styles
+cargo run -- --map assets/maps/shadows.txt --floor cobble  # the floor shader; V cycles its styles
 cargo test --workspace   # 257 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
