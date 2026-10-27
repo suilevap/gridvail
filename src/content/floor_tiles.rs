@@ -7,6 +7,9 @@ pub struct FloorTiles {
     /// Each glyph's rows, top first; bit 7 is the leftmost pixel.
     pub glyphs: Vec<[u8; 8]>,
     pub glyph_names: Vec<String>,
+    /// Each glyph's colour, which the light falling on it is multiplied
+    /// by: white if not given.
+    pub glyph_tints: Vec<[f32; 3]>,
     pub styles: Vec<TileStyle>,
 }
 
@@ -63,6 +66,12 @@ pub fn parse_floor_tiles(text: &str) -> Result<FloorTiles, String> {
         match words.next() {
             Some("glyph") => {
                 let name = words.next().ok_or("a glyph needs a name")?;
+                let tint = match words.next() {
+                    None => [1.0; 3],
+                    Some(word) => parse_tint(word).ok_or_else(|| {
+                        format!("glyph {name}: bad `{word}`, expected tint=R,G,B")
+                    })?,
+                };
                 let mut rows = [0u8; 8];
                 for row in &mut rows {
                     let pixels = lines
@@ -77,6 +86,7 @@ pub fn parse_floor_tiles(text: &str) -> Result<FloorTiles, String> {
                 }
                 tiles.glyphs.push(rows);
                 tiles.glyph_names.push(name.to_string());
+                tiles.glyph_tints.push(tint);
             }
             Some("style") => {
                 let name = words.next().ok_or("a style needs a name")?;
@@ -87,6 +97,20 @@ pub fn parse_floor_tiles(text: &str) -> Result<FloorTiles, String> {
         }
     }
     Ok(tiles)
+}
+
+/// `tint=R,G,B`, each 0 to 1.
+fn parse_tint(word: &str) -> Option<[f32; 3]> {
+    let mut parts = word
+        .strip_prefix("tint=")?
+        .split(',')
+        .map(str::parse::<f32>);
+    let tint = [
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+    ];
+    (parts.next().is_none() && tint.iter().all(|part| (0.0..=1.0).contains(part))).then_some(tint)
 }
 
 fn parse_style<'a>(
@@ -173,6 +197,16 @@ mod tests {
         assert_eq!(style.glyphs, vec![0, 0]);
         assert_eq!(style.pick, Pick::Random);
         assert_eq!(tiles.style("dots"), Some(0));
+    }
+
+    #[test]
+    fn a_glyph_may_have_a_tint() {
+        let text = DOT.replace("glyph dot", "glyph dot tint=0.2,0.5,1");
+        let tiles = parse_floor_tiles(&text).unwrap();
+        assert_eq!(tiles.glyph_tints, vec![[0.2, 0.5, 1.0]]);
+        assert_eq!(parse_floor_tiles(DOT).unwrap().glyph_tints, vec![[1.0; 3]]);
+        let bad = DOT.replace("glyph dot", "glyph dot tint=2,0,0");
+        assert!(parse_floor_tiles(&bad).unwrap_err().contains("tint"));
     }
 
     #[test]

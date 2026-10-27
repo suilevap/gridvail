@@ -65,7 +65,8 @@ struct Lamps {
     /// x, y: where it is, in cells from the window's top-left corner;
     /// z: radius; w: value.
     at: [Vec4; MAX_LAMPS],
-    /// x: its kind, 0 to 3 (none, fire, electricity, acid).
+    /// x: its kind, 0 to 3 (none, fire, electricity, acid); y, z: the
+    /// way it shines as a beam, or zero for all round.
     kind: [Vec4; MAX_LAMPS],
 }
 
@@ -164,16 +165,17 @@ fn setup(
     ));
 }
 
-/// Every glyph side by side, 8 by 8 pixels each: on is white.
+/// Every glyph side by side, 8 by 8 pixels each: on is its tint.
 fn glyph_atlas(tiles: &FloorTiles) -> Image {
     let width = 8 * tiles.glyphs.len().max(1);
     let mut pixels = vec![0; width * 8 * 4];
-    for (glyph, rows) in tiles.glyphs.iter().enumerate() {
+    for (glyph, (rows, tint)) in tiles.glyphs.iter().zip(&tiles.glyph_tints).enumerate() {
+        let colour = tint.map(|part| (part * 255.0).round() as u8);
         for (y, row) in rows.iter().enumerate() {
             for x in 0..8 {
                 if row & (0x80 >> x) != 0 {
                     let at = (y * width + glyph * 8 + x) * 4;
-                    pixels[at..at + 4].fill(255);
+                    pixels[at..at + 4].copy_from_slice(&[colour[0], colour[1], colour[2], 255]);
                 }
             }
         }
@@ -344,7 +346,7 @@ fn draw_floor(
             LightKind::Electricity => 2.0,
             LightKind::Acid => 3.0,
         };
-        lamps.kind[slot] = Vec4::new(kind, 0.0, 0.0, 0.0);
+        lamps.kind[slot] = Vec4::new(kind, lamp.facing.x, lamp.facing.y, 0.0);
     }
 
     let size = floor.cells.as_uvec2();

@@ -35,11 +35,12 @@ pub fn compose_frame(
     grid: Res<MapGrid>,
     dynamic: Res<DynamicLight>,
     style: Option<Res<LightStyle>>,
-    (floor_style, floor_light, lamps, shown_viewer): (
+    (floor_style, floor_light, lamps, shown_viewer, markers): (
         Option<Res<FloorStyle>>,
         Option<ResMut<FloorLight>>,
-        Query<(&Pos, Option<&AnimatedPos>, &LightSource)>,
-        Query<&AnimatedPos, With<Player>>,
+        Query<(&Pos, Option<&AnimatedPos>, &LightSource, Has<Player>)>,
+        Query<(Entity, &AnimatedPos), With<Player>>,
+        Query<(&AnimatedPos, &BoundTo)>,
     ),
     reveal: Option<Res<RevealAll>>,
     viewers: Query<(&Pos, &VisibilityMap, Option<&PlayerView>), With<Player>>,
@@ -234,10 +235,18 @@ pub fn compose_frame(
                 .unwrap_or_default()
         };
         fill_floor(buffers, &grid, &known, &light_at, &direct_at, &mut floor);
-        floor.viewer = shown_viewer
-            .iter()
-            .next()
-            .map_or(player.0.as_vec2(), |shown| shown.position);
+        let shown_player = shown_viewer.iter().next();
+        floor.viewer = shown_player.map_or(player.0.as_vec2(), |(_, shown)| shown.position);
+        // The player's light is a beam the way their direction marker,
+        // which swings round them, points.
+        let facing = shown_player
+            .and_then(|(entity, shown)| {
+                markers
+                    .iter()
+                    .find(|(_, bound)| bound.parent == entity)
+                    .map(|(marker, _)| (marker.position - shown.position).normalize_or_zero())
+            })
+            .unwrap_or(Vec2::ZERO);
         floor.lamps.clear();
         let window = Rect::from_corners(
             buffers.origin.as_vec2(),
@@ -246,11 +255,12 @@ pub fn compose_frame(
         floor.lamps.extend(
             lamps
                 .iter()
-                .map(|(pos, shown, light)| FloorLamp {
+                .map(|(pos, shown, light, player)| FloorLamp {
                     position: shown.map_or(pos.0.as_vec2(), |shown| shown.position),
                     radius: light.radius as f32,
                     value: light.value as f32,
                     kind: light.kind,
+                    facing: if player { facing } else { Vec2::ZERO },
                 })
                 .filter(|lamp| {
                     let nearest = lamp.position.clamp(window.min, window.max);

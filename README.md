@@ -170,8 +170,12 @@ next to this file.
   ray from the player for whether they see it. Bounced light, remembered
   cells and cells seen through a portal use their cell's light. Styles:
   `points`, `pebbles`, `grass`, `tiles`, `bricks`, `planks`,
-  `herringbone`, `cracks`, `ramp`, `shade` and `waves`; `text` is the dot
-  per cell. New glyphs and styles need only that file.
+  `herringbone`, `cracks`, `ramp`, `shade`, `waves`, `overgrown` and
+  `ruins`; `text` is the dot per cell. New glyphs and styles need only
+  that file. A glyph may have a colour (`tint`), which the light falling
+  on it is multiplied by: green plants, grey rubble, blue water. Between
+  glyphs the ground glows dimly with the light there, over a dark night
+  teal, and the player's light is a beam the way they face.
 - Seeing and lighting through portals (an addition): every field of view
   goes through portals, as the player's does, so enemies notice the player
   through a portal and lamps light the far side of one, fading with the
@@ -267,7 +271,7 @@ cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --map assets/maps/bounce.txt --gi  # bounced light; G toggles it in game
 cargo run -- --light smooth     # smooth light colours; L toggles them in game
 cargo run -- --map assets/maps/shadows.txt --floor bricks  # floor tiles; V cycles their styles
-cargo test --workspace   # 260 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 261 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

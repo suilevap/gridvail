@@ -259,4 +259,6 @@ pub struct FloorLamp {
     pub radius: f32,
     pub value: f32,
     pub kind: LightKind,
+    /// The way it shines, as a beam; zero for all round.
+    pub facing: Vec2,
 }

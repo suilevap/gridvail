@@ -58,10 +58,10 @@ const NONE_STOPS = array<vec4<f32>, 5>(
 );
 const FIRE_STOPS = array<vec4<f32>, 5>(
     vec4<f32>(1.0, UNLIT, UNLIT, UNLIT),
-    vec4<f32>(70.0, 0.6, 0.5, 0.0),
-    vec4<f32>(170.0, 1.0, 0.9, 0.2),
-    vec4<f32>(255.0, 1.0, 1.0, 0.85),
-    vec4<f32>(256.0, 1.0, 1.0, 0.85),
+    vec4<f32>(70.0, 0.62, 0.36, 0.12),
+    vec4<f32>(170.0, 1.0, 0.62, 0.22),
+    vec4<f32>(255.0, 1.0, 0.9, 0.6),
+    vec4<f32>(256.0, 1.0, 0.9, 0.6),
 );
 const ELECTRO_STOPS = array<vec4<f32>, 5>(
     vec4<f32>(1.0, UNLIT, UNLIT, UNLIT),
@@ -176,6 +176,27 @@ fn cell_light(local: vec2<f32>) -> vec4<f32> {
     return textureSampleLevel(light, light_sampler, local / style.xy, 0.0);
 }
 
+// The light where nothing shines: a dark night teal (linear).
+const AMBIENT = vec3<f32>(0.018, 0.04, 0.045);
+
+// How much of a lamp's light reaches `offset` from it: a lamp with a
+// facing is a beam, bright in a cone that fades at its edges and dim
+// around; one without shines all round.
+fn beam(facing: vec2<f32>, offset: vec2<f32>) -> f32 {
+    if dot(facing, facing) < 0.01 {
+        return 1.0;
+    }
+    let along = dot(normalize(offset + vec2<f32>(1e-4)), facing);
+    return 0.3 + 2.0 * smoothstep(0.86, 0.97, along);
+}
+
+// The ground between glyphs: the light there, dim and smooth, glowing
+// more where the light is strong, so lit places glow under their glyphs.
+fn ground(local: vec2<f32>) -> vec4<f32> {
+    let here = lit(local);
+    return vec4<f32>(here.rgb * (0.04 + 0.2 * here.a * here.a), 1.0);
+}
+
 // The light at `local`: linear colour and brightness (0 to 1).
 fn lit(local: vec2<f32>) -> vec4<f32> {
     let own = cell_light(local);
@@ -199,13 +220,14 @@ fn lit(local: vec2<f32>) -> vec4<f32> {
         let reach = (lamp.z + 1.0) * (lamp.z + 1.0);
         let distance = dot(offset, offset);
         if distance < reach && clear_line(lamp.xy, local) {
-            kinds[kind] += (1.0 - distance / reach) * lamp.w * waver(kind, f32(i));
+            kinds[kind] += (1.0 - distance / reach) * lamp.w * waver(kind, f32(i))
+                * beam(lamps.kind[i].yz, offset);
         }
     }
     let bounced = here.b * 255.0;
     let total = kinds.x + kinds.y + kinds.z + kinds.w + bounced + 1.0;
     let shown = min(total, 255.0);
-    var colour = own.rgb * bounced + gradient(0, 1.0);
+    var colour = own.rgb * bounced + AMBIENT;
     for (var kind = 0; kind < 4; kind++) {
         colour += gradient(kind, shown) * kinds[kind];
     }
@@ -246,8 +268,9 @@ fn glyph(index: i32) -> i32 {
     return i32(tiles.glyphs[index / 4][index % 4]);
 }
 
-fn glyph_pixel(glyph: i32, pixel: vec2<f32>) -> bool {
-    return textureLoad(glyph_atlas, vec2<i32>(glyph * 8 + i32(pixel.x), i32(pixel.y)), 0).r > 0.5;
+// A glyph's pixel: its tint where it is on (alpha 1), nothing where off.
+fn glyph_pixel(glyph: i32, pixel: vec2<f32>) -> vec4<f32> {
+    return textureLoad(glyph_atlas, vec2<i32>(glyph * 8 + i32(pixel.x), i32(pixel.y)), 0);
 }
 
 fn whole_mod(value: f32, by: f32) -> f32 {
@@ -278,7 +301,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     let column = floor((pixel.x + shift) / slot);
     let place = vec2<f32>(column, row);
     if hash(place + 71.0) < tiles.arrange.z {
-        return NOTHING;
+        return ground(local);
     }
     // Where in its glyph, which may stray by up to the jitter.
     let within = vec2<f32>(pixel.x + shift - column * slot, pixel.y - row * slot);
@@ -286,7 +309,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     let jitter = floor((vec2<f32>(hash(place), hash(place + 31.0))) * (2.0 * reach + 1.0)) - reach;
     let at = floor(within * 8.0 / slot) - jitter;
     if any(at < vec2<f32>(0.0)) || any(at > vec2<f32>(7.0)) {
-        return NOTHING;
+        return ground(local);
     }
     // A glyph is lit as a whole, by the light at its slot's middle.
     let middle = (vec2<f32>(column * slot - shift, row * slot) + slot / 2.0) / CELL - window.zw;
@@ -303,11 +326,12 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     } else {
         index = min(i32(hash(place + 13.0) * f32(count)), count - 1);
     }
-    if !glyph_pixel(glyph(index), at) {
-        return NOTHING;
+    let mark = glyph_pixel(glyph(index), at);
+    if mark.a < 0.5 {
+        return ground(local);
     }
     if tiles.pick.w != 2.0 {
         here = lit(middle);
     }
-    return vec4<f32>(min(here.rgb * tiles.gain.x, vec3<f32>(1.0)), 1.0);
+    return vec4<f32>(min(here.rgb * mark.rgb * tiles.gain.x, vec3<f32>(1.0)), 1.0);
 }
