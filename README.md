@@ -141,7 +141,24 @@ next to this file.
   asks for any map with the `LoadMap` message. The level goes (everything on the map, what its actors carry,
   its rooms) and the player carries over with what they carry to the new
   map's start, or stays where they were if it has none; they remember
-  nothing of the new map yet. Maps of any size work.
+  nothing of the new map yet, and it comes together from the walls of the
+  one before, where they stood (see the intro below), while they wait.
+  Maps of any size work.
+- Intro (an addition): when the game starts, the map's walls come
+  together from the game's title. The title (`assets/intro.txt`, walls as
+  `X`; edit it to change the text) rises out of the floor around the
+  player and stands for a moment, with only an oval around it in sight
+  and the camera zoomed out on it. Then the oval narrows to a small circle
+  around the player while the camera glides back to them, and only then
+  do the map's own walls take over: it is a room switch covering the whole
+  map, so its walls slide, rise and sink with the default room planner.
+  The player's own sight comes back with the walls standing (what they
+  saw across the open map before is forgotten), and the circle closes to
+  nothing. Play starts once every wall has settled. A map too small for
+  the title comes together from noise around the player. `--intro noise`
+  always uses noise and `--intro off` skips it (`?intro=off` on the web);
+  `--screenshot` and `--record` skip it unless `--intro` is given, so
+  their walks start on time.
 - Settings (an addition): Esc opens a small menu to choose how the view
   behaves through portals that turn (turn with the player or keep north
   up), when the compass shows (when the view is turned, always or off) and
@@ -242,8 +259,9 @@ cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk throu
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
+cargo run -- --intro noise   # the map comes together from noise instead of the title
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo test --workspace   # 259 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 278 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

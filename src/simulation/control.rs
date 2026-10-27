@@ -19,13 +19,15 @@ pub fn player_input(
     turn: Res<TurnState>,
     camera: Option<Res<ViewCamera>>,
     menu: Option<Res<SettingsMenu>>,
+    cutscene: Option<Res<Cutscene>>,
     mut players: Query<
         (&mut MoveCommand, &Tokens, Option<&mut MoveIntent>),
         (With<Player>, With<Active>, Without<DestroyRequested>),
     >,
 ) {
-    // The settings menu takes the arrow keys while it is open.
-    let screen = if SettingsMenu::is_open(menu.as_deref()) {
+    // The settings menu takes the arrow keys while it is open, and a
+    // cutscene ignores them.
+    let screen = if SettingsMenu::is_open(menu.as_deref()) || cutscene.is_some() {
         None
     } else if keys.any_pressed([KeyCode::ArrowUp, KeyCode::KeyW]) {
         Some(IVec2::NEG_Y)

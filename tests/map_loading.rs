@@ -10,6 +10,7 @@ use pav_ecs_game_bevy_port::content::map::{parse_map, parse_next, SpawnKind};
 use pav_ecs_game_bevy_port::model::*;
 use pav_ecs_game_bevy_port::navigation::NavMap;
 use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
+use pav_ecs_game_bevy_port::transition::TransitionRoom;
 
 /// A room with a key on the floor, an enemy and a lamp.
 const FIRST: &str = "\
@@ -82,7 +83,6 @@ fn the_player_carries_over_and_the_old_level_goes() {
         .unwrap();
     let enemy_key = world.spawn((Active, Item, Key)).id();
     world.get_mut::<Inventory>(enemy).unwrap().0.push(enemy_key);
-    let old_wall = world.resource::<MapGrid>().get(IVec2::ZERO).unwrap();
     let revision = world.resource::<MapGrid>().blocker_revision;
 
     load(&mut app, SECOND);
@@ -108,9 +108,13 @@ fn the_player_carries_over_and_the_old_level_goes() {
         "with what they carry"
     );
     assert!(world.get_entity(held).is_ok());
-    for gone in [enemy, enemy_key, old_wall] {
+    for gone in [enemy, enemy_key] {
         assert!(world.get_entity(gone).is_err(), "the old level is gone");
     }
+    assert!(
+        world.resource::<MapGrid>().get(IVec2::ZERO).is_some(),
+        "the new map's walls hold their cells"
+    );
     let walls_now = walls(&mut app);
     let expected = parse_map(SECOND)
         .2
@@ -290,4 +294,44 @@ fn the_bundled_maps_lead_from_one_to_the_next_and_round() {
         assert_eq!(next, expected, "{map} leads on");
         map = expected;
     }
+}
+
+#[test]
+fn a_loaded_map_comes_together_from_the_one_before() {
+    let map1 = bundled_map("map1").unwrap();
+    let map2 = bundled_map("map2").unwrap();
+    let mut app = boot(map1, |app| {
+        app.add_plugins(ObjectAnimationPlugin);
+    });
+    for _ in 0..10 {
+        app.update();
+    }
+    app.world_mut().write_message(LoadMap(map2));
+    app.update();
+    app.update();
+
+    // A transition plays: the player waits, a circle around them is in
+    // sight beside what they see, and walls of map1 are on their way.
+    assert!(app.world().contains_resource::<Cutscene>());
+    let area = *app.world().resource::<RevealArea>();
+    assert!(!area.hides_sight);
+    assert_eq!(count::<With<TransitionRoom>>(&mut app), 1);
+    let moving = count::<Or<(With<Sinking>, With<Sliding>)>>(&mut app);
+    assert!(moving > 0, "the old walls go and move");
+
+    let mut frames = 0;
+    while count::<With<TransitionRoom>>(&mut app) > 0 {
+        app.update();
+        frames += 1;
+        assert!(frames < 300, "the transition ends");
+    }
+    assert!(!app.world().contains_resource::<Cutscene>());
+    assert!(!app.world().contains_resource::<RevealArea>());
+    assert_eq!(count::<With<Sinking>>(&mut app), 0);
+    let expected = parse_map(map2)
+        .2
+        .iter()
+        .filter(|cell| matches!(cell.kind, SpawnKind::Wall | SpawnKind::Portal(_)))
+        .count();
+    assert_eq!(walls(&mut app), expected, "exactly map2's walls");
 }

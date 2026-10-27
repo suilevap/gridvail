@@ -13,10 +13,13 @@ use flatbt_bevy::prelude::Behavior;
 
 use crate::ai::{enemy_tree, hunter_tree};
 use crate::content::map::{parse_map, parse_next, parse_rooms, portal_links, SpawnKind};
+use crate::content::map::{PortalLink, RoomSpec, SpawnCell};
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
+use crate::foundation::grid::nearest_cell;
 use crate::lighting::{CYAN, GRAY, RED, WHITE, YELLOW};
 use crate::model::*;
 use crate::schedule::{GamePhase, StartupPhase};
+use crate::simulation::room_plans::RoomPlanners;
 use crate::simulation::{wall_bundle, Rules};
 
 const MAP_TEXT: &str = include_str!("../../assets/maps/map1.txt");
@@ -72,6 +75,7 @@ impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MapText>()
             .add_message::<LoadMap>()
+            .add_message::<MapLoaded>()
             .add_systems(Startup, construct_map.in_set(StartupPhase::Content))
             // Before the frame's game systems, in a schedule of its own, so
             // the old level is wholly gone and the new one wholly there
@@ -81,24 +85,32 @@ impl Plugin for MapPlugin {
     }
 }
 
-fn construct_map(mut commands: Commands, map: Res<MapText>) {
+/// Spawns the first map.
+fn construct_map(
+    mut commands: Commands,
+    map: Res<MapText>,
+    planners: Option<Res<RoomPlanners>>,
+    mut loaded: MessageWriter<MapLoaded>,
+) {
     let mut grid = MapGrid::new(1, 1);
-    build_map(&mut commands, &mut grid, map.0, None);
+    build_map(&mut commands, &mut grid, map.0, None, planners.as_deref());
     commands.insert_resource(grid);
     commands.insert_resource(Rules {
         wall: TileRule::parse(WALL_RULE_TEXT),
         triangle: DirectionTileRule::parse(TRIANGLE_RULE_TEXT).expect("triangle rule"),
         v: DirectionTileRule::parse(V_RULE_TEXT).expect("v rule"),
     });
+    loaded.write(MapLoaded::default());
 }
 
 /// Plays the map last asked for with [`LoadMap`]. The level goes: everything
 /// placed on the map (anything with a `Pos`), what those carry, and its
 /// rooms. The player stays, with what they carry and anything bound to
 /// them, and moves to the new map's start, seeing it afresh: they remember
-/// nothing of it yet. The grid keeps counting its revisions, so sight, paths
-/// and the rest are built again for the new map.
-#[allow(clippy::type_complexity)]
+/// nothing of it yet. [`MapLoaded`] tells what the old map's plain walls
+/// were, for anything that reacts to a new map. The grid keeps counting its
+/// revisions, so sight, paths and the rest are built again for the new map.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn load_map(
     mut commands: Commands,
     mut requests: MessageReader<LoadMap>,
@@ -107,11 +119,15 @@ fn load_map(
     placed: Query<(Entity, Option<&BoundTo>, Option<&Inventory>), With<Pos>>,
     rooms: Query<Entity, With<Room>>,
     players: Query<(Entity, &Pos), With<Player>>,
+    walls: Query<(&Pos, &Glyph), (With<Wall>, Without<Portal>)>,
+    planners: Option<Res<RoomPlanners>>,
+    mut loaded: MessageWriter<MapLoaded>,
 ) {
     let Some(&LoadMap(text)) = requests.read().last() else {
         return;
     };
     let (player, was_at) = players.single().ok().unzip();
+    let previous_walls = walls.iter().map(|(pos, glyph)| (pos.0, *glyph)).collect();
     let mut kept = Vec::new();
     for (entity, bound, carried) in &placed {
         if Some(entity) == player {
@@ -132,12 +148,15 @@ fn load_map(
         commands.entity(room).despawn();
     }
     crossings.0.clear();
-    let start = build_map(&mut commands, &mut grid, text, player);
+    let start = build_map(&mut commands, &mut grid, text, player, planners.as_deref());
+    loaded.write(MapLoaded { previous_walls });
     if let (Some(player), Some(was_at)) = (player, was_at) {
         // A map without a start keeps the player where they were, or as
         // near as is free.
         let start = start.unwrap_or_else(|| {
-            let at = free_cell_near(&grid, was_at.0);
+            let size = IVec2::new(grid.width, grid.height);
+            let at = nearest_cell(was_at.0, size, |cell| grid.get(cell).is_none())
+                .unwrap_or_else(|| grid.safe_pos(was_at.0));
             grid.set(at, player);
             at
         });
@@ -186,166 +205,112 @@ fn take_exits(
     }
 }
 
-/// The free cell of `grid` nearest `p` (wrapped into it), or `p` itself if
-/// none is free.
-fn free_cell_near(grid: &MapGrid, p: IVec2) -> IVec2 {
-    let p = grid.safe_pos(p);
-    let reach = grid.width.max(grid.height);
-    (0..=reach)
-        .flat_map(|r| {
-            (-r..=r)
-                .flat_map(move |dy| (-r..=r).map(move |dx| IVec2::new(dx, dy)))
-                .filter(move |d| d.abs().max_element() == r)
-        })
-        .map(|d| grid.safe_pos(p + d))
-        .find(|&cell| grid.get(cell).is_none())
-        .unwrap_or(p)
+/// A map file, read and checked: a map that cannot be played stops the game
+/// with what is wrong with it.
+struct MapPlan {
+    width: i32,
+    height: i32,
+    cells: Vec<SpawnCell>,
+    links: Vec<PortalLink>,
+    rooms: Vec<RoomSpec>,
+    next: Option<&'static str>,
+}
+
+impl MapPlan {
+    fn read(text: &str, planners: Option<&RoomPlanners>) -> Self {
+        let fail = |error: String| -> ! { panic!("map: {error}") };
+        let (width, height, cells) = parse_map(text);
+        let links = portal_links(width, height, &cells).unwrap_or_else(|e| fail(e));
+        let rooms = parse_rooms(text, &cells).unwrap_or_else(|e| fail(e));
+        let next = parse_next(text, &cells)
+            .unwrap_or_else(|e| fail(e))
+            .map(|name| {
+                bundled_map(&name)
+                    .unwrap_or_else(|| fail(format!("no bundled map called `{name}`")))
+            });
+        if let Some(planners) = planners {
+            for room in &rooms {
+                if let Some(name) = room
+                    .planner
+                    .as_deref()
+                    .filter(|name| planners.get(name).is_none())
+                {
+                    let known: Vec<_> = planners.names().collect();
+                    fail(format!(
+                        "room at {} names no known planner `{name}` (known: {})",
+                        room.origin,
+                        known.join(", ")
+                    ));
+                }
+            }
+        }
+        Self {
+            width,
+            height,
+            cells,
+            links,
+            rooms,
+            next,
+        }
+    }
 }
 
 /// Spawns the map `text` into `grid`, reset to its size. With `player`, that
-/// player takes the map's start instead of a new one being spawned; returns
+/// player takes the map's start instead of a new one being spawned. Returns
 /// the start, if the map has one.
 fn build_map(
     commands: &mut Commands,
     grid: &mut MapGrid,
     text: &'static str,
     player: Option<Entity>,
+    planners: Option<&RoomPlanners>,
 ) -> Option<IVec2> {
-    let (width, height, cells) = parse_map(text);
-    let links = portal_links(width, height, &cells).unwrap_or_else(|error| panic!("map: {error}"));
-    let rooms = parse_rooms(text, &cells).unwrap_or_else(|error| panic!("map: {error}"));
-    let next = parse_next(text, &cells)
-        .unwrap_or_else(|error| panic!("map: {error}"))
-        .map(|name| {
-            bundled_map(&name).unwrap_or_else(|| panic!("map: no bundled map called `{name}`"))
-        });
-    commands.insert_resource(CurrentMap { text, next });
-    let cell_count = (width * height) as usize;
-    grid.reset(width, height);
-    let mut portal_walls = Vec::with_capacity(links.len());
+    let plan = MapPlan::read(text, planners);
+    commands.insert_resource(CurrentMap {
+        text,
+        next: plan.next,
+    });
+    grid.reset(plan.width, plan.height);
+    let cell_count = (plan.width * plan.height) as usize;
     let mut start = None;
-
-    for cell in cells {
+    let mut portal_walls = Vec::with_capacity(plan.links.len());
+    for &cell in &plan.cells {
         let entity = match cell.kind {
-            // A portal is a wall; only its open face differs.
-            SpawnKind::Wall | SpawnKind::Portal(_) => commands.spawn(wall_bundle(cell.pos)).id(),
             SpawnKind::Player => {
                 start = Some(cell.pos);
                 player.unwrap_or_else(|| spawn_player(commands, cell.pos, cell_count))
             }
-            SpawnKind::Enemy => commands
-                .spawn((
-                    enemy_body(cell.pos, cell_count),
-                    EnemyMind::default(),
-                    Behavior::for_tree(enemy_tree),
-                ))
-                .id(),
-            SpawnKind::Hunter => commands
-                .spawn((
-                    enemy_body(cell.pos, cell_count),
-                    (Hunter, Order::default()),
-                    EnemyMind::default(),
-                    Behavior::for_tree(hunter_tree),
-                ))
-                .id(),
-            SpawnKind::Electricity => commands
-                .spawn((
-                    Active,
-                    ElectroField,
-                    Pos(cell.pos),
-                    Glyph::new('Ω', 0, WHITE),
-                    LightSource {
-                        radius: 3,
-                        kind: LightKind::Electricity,
-                        value: 32,
-                    },
-                    initial_fov(cell_count),
-                ))
-                .id(),
-            SpawnKind::Light => commands
-                .spawn((
-                    Active,
-                    Lamp,
-                    Pos(cell.pos),
-                    Glyph::new('i', 0, WHITE),
-                    LightSource {
-                        radius: 16,
-                        kind: LightKind::Fire,
-                        value: 196,
-                    },
-                    initial_fov(cell_count),
-                ))
-                .id(),
-            SpawnKind::Acid => commands
-                .spawn((
-                    Active,
-                    AcidPool,
-                    Pos(cell.pos),
-                    Glyph::new('▒', 0, WHITE),
-                    LightSource {
-                        radius: 4,
-                        kind: LightKind::Acid,
-                        value: 32,
-                    },
-                    initial_fov(cell_count),
-                ))
-                .id(),
-            SpawnKind::Key => commands
-                .spawn((Active, Item, Key, Pos(cell.pos), Glyph::new('♀', 0, YELLOW)))
-                .id(),
-            SpawnKind::Plate => commands
-                .spawn((
-                    Active,
-                    PressurePlate::default(),
-                    Pos(cell.pos),
-                    Glyph::new(PressurePlate::GLYPH, 0, YELLOW),
-                ))
-                .id(),
-            SpawnKind::Exit => commands
-                .spawn((
-                    Active,
-                    Exit,
-                    Pos(cell.pos),
-                    Glyph::new(Exit::GLYPH, 0, CYAN),
-                ))
-                .id(),
-            SpawnKind::Door => commands
-                .spawn((
-                    Active,
-                    Collider,
-                    Door::default(),
-                    Pos(cell.pos),
-                    Glyph::new(Door::CLOSED_GLYPH, 1, GRAY),
-                ))
-                .id(),
+            kind => spawn_cell(commands, kind, cell.pos, cell_count),
         };
-        if commands.get_entity(entity).is_ok()
-            && matches!(
-                cell.kind,
-                SpawnKind::Wall
-                    | SpawnKind::Portal(_)
-                    | SpawnKind::Player
-                    | SpawnKind::Enemy
-                    | SpawnKind::Hunter
-                    | SpawnKind::Door
-            )
-        {
-            // Colliders own their cells (mirrors the first UpdatePosition pass).
-            grid.set_with_blocking(
-                cell.pos,
-                entity,
-                matches!(
-                    cell.kind,
-                    SpawnKind::Wall | SpawnKind::Portal(_) | SpawnKind::Door
-                ),
-            );
+        // Colliders own their cells (mirrors the first UpdatePosition pass).
+        if let Some(blocks_vision) = occupies(cell.kind) {
+            grid.set_with_blocking(cell.pos, entity, blocks_vision);
         }
         if matches!(cell.kind, SpawnKind::Portal(_)) {
             portal_walls.push((cell.pos, entity));
         }
     }
+    link_portals(commands, &portal_walls, plan.links);
+    for room in plan.rooms {
+        commands.spawn(Room::new(room.origin, room.size, room.layouts).with_planner(room.planner));
+    }
+    start
+}
+
+/// Whether a cell of this kind holds its cell on the grid, and if so,
+/// whether it blocks sight there.
+fn occupies(kind: SpawnKind) -> Option<bool> {
+    match kind {
+        SpawnKind::Wall | SpawnKind::Portal(_) | SpawnKind::Door => Some(true),
+        SpawnKind::Player | SpawnKind::Enemy | SpawnKind::Hunter => Some(false),
+        _ => None,
+    }
+}
+
+/// Gives each portal wall its face onto the wall it leads to.
+fn link_portals(commands: &mut Commands, walls: &[(IVec2, Entity)], links: Vec<PortalLink>) {
     let wall_at = |pos: IVec2| {
-        portal_walls
+        walls
             .iter()
             .find(|(wall, _)| *wall == pos)
             .map(|(_, entity)| *entity)
@@ -357,11 +322,62 @@ fn build_map(
             exit: wall_at(link.exit),
         });
     }
+}
 
-    for room in rooms {
-        commands.spawn(Room::new(room.origin, room.size, room.layouts).with_planner(room.planner));
+/// Spawns what a map cell of `kind` (anything but the player) holds at `at`.
+fn spawn_cell(commands: &mut Commands, kind: SpawnKind, at: IVec2, cell_count: usize) -> Entity {
+    let marker = |glyph: char, color: u8| (Active, Pos(at), Glyph::new(glyph, 0, color));
+    let light = |kind: LightKind, radius: i32, value: u8| {
+        (
+            LightSource {
+                radius,
+                kind,
+                value,
+            },
+            initial_fov(cell_count),
+        )
+    };
+    match kind {
+        // A portal is a wall; only its open face differs.
+        SpawnKind::Wall | SpawnKind::Portal(_) => commands.spawn(wall_bundle(at)),
+        SpawnKind::Player => unreachable!("the player is placed by build_map"),
+        SpawnKind::Enemy => commands.spawn((
+            enemy_body(at, cell_count),
+            EnemyMind::default(),
+            Behavior::for_tree(enemy_tree),
+        )),
+        SpawnKind::Hunter => commands.spawn((
+            enemy_body(at, cell_count),
+            (Hunter, Order::default()),
+            EnemyMind::default(),
+            Behavior::for_tree(hunter_tree),
+        )),
+        SpawnKind::Electricity => commands.spawn((
+            ElectroField,
+            marker('Ω', WHITE),
+            light(LightKind::Electricity, 3, 32),
+        )),
+        SpawnKind::Light => {
+            commands.spawn((Lamp, marker('i', WHITE), light(LightKind::Fire, 16, 196)))
+        }
+        SpawnKind::Acid => {
+            commands.spawn((AcidPool, marker('▒', WHITE), light(LightKind::Acid, 4, 32)))
+        }
+        SpawnKind::Key => commands.spawn((Item, Key, marker('♀', YELLOW))),
+        SpawnKind::Plate => commands.spawn((
+            PressurePlate::default(),
+            marker(PressurePlate::GLYPH, YELLOW),
+        )),
+        SpawnKind::Exit => commands.spawn((Exit, marker(Exit::GLYPH, CYAN))),
+        SpawnKind::Door => commands.spawn((
+            Active,
+            Collider,
+            Door::default(),
+            Pos(at),
+            Glyph::new(Door::CLOSED_GLYPH, 1, GRAY),
+        )),
     }
-    start
+    .id()
 }
 
 /// A new player at `at`, with the direction marker bound to them.
@@ -465,4 +481,34 @@ fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
 
 fn initial_fov(cell_count: usize) -> FovResult {
     FovResult::empty(cell_count)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ROOM: &str = "\
+XXXXX
+X.p.X
+XXXXX
+@room 1 1 PLANNER
+.
+";
+
+    #[test]
+    fn a_room_may_name_a_known_planner() {
+        let text = ROOM.replace("PLANNER", RoomPlanners::RISE_SINK);
+        let plan = MapPlan::read(&text, Some(&RoomPlanners::default()));
+        assert_eq!(
+            plan.rooms[0].planner.as_deref(),
+            Some(RoomPlanners::RISE_SINK)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "no known planner `wobble`")]
+    fn a_room_naming_an_unknown_planner_stops_the_game() {
+        let text = ROOM.replace("PLANNER", "wobble");
+        MapPlan::read(&text, Some(&RoomPlanners::default()));
+    }
 }

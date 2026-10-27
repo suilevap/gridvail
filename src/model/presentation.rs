@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use super::LightCell;
+use crate::foundation::oval::Oval;
 use crate::foundation::portal::CellTransform;
 
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,6 +55,22 @@ pub struct ObjectCell {
 /// out of sight (`--reveal`).
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub struct RevealAll;
+
+/// When present, frame cells within this oval of the map are drawn as seen
+/// directly, like [`RevealAll`] but only there: a spotlight, such as a map
+/// transition's. With `hides_sight`, it is all that is in sight: what the
+/// player sees or remembers is not shown.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct RevealArea {
+    pub oval: Oval,
+    pub hides_sight: bool,
+}
+
+impl RevealArea {
+    pub fn contains(&self, p: IVec2) -> bool {
+        self.oval.contains(p)
+    }
+}
 
 /// What a frame cell shows while the player sees it: a map cell, seen
 /// through `transform` (the identity when seen directly). `portal` marks
