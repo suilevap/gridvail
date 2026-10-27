@@ -45,9 +45,6 @@ pub(super) struct ObjectSprite {
     position: Vec2,
     lift: f32,
     pub(super) depth: u8,
-    /// How tall it stands now, in cells (`GlyphStatures`, less while it
-    /// rises or sinks); 0 lies flat.
-    pub(super) stature: f32,
     pub(super) shown: bool,
 }
 
@@ -70,7 +67,7 @@ impl ObjectSprite {
 /// The sprite drawing each object instance, by the object's entity and
 /// instance (one object may be seen in several places through portals).
 #[derive(Resource, Default)]
-pub(super) struct ObjectSprites(pub(super) HashMap<(Entity, u16), Entity>);
+pub(super) struct ObjectSprites(HashMap<(Entity, u16), Entity>);
 
 #[derive(Resource, Clone)]
 struct CellFont(Handle<Font>);
@@ -133,8 +130,6 @@ impl Plugin for TextRendererPlugin {
             .init_resource::<SettingsMenu>()
             .init_resource::<CompassMode>()
             .init_resource::<WallVolume>()
-            .init_resource::<WallFace>()
-            .init_resource::<super::composite::Faces>()
             .add_systems(Startup, setup.in_set(StartupPhase::Renderer))
             .add_systems(
                 Update,
@@ -149,7 +144,6 @@ impl Plugin for TextRendererPlugin {
                     drop_gone_sprites,
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
-                    super::composite::place_faces,
                     update_hud,
                     super::settings::draw_settings,
                     super::settings::draw_compass,
@@ -384,7 +378,6 @@ fn spawn_object_sprites(world: &mut World) {
                     position: object.position,
                     lift: object.lift,
                     depth: object.cell.depth,
-                    stature: 0.0,
                     shown: false,
                 },
                 Text2d::new(String::with_capacity(32)),
@@ -433,14 +426,6 @@ pub(super) fn place_object_sprites(
         sprite.shown = false;
     }
 
-    // Composite walls are drawn for the view's quarter turns: they lie flat
-    // half way between two, and stand back up as the view settles.
-    let standing = match volume {
-        WallVolume::Composite => {
-            1.0 - camera.quarter_remainder().abs() / std::f32::consts::FRAC_PI_4
-        }
-        _ => 1.0,
-    };
     for object in &buffers.objects {
         // The perspective backend draws walls as meshes instead.
         if extruded_walls
@@ -455,11 +440,11 @@ pub(super) fn place_object_sprites(
         let Ok((mut sprite, mut text, mut color, ..)) = sprites.get_mut(entity) else {
             continue;
         };
-        let stature = statures.as_ref().map_or(0.0, |statures| {
-            statures.of(object.cell.ch, own_statures.get(object.entity).ok())
-        });
         // The volume shader draws whatever stands up instead.
-        if matches!(volume, WallVolume::Stacked | WallVolume::Leaning) && stature > 0.0 {
+        let stands = statures.as_ref().is_some_and(|statures| {
+            statures.of(object.cell.ch, own_statures.get(object.entity).ok()) > 0.0
+        });
+        if volume != WallVolume::Flat && stands {
             continue;
         }
         drawn.clear();
@@ -471,7 +456,6 @@ pub(super) fn place_object_sprites(
         sprite.position = object.position;
         sprite.lift = object.lift;
         sprite.depth = object.cell.depth;
-        sprite.stature = stature * object.height.clamp(0.0, 1.0) * standing;
         sprite.shown = true;
         if text.0 != *drawn {
             text.0.clear();
@@ -504,10 +488,6 @@ pub(super) fn place_object_sprites(
             // Seen at a slant, nearer rows (lower on screen) cover the ones
             // behind them, walls included.
             translation.z = super::volume::depth_order(&sprite, &camera, volume);
-        }
-        // Composite walls: the glyph is the top, up where it stands.
-        if volume == WallVolume::Composite {
-            translation.y += sprite.stature * CELL_SIZE.y * camera.zoom;
         }
         if transform.translation != translation {
             transform.translation = translation;

@@ -64,20 +64,16 @@ pub enum WallVolume {
     /// oblique view from the south-west), so walls running up the screen
     /// show a side too.
     Leaning,
-    /// Without the shader: the glyph moved up the screen as the top, and a
-    /// face (`WallFace`) drawn below it where nothing stands in front.
-    Composite,
 }
 
 impl WallVolume {
-    pub const ALL: [Self; 4] = [Self::Flat, Self::Stacked, Self::Leaning, Self::Composite];
+    pub const ALL: [Self; 3] = [Self::Flat, Self::Stacked, Self::Leaning];
 
     pub fn name(self) -> &'static str {
         match self {
             Self::Flat => "flat",
             Self::Stacked => "stacked",
             Self::Leaning => "leaning",
-            Self::Composite => "composite",
         }
     }
 
@@ -88,46 +84,6 @@ impl WallVolume {
     /// The next mode, or the previous one with `step` -1.
     pub fn step(self, step: i32) -> Self {
         let index = Self::ALL.iter().position(|mode| *mode == self).unwrap_or(0) as i32;
-        let len = Self::ALL.len() as i32;
-        Self::ALL[(index + step).rem_euclid(len) as usize]
-    }
-}
-
-/// What the front of a standing object looks like in the `Composite`
-/// wall volume.
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum WallFace {
-    /// Each inked column of its glyph runs straight down to the floor, as
-    /// the glyph extruded would look from the front.
-    #[default]
-    Extruded,
-    /// A solid face.
-    Block,
-    /// A checkered half-tone.
-    Shade,
-    /// Rows of bricks.
-    Bricks,
-}
-
-impl WallFace {
-    pub const ALL: [Self; 4] = [Self::Extruded, Self::Block, Self::Shade, Self::Bricks];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Extruded => "extruded",
-            Self::Block => "block",
-            Self::Shade => "shade",
-            Self::Bricks => "bricks",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|face| face.name() == name)
-    }
-
-    /// The next face, or the previous one with `step` -1.
-    pub fn step(self, step: i32) -> Self {
-        let index = Self::ALL.iter().position(|face| *face == self).unwrap_or(0) as i32;
         let len = Self::ALL.len() as i32;
         Self::ALL[(index + step).rem_euclid(len) as usize]
     }
