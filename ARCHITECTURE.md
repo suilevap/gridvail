@@ -196,6 +196,15 @@ and renderers must not import it.
   `ExtrudedWallRendererPlugin` adds a perspective camera plus shared wall and
   floor meshes beneath that text layer. A small GPU texture carries the same
   visibility and CPU-light results to the procedural floor shader.
+- `rendering/voxels.rs` (`VoxelRendererPlugin`, `--renderer voxels`,
+  desktop only) is an experiment in a different look: a 3D world of glyph
+  voxels under the 3D wall backend's camera. Walls are stacks of cubes
+  with `#` on every face, the floor a glyph tile a cell, actors and items
+  their glyphs standing up facing the camera, and every `LightSource` a
+  point light (casting shadows unless it is the player's). Glyph pictures
+  come from `assets/fonts/unscii-8-atlas.png` (`tools/glyph_atlas.py`).
+  It reads visibility and positions only; the text renderer keeps the HUD
+  and its map is hidden. Portals are not shown.
 - `rendering/floor.rs` (`FloorShaderPlugin`, added by `main.rs` because it
   needs a GPU) draws the floor under the text with
   `assets/shaders/floor.wgsl`: one quad over the window whose shader turns
@@ -211,8 +220,8 @@ and renderers must not import it.
 - `app/` wires the concrete Gridvail/PavEcsLiteGame port together. The bundled
   map choice and exact spawn bundles live in `app/map.rs`; domain composition,
   phase ordering, and compatibility decisions live in `app/mod.rs`.
-- `main.rs` installs the animation step, selects the text or hybrid 3D-wall
-  renderer, installs
+- `main.rs` installs the animation step, selects the text, hybrid 3D-wall
+  or glyph-voxel renderer, installs
   `DebugPerformancePlugin`, optionally installs `AgentApiPlugin`, and owns the
   window/screenshot harness.
 

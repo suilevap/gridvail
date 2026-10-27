@@ -261,6 +261,7 @@ direction, and where new foundational versus game-specific code belongs.
 ```sh
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
+cargo run -- --renderer voxels --map assets/maps/bounce.txt  # a 3D world of glyph voxels (desktop only)
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk through portals too

@@ -34,12 +34,12 @@ const FLOOR_DEPTH: f32 = 1.0;
 const FLOOR_BRIGHTNESS: f32 = 0.35;
 const BILLBOARD_CENTER_HEIGHT: f32 = 12.0;
 const CAMERA_PITCH: f32 = 55.0_f32.to_radians();
-const CAMERA_FOV: f32 = 50.0_f32.to_radians();
+pub(super) const CAMERA_FOV: f32 = 50.0_f32.to_radians();
 /// Camera yaw and distance at zoom 1 and no view rotation.
 const CAMERA_YAW: f32 = -45.0_f32.to_radians();
 const CAMERA_DISTANCE: f32 = 280.0;
 /// Zoom change per mouse wheel notch.
-const WHEEL_ZOOM: f32 = 0.065;
+pub(super) const WHEEL_ZOOM: f32 = 0.065;
 const PALETTE_SIZE: usize = 16;
 const DUNGEON_SHADER: &str = "shaders/dungeon_material.wgsl";
 
@@ -111,17 +111,17 @@ struct FloorTexture {
 }
 
 /// Perspective camera placement derived from the view camera.
-struct CameraRig {
+pub(super) struct CameraRig {
     focus: Vec3,
     yaw: f32,
-    distance: f32,
+    pub(super) distance: f32,
 }
 
 impl CameraRig {
     /// Orbits the view camera's centre: the view's turn becomes yaw (the map
     /// turns counter-clockwise on screen as the camera orbits clockwise) and
     /// its zoom brings the camera closer.
-    fn of(camera: &ViewCamera, grid: &MapGrid) -> Self {
+    pub(super) fn of(camera: &ViewCamera, grid: &MapGrid) -> Self {
         Self {
             focus: grid_to_world_f(camera.to_map(Vec2::ZERO), grid.width, grid.height),
             yaw: CAMERA_YAW - camera.rotation,
@@ -138,7 +138,7 @@ struct ExtrudedWall {
 }
 
 #[derive(Component)]
-struct WallCamera;
+pub(super) struct WallCamera;
 
 #[allow(clippy::too_many_arguments)]
 fn setup(
@@ -284,7 +284,7 @@ fn move_camera(
     }
 }
 
-fn camera_transform(rig: &CameraRig) -> Transform {
+pub(super) fn camera_transform(rig: &CameraRig) -> Transform {
     let horizontal = rig.distance * CAMERA_PITCH.cos();
     let offset = Vec3::new(
         rig.yaw.cos() * horizontal,

@@ -27,7 +27,7 @@ use pav_ecs_game_bevy_port::model::{
     SettingsMenu, ViewCamera, Vis, VisibilityMap,
 };
 #[cfg(not(target_family = "wasm"))]
-use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
+use pav_ecs_game_bevy_port::rendering::{ExtrudedWallRendererPlugin, VoxelRendererPlugin};
 use pav_ecs_game_bevy_port::rendering::{FloorShaderPlugin, TextRendererPlugin, FLOOR_TILES};
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
 use pav_ecs_game_bevy_port::simulation::room_plans::RoomPlanners;
@@ -99,9 +99,13 @@ fn main() -> AppExit {
             FloorShaderPlugin,
             TouchControlPlugin,
         ));
-    if renderer == Renderer::Walls3d {
+    if renderer != Renderer::Text {
         #[cfg(not(target_family = "wasm"))]
-        app.add_plugins(ExtrudedWallRendererPlugin);
+        if renderer == Renderer::Walls3d {
+            app.add_plugins(ExtrudedWallRendererPlugin);
+        } else {
+            app.add_plugins(VoxelRendererPlugin);
+        }
         // The page refuses native-only options before the game starts.
         #[cfg(target_family = "wasm")]
         unreachable!("the web build has no 3D renderer");
@@ -201,6 +205,8 @@ enum Renderer {
     #[default]
     Text,
     Walls3d,
+    /// A 3D world of glyph voxels.
+    Voxels,
 }
 
 /// Bevy's default agent API port. The web build has no agent API, and the
@@ -333,7 +339,8 @@ impl Options {
                 renderer = Some(match args.next().as_deref() {
                     Some("text") => Renderer::Text,
                     Some("3d-walls") => Renderer::Walls3d,
-                    _ => panic!("--renderer must be text or 3d-walls"),
+                    Some("voxels") => Renderer::Voxels,
+                    _ => panic!("--renderer must be text, 3d-walls or voxels"),
                 });
             },
             "--room-planner": value if room_planner.is_none() => {
@@ -426,6 +433,8 @@ mod option_tests {
         assert!(options.reveal);
         assert_eq!(options.portal_turn, PortalTurn::KeepNorth);
         assert_eq!(options.room_planner, RoomPlanners::RISE_SINK);
+        let voxels = Options::parse_with(|_| ["--renderer", "voxels"].map(String::from));
+        assert_eq!(voxels.renderer, Renderer::Voxels);
     }
 
     #[test]
