@@ -4,13 +4,13 @@
 //! separately by the executable, so another renderer can consume the same
 //! `RenderBuffers` without changing the game.
 
+mod intro;
 mod map;
 mod transition;
 
+pub use intro::{intro_arrival, Intro, IntroLayout};
 pub use map::{bundled_index, bundled_map, CurrentMap, LoadMap, MapPlugin, MapText, BUNDLED_MAPS};
-pub use transition::{
-    intro_scene, Arrival, Intro, IntroLayout, IntroScene, TransitionPhase, TransitionRoom,
-};
+pub use transition::{Arrival, TransitionPhase, TransitionRoom};
 
 use bevy::prelude::*;
 

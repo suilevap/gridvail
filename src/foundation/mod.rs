@@ -2,3 +2,4 @@
 
 pub mod fov;
 pub mod portal;
+pub mod scatter;

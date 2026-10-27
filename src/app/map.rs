@@ -19,7 +19,8 @@ use crate::model::*;
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::{wall_bundle, Rules};
 
-use super::transition::{begin_transition, Arrival, Intro};
+use super::intro::{intro_arrival, Intro};
+use super::transition::{begin_transition, Arrival};
 
 const MAP_TEXT: &str = include_str!("../../assets/maps/map1.txt");
 const WALL_RULE_TEXT: &str = include_str!("../../assets/rules/wall_rule.txt");
@@ -83,10 +84,10 @@ impl Plugin for MapPlugin {
     }
 }
 
-/// Spawns the first map, coming together from the title with an [`Intro`].
+/// Spawns the first map, coming together from the intro's with an [`Intro`].
 fn construct_map(mut commands: Commands, map: Res<MapText>, intro: Option<Res<Intro>>) {
     let mut grid = MapGrid::new(1, 1);
-    let arrival = intro.map(|intro| Arrival::Intro(intro.0));
+    let arrival = intro.map(|intro| intro_arrival(intro.0, map.0));
     build_map(&mut commands, &mut grid, map.0, None, arrival);
     commands.insert_resource(grid);
     commands.insert_resource(Rules {
