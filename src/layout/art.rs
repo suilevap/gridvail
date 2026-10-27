@@ -1,7 +1,11 @@
 //! Text art: a picture drawn in characters, `X`/`x` for walls and anything
 //! else for floor, such as a title spelled out in walls.
 
+use std::f32::consts::SQRT_2;
+
 use bevy::prelude::*;
+
+use super::{Layout, LayoutRequest, LayoutSource, Oval};
 
 /// Parsed text art: its size and its wall cells, from its top-left corner.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -45,6 +49,35 @@ impl Art {
     }
 }
 
+/// Lays `art` out centred on the request's centre, kept inside the map, in
+/// the oval through its corners plus `margin` cells; nothing if it does not
+/// fit.
+#[derive(Clone, Debug)]
+pub struct ArtLayout {
+    pub art: Art,
+    pub margin: f32,
+}
+
+impl ArtLayout {
+    pub fn new(art: Art, margin: f32) -> Self {
+        Self { art, margin }
+    }
+}
+
+impl LayoutSource for ArtLayout {
+    fn layout(&self, request: &LayoutRequest) -> Option<Layout> {
+        let corner = self.art.corner_near(request.centre, request.bounds)?;
+        let size = self.art.size;
+        // An oval through a rectangle's corners is √2 times its half size.
+        let frame = Oval {
+            centre: corner.as_vec2() + (size - 1).as_vec2() / 2.0,
+            radii: size.as_vec2() / 2.0 * SQRT_2 + self.margin,
+        };
+        let walls = self.art.walls.iter().map(|&p| corner + p).collect();
+        Some(Layout { walls, frame })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,5 +106,17 @@ mod tests {
             Some(IVec2::new(7, 4))
         );
         assert_eq!(art.corner_near(IVec2::ZERO, IVec2::new(2, 6)), None);
+    }
+
+    #[test]
+    fn its_layout_holds_every_wall_in_its_frame() {
+        let source = ArtLayout::new(Art::parse("X.X\n.X.\nX.X"), 0.0);
+        let request = LayoutRequest {
+            bounds: IVec2::new(10, 6),
+            centre: IVec2::new(9, 0),
+        };
+        let layout = source.layout(&request).unwrap();
+        assert_eq!(layout.walls.len(), 5);
+        super::super::tests::check(&layout, &request);
     }
 }

@@ -3,6 +3,8 @@
 use bevy::prelude::*;
 use rand::{RngExt, SeedableRng};
 
+use super::{Layout, LayoutRequest, LayoutSource, Oval};
+
 /// Cells within the oval at `centre` with `radii`, inside a `bounds`-sized
 /// grid, each picked with chance `density`; the same for the same `seed`.
 pub fn scatter_in_oval(
@@ -21,6 +23,32 @@ pub fn scatter_in_oval(
         .filter(|&p| inside(p))
         .filter(|_| rng.random_bool(density.clamp(0.0, 1.0)))
         .collect()
+}
+
+/// Walls scattered within `radius` cells of the request's centre, each cell
+/// a wall with chance `density`; the same for the same `seed`.
+#[derive(Clone, Copy, Debug)]
+pub struct ScatterLayout {
+    pub radius: f32,
+    pub density: f64,
+    pub seed: u64,
+}
+
+impl LayoutSource for ScatterLayout {
+    fn layout(&self, request: &LayoutRequest) -> Option<Layout> {
+        let frame = Oval {
+            centre: request.centre.as_vec2(),
+            radii: Vec2::splat(self.radius),
+        };
+        let walls = scatter_in_oval(
+            frame.centre,
+            frame.radii,
+            request.bounds,
+            self.density,
+            self.seed,
+        );
+        Some(Layout { walls, frame })
+    }
 }
 
 #[cfg(test)]
@@ -48,5 +76,21 @@ mod tests {
             .all(|p| (p.as_vec2() - Vec2::ONE).length() <= 4.0));
         assert_eq!(cells, scatter(7));
         assert_ne!(cells, scatter(8));
+    }
+
+    #[test]
+    fn its_layout_is_around_the_centre() {
+        let source = ScatterLayout {
+            radius: 3.0,
+            density: 0.4,
+            seed: 2,
+        };
+        let request = LayoutRequest {
+            bounds: IVec2::new(8, 8),
+            centre: IVec2::new(1, 6),
+        };
+        let layout = source.layout(&request).unwrap();
+        assert!(!layout.walls.is_empty());
+        super::super::tests::check(&layout, &request);
     }
 }

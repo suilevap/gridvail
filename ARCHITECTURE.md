@@ -3,8 +3,8 @@
 The code is arranged from reusable foundations toward the concrete game:
 
 ```text
-foundation  content  model  schedule
-     ↑        ↑       ↑       ↑
+foundation  content  layout  model  schedule
+     ↑        ↑        ↑       ↑       ↑
      simulation  vision  navigation  lighting  animation  presentation
           ↑               ↑
           ai  →  locomotion
@@ -29,15 +29,20 @@ and renderers must not import it.
   implementation and its ring/range scratch storage live here, with its
   portal-aware variant (`PortalFovComputer`: windows through portal faces,
   nested to any depth) and the rigid grid transforms portals are made of
-  (`portal::CellTransform`), and cells scattered at random by seed
-  (`scatter`). Grid
+  (`portal::CellTransform`). Grid
   pathfinding is one level lower still, in its own workspace crate,
   `crates/gridvail-path`, with no dependencies: its core searches any graph
   (`Space`), and its `grid` feature adds the grid the game uses.
 - `content/` parses external map and tile-rule formats (and the `@room`
-  layout blocks and `@next` line after a map), and text art (`art`: a
-  picture drawn with `X` walls, such as a title). It does not spawn ECS
+  layout blocks and `@next` line after a map). It does not spawn ECS
   entities or decide which map is active.
+- `layout/` holds the ways to lay out walls, as plain data: a
+  `LayoutSource` turns a `LayoutRequest` (a map's size and a point to build
+  around) into a `Layout` (walls and the `Oval` they fill), one source per
+  file: text art (`ArtLayout`, a picture drawn with `X` walls), cells
+  scattered by seed (`ScatterLayout`), and `Fallback`, which tries one and
+  then another. It knows nothing of entities or how walls appear; a new way
+  to lay out walls is a new file implementing the trait.
 - `model/` contains ECS data, split into actors, spatial state, vision,
   lighting, world resources, and presentation buffers. It contains no systems.
 - `schedule.rs` defines startup and update phase sets. It contains no systems
@@ -220,8 +225,9 @@ and renderers must not import it.
   remembers). Its phases (`TransitionPhase`): shown walls stand, with the
   camera on them; their area narrows onto the player as the camera
   returns; the room switches, the player's sight comes back (explored
-  cells not in sight are forgotten) and the circle left around them closes. `app/intro.rs` is the game's intro (`Intro`): it builds the
-  first map's shown walls from the title art or from scattered noise.
+  cells not in sight are forgotten) and the circle left around them closes. `app/intro.rs` is the game's intro (`Intro`): it picks a
+  layout source (the title as text art falling back to noise, or noise)
+  and hands its walls and frame to the transition as shown walls.
   Domain composition,
   phase ordering, and compatibility decisions live in `app/mod.rs`.
 - `main.rs` installs the animation step, selects the text or hybrid 3D-wall
@@ -240,7 +246,8 @@ allocate. `tests/allocations.rs` protects the warmed steady-turn boundary.
 
 When adding code, place it in the lowest layer that can own it:
 
-1. Pure algorithm or container: `foundation`.
+1. Pure algorithm or container: `foundation`; a way to lay out walls:
+   `layout`.
 2. File-format parser: `content`.
 3. Data with no behavior: `model`.
 4. Reusable world mutation and its registration: the matching domain plugin.

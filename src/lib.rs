@@ -10,6 +10,7 @@ pub mod camera;
 pub mod content;
 pub mod debug_ui;
 pub mod foundation;
+pub mod layout;
 pub mod lighting;
 pub mod locomotion;
 pub mod model;

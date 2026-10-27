@@ -1,17 +1,13 @@
 //! The game's intro: what its first map comes together from. It only picks
-//! the walls and the area to show them in (an [`Arrival::Shown`]); how they
-//! become the map is the transition's job (`transition`), and the pieces
-//! are general: text art (`content::art`) and scattered cells
-//! (`foundation::scatter`).
-
-use std::f32::consts::SQRT_2;
+//! a layout source (`layout`: the title as text art, or noise) and shows
+//! its walls in their frame (an [`Arrival::Shown`]); how they become the map
+//! is the transition's job (`transition`).
 
 use bevy::prelude::*;
 
 use super::transition::Arrival;
-use crate::content::art::Art;
 use crate::content::map::{parse_map, SpawnKind};
-use crate::foundation::scatter::scatter_in_oval;
+use crate::layout::{Art, ArtLayout, Fallback, LayoutRequest, LayoutSource, ScatterLayout};
 use crate::model::RevealArea;
 
 /// The game's title, as text art.
@@ -51,44 +47,49 @@ impl IntroLayout {
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Intro(pub IntroLayout);
 
+impl IntroLayout {
+    /// The layout source it stands for. The title falls back to noise on a
+    /// map too small for it.
+    pub fn source(self) -> Box<dyn LayoutSource> {
+        let noise = ScatterLayout {
+            radius: NOISE_RADIUS,
+            density: NOISE_DENSITY,
+            seed: NOISE_SEED,
+        };
+        match self {
+            Self::Title => Box::new(Fallback {
+                first: ArtLayout::new(Art::parse(TITLE), TITLE_MARGIN),
+                then: noise,
+            }),
+            Self::Noise => Box::new(noise),
+        }
+    }
+}
+
 /// What the map `text` comes together from with `layout`, around its start
-/// (or its middle).
+/// (or its middle): its walls, shown in their frame. A layout that cannot
+/// be laid out arrives as nothing to show.
 pub fn intro_arrival(layout: IntroLayout, text: &str) -> Arrival {
     let (width, height, cells) = parse_map(text);
     let bounds = IVec2::new(width, height);
-    let player = cells
+    let centre = cells
         .iter()
         .find(|cell| cell.kind == SpawnKind::Player)
         .map_or(bounds / 2, |cell| cell.pos);
-    match layout {
-        IntroLayout::Title => art_arrival(&Art::parse(TITLE), bounds, player),
-        IntroLayout::Noise => None,
-    }
-    .unwrap_or_else(|| noise_arrival(bounds, player))
-}
-
-/// `art` centred on `centre` inside the map, shown in the oval through its
-/// corners (plus a margin); `None` if it does not fit.
-fn art_arrival(art: &Art, bounds: IVec2, centre: IVec2) -> Option<Arrival> {
-    let corner = art.corner_near(centre, bounds)?;
-    // An oval through a rectangle's corners is √2 times its half size.
-    let area = RevealArea {
-        centre: corner.as_vec2() + (art.size - 1).as_vec2() / 2.0,
-        radii: art.size.as_vec2() / 2.0 * SQRT_2 + TITLE_MARGIN,
-        hides_sight: true,
-    };
-    let walls = art.walls.iter().map(|&p| corner + p).collect();
-    Some(Arrival::Shown { walls, area })
-}
-
-/// Walls scattered within [`NOISE_RADIUS`] of `centre`, shown in that circle.
-fn noise_arrival(bounds: IVec2, centre: IVec2) -> Arrival {
-    let area = RevealArea {
+    let request = LayoutRequest { bounds, centre };
+    let (walls, frame) = layout
+        .source()
+        .layout(&request)
+        .map_or((Vec::new(), None), |laid| (laid.walls, Some(laid.frame)));
+    let frame = frame.unwrap_or(crate::layout::Oval {
         centre: centre.as_vec2(),
-        radii: Vec2::splat(NOISE_RADIUS),
+        radii: Vec2::ZERO,
+    });
+    let area = RevealArea {
+        centre: frame.centre,
+        radii: frame.radii,
         hides_sight: true,
     };
-    let walls = scatter_in_oval(area.centre, area.radii, bounds, NOISE_DENSITY, NOISE_SEED);
     Arrival::Shown { walls, area }
 }
 
@@ -107,7 +108,7 @@ mod tests {
     fn the_title_is_in_sight_and_little_else() {
         let map1 = include_str!("../../assets/maps/map1.txt");
         let (walls, area) = shown(intro_arrival(IntroLayout::Title, map1));
-        assert_eq!(walls.len(), Art::parse(TITLE).walls.len());
+        assert_eq!(walls.len(), crate::layout::Art::parse(TITLE).walls.len());
         assert!(walls.iter().all(|&p| area.contains(p)));
         let in_sight = (0..24)
             .flat_map(|y| (0..80).map(move |x| IVec2::new(x, y)))
