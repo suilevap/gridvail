@@ -18,7 +18,9 @@ use bevy::{
 use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::ai::PortalPolicy;
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
-use pav_ecs_game_bevy_port::app::{CurrentMap, GamePlugin, LoadMap, MapText, BUNDLED_MAPS};
+use pav_ecs_game_bevy_port::app::{
+    CurrentMap, GamePlugin, Intro, IntroLayout, LoadMap, MapText, BUNDLED_MAPS,
+};
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
@@ -77,6 +79,9 @@ fn main() -> AppExit {
         }
         #[cfg(target_family = "wasm")]
         app.insert_resource(MapText(bundled_map(&path)));
+    }
+    if let Some(layout) = options.intro {
+        app.insert_resource(Intro(layout));
     }
     app.insert_resource(ClearColor(Color::BLACK))
         .insert_resource(options.motion)
@@ -188,6 +193,8 @@ struct Options {
     wall_face: WallFace,
     /// How rooms that name no planner move their walls between layouts.
     room_planner: String,
+    /// What the map's walls come together from when it loads, if anything.
+    intro: Option<IntroLayout>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -252,6 +259,7 @@ impl Options {
         let mut walls = None;
         let mut wall_face = None;
         let mut room_planner = None;
+        let mut intro = None;
         parse_options!(source, args;
             "--screenshot": native if capture.is_none() => {
                 capture = Some(
@@ -324,6 +332,16 @@ impl Options {
                     _ => panic!("--renderer must be text or 3d-walls"),
                 });
             },
+            "--intro": value if intro.is_none() => {
+                let name = args.next().expect("--intro requires title, noise or off");
+                intro = Some(match name.as_str() {
+                    "off" => None,
+                    name => Some(
+                        IntroLayout::from_name(name)
+                            .expect("--intro must be title, noise or off"),
+                    ),
+                });
+            },
             "--room-planner": value if room_planner.is_none() => {
                 let name = args.next().expect("--room-planner requires a planner name");
                 let planners = RoomPlanners::default();
@@ -351,6 +369,11 @@ impl Options {
             capture.is_some() || record.is_some() || walk.is_empty(),
             "--walk requires --screenshot or --record"
         );
+        // Screenshots and recordings play a walk from a fixed frame, which
+        // the intro's cutscene would hold back: no intro unless asked.
+        let intro = intro.unwrap_or_else(|| {
+            (capture.is_none() && record.is_none()).then_some(IntroLayout::Title)
+        });
         Self {
             capture,
             record,
@@ -366,6 +389,9 @@ impl Options {
             walls: walls.unwrap_or_default(),
             wall_face: wall_face.unwrap_or_default(),
             room_planner: room_planner.unwrap_or(RoomPlanners::default().default),
+            // Screenshots and recordings play a walk from a fixed frame, which
+            // the intro's cutscene would hold back: no intro unless asked.
+            intro,
         }
     }
 }
@@ -421,6 +447,8 @@ mod option_tests {
                 "north",
                 "--room-planner",
                 "rise-sink",
+                "--intro",
+                "noise",
             ]
             .map(String::from)
         });
@@ -429,6 +457,22 @@ mod option_tests {
         assert!(options.reveal);
         assert_eq!(options.portal_turn, PortalTurn::KeepNorth);
         assert_eq!(options.room_planner, RoomPlanners::RISE_SINK);
+        assert_eq!(options.intro, Some(IntroLayout::Noise));
+    }
+
+    #[test]
+    fn the_intro_plays_unless_off_or_recording() {
+        let parse = |args: &[&str]| {
+            Options::parse_with(|_| args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>())
+                .intro
+        };
+        assert_eq!(parse(&[]), Some(IntroLayout::Title));
+        assert_eq!(parse(&["--intro", "off"]), None);
+        assert_eq!(parse(&["--screenshot", "shot.png"]), None);
+        assert_eq!(
+            parse(&["--screenshot", "shot.png", "--intro", "title"]),
+            Some(IntroLayout::Title)
+        );
     }
 
     #[test]
