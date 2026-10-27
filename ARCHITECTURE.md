@@ -198,11 +198,13 @@ and renderers must not import it.
   visibility and CPU-light results to the procedural floor shader.
 - `rendering/voxels.rs` (`VoxelRendererPlugin`, `--renderer voxels`,
   desktop only) is an experiment in a different look: a 3D world of glyph
-  voxels under the 3D wall backend's camera. Walls are stacks of cubes
-  with `#` on every face, the floor a glyph tile a cell, actors and items
-  their glyphs standing up facing the camera, and every `LightSource` a
-  point light (casting shadows unless it is the player's). Glyph pictures
-  come from `assets/fonts/unscii-8-atlas.png` (`tools/glyph_atlas.py`).
+  voxels under the 3D wall backend's camera. Every glyph is solid, its
+  pixels pushed out into blocks: walls are built of them (glyph planks on
+  a dark core, a `#` rim on top), the ground is strewn with small ones,
+  plants grow in clumps, actors and items face the camera, and every
+  `LightSource` is a point light (casting shadows unless it is the
+  player's) with bloom. Glyph pictures come from
+  `assets/fonts/unscii-8-atlas.png` (`tools/glyph_atlas.py`).
   It reads visibility and positions only; the text renderer keeps the HUD
   and its map is hidden. Portals are not shown.
 - `rendering/floor.rs` (`FloorShaderPlugin`, added by `main.rs` because it

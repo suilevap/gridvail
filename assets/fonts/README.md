@@ -12,5 +12,5 @@ size).
 
 `unscii-8-atlas.png` is the font's glyphs as 8×8 white pixels, 16 to a row,
 in the order of the characters in `unscii-8-atlas.txt`: printable ASCII and
-the other characters the game uses. The voxel renderer paints them on its
-cubes and tiles. `python3 tools/glyph_atlas.py` remakes both.
+the other characters the game uses. The voxel renderer builds its solid
+glyphs from them. `python3 tools/glyph_atlas.py` remakes both.
