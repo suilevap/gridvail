@@ -23,6 +23,7 @@ use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
     AnimatedPos, CompassMode, Player, Pos, RevealAll, SettingsMenu, ViewCamera, Vis, VisibilityMap,
+    WallVolume,
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
@@ -80,6 +81,7 @@ fn main() -> AppExit {
     app.insert_resource(ClearColor(Color::BLACK))
         .insert_resource(options.motion)
         .insert_resource(options.compass)
+        .insert_resource(options.walls)
         .insert_resource(PortalPolicy {
             enemies: options.enemy_portals,
         })
@@ -178,6 +180,8 @@ struct Options {
     portal_turn: PortalTurn,
     /// When the compass shows.
     compass: CompassMode,
+    /// How walls stand out of the floor in the text renderer.
+    walls: WallVolume,
     /// How rooms that name no planner move their walls between layouts.
     room_planner: String,
 }
@@ -241,6 +245,7 @@ impl Options {
         let mut enemy_portals = false;
         let mut portal_turn = None;
         let mut compass = None;
+        let mut walls = None;
         let mut room_planner = None;
         parse_options!(source, args;
             "--screenshot": native if capture.is_none() => {
@@ -268,6 +273,13 @@ impl Options {
                 compass = Some(
                     CompassMode::from_name(&name)
                         .expect("--compass must be when-turned, always or off"),
+                );
+            },
+            "--walls": value if walls.is_none() => {
+                let name = args.next().expect("--walls requires flat, stacked, solid or leaning");
+                walls = Some(
+                    WallVolume::from_name(&name)
+                        .expect("--walls must be flat, stacked, solid or leaning"),
                 );
             },
             "--enemy-portals": flag => {
@@ -337,6 +349,7 @@ impl Options {
             enemy_portals,
             portal_turn: portal_turn.unwrap_or_default(),
             compass: compass.unwrap_or_default(),
+            walls: walls.unwrap_or_default(),
             room_planner: room_planner.unwrap_or(RoomPlanners::default().default),
         }
     }

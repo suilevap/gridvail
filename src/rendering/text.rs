@@ -27,7 +27,7 @@ const MAX_FRAME_SIDE: i32 = 192;
 /// player, while the camera may trail them or show them off centre.
 const FRAME_MARGIN: i32 = 4;
 /// Unscii-8 is an 8 px pixel font, drawn at twice its size.
-const CELL_FONT_SIZE: f32 = 16.0;
+pub(super) const CELL_FONT_SIZE: f32 = 16.0;
 
 #[derive(Component)]
 struct HudText;
@@ -42,7 +42,11 @@ pub(super) struct MapCell(pub(super) usize);
 pub(super) struct ObjectSprite {
     position: Vec2,
     lift: f32,
-    depth: u8,
+    pub(super) depth: u8,
+    /// How far it stands out of the floor (`ObjectCell::height`).
+    pub(super) height: f32,
+    /// A wall, which `WallVolume` may draw standing up.
+    pub(super) wall: bool,
     pub(super) shown: bool,
 }
 
@@ -68,7 +72,7 @@ impl ObjectSprite {
 pub(super) struct ObjectSprites(HashMap<(Entity, u16), Entity>);
 
 #[derive(Resource, Clone)]
-pub(super) struct CellFont(Handle<Font>);
+pub(super) struct CellFont(pub(super) Handle<Font>);
 
 /// Glyphs that depend on direction (wall shapes, facing markers), each as
 /// drawn in a view turned 0 to 3 quarter turns counter-clockwise, so they
@@ -123,6 +127,8 @@ impl Plugin for TextRendererPlugin {
             .init_resource::<ObjectSprites>()
             .init_resource::<SettingsMenu>()
             .init_resource::<CompassMode>()
+            .init_resource::<WallVolume>()
+            .init_resource::<super::volume::WallLayers>()
             .add_systems(Startup, setup.in_set(StartupPhase::Renderer))
             .add_systems(
                 Update,
@@ -137,6 +143,7 @@ impl Plugin for TextRendererPlugin {
                     drop_gone_sprites,
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
+                    super::volume::place_wall_layers,
                     update_hud,
                     super::settings::draw_settings,
                     super::settings::draw_compass,
@@ -375,6 +382,8 @@ fn spawn_object_sprites(world: &mut World) {
                     position: object.position,
                     lift: object.lift,
                     depth: object.cell.depth,
+                    height: object.height,
+                    wall: world.get::<Wall>(object.entity).is_some(),
                     shown: false,
                 },
                 Text2d::new(String::with_capacity(32)),
@@ -398,11 +407,13 @@ fn spawn_object_sprites(world: &mut World) {
 }
 
 /// Draws one text sprite per visible object at its animated position.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn place_object_sprites(
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
     index: Res<ObjectSprites>,
     turned: Res<TurnedGlyphs>,
+    volume: Option<Res<WallVolume>>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
     mut drawn: Local<String>,
     mut sprites: Query<(
@@ -414,6 +425,7 @@ pub(super) fn place_object_sprites(
     )>,
 ) {
     let billboards = extruded_walls.is_some();
+    let volume = volume.map_or(WallVolume::Flat, |volume| *volume);
     for (mut sprite, ..) in &mut sprites {
         sprite.shown = false;
     }
@@ -441,6 +453,7 @@ pub(super) fn place_object_sprites(
         sprite.position = object.position;
         sprite.lift = object.lift;
         sprite.depth = object.cell.depth;
+        sprite.height = object.height;
         sprite.shown = true;
         if text.0 != *drawn {
             text.0.clear();
@@ -467,8 +480,16 @@ pub(super) fn place_object_sprites(
             continue;
         }
         // Top-down, a hop shows as a small shift up the screen.
-        let translation = object_translation(&sprite, &camera)
+        let mut translation = object_translation(&sprite, &camera)
             + Vec3::Y * sprite.lift * CELL_SIZE.y * camera.zoom;
+        if volume != WallVolume::Flat {
+            // Seen at a slant, nearer rows (lower on screen) cover the ones
+            // behind them, and a wall's top stands up the screen.
+            translation.z = super::volume::depth_order(&sprite, &camera, volume);
+            if sprite.wall {
+                translation += super::volume::rise(&sprite, &camera, volume).extend(0.0);
+            }
+        }
         if transform.translation != translation {
             transform.translation = translation;
         }
@@ -526,7 +547,7 @@ fn cycle_motion(
 }
 
 /// Objects draw above the ground cells, deeper glyphs on top.
-fn object_translation(sprite: &ObjectSprite, camera: &ViewCamera) -> Vec3 {
+pub(super) fn object_translation(sprite: &ObjectSprite, camera: &ViewCamera) -> Vec3 {
     view_translation(camera, sprite.position) + Vec3::Z * (1.0 + sprite.depth as f32 * 0.1)
 }
 
@@ -592,7 +613,7 @@ fn view_translation(camera: &ViewCamera, map: Vec2) -> Vec3 {
 /// by the rest of the turn, so they lie in the turning picture. Half way,
 /// a glyph tilted +45° and its quarter-turned glyph tilted -45° are the
 /// same shape, so the swap is not seen; at rest glyphs are upright.
-fn glyph_rotation(camera: &ViewCamera) -> Quat {
+pub(super) fn glyph_rotation(camera: &ViewCamera) -> Quat {
     Quat::from_rotation_z(camera.quarter_remainder())
 }
 

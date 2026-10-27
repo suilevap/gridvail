@@ -3,6 +3,7 @@
 mod extruded;
 mod settings;
 mod text;
+mod volume;
 // Desktop only: the web build leaves 3D rendering out to keep its download
 // small.
 #[cfg(not(target_family = "wasm"))]
