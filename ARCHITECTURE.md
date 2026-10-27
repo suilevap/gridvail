@@ -169,7 +169,7 @@ and renderers must not import it.
   Changing `FrameSize` rebuilds the frame. `PresentationPlugin` owns those
   systems and the frame and light-map resources.
 - `model::settings` holds settings the player changes in game
-  (`CompassMode`, `WallVolume`) and the open state of the settings menu (`SettingsMenu`),
+  (`CompassMode`, `WallVolume`, `WallFace`) and the open state of the settings menu (`SettingsMenu`),
   which player input and camera controls check so the menu's keys do not
   also move them. The menu and the compass are drawn by the text renderer
   (`rendering/settings.rs`).
@@ -182,7 +182,11 @@ and renderers must not import it.
   object's glyph at its animated position into a wall map (8 texels per
   cell, height as alpha), and one full-screen shader (`wall_volume.wgsl`)
   extrudes it up the screen, writing the depth the text sprites are sorted
-  by, so what stands hides actors behind it.
+  by, so what stands hides actors behind it. `rendering/composite.rs` is
+  the shader-free `Composite` volume: the text renderer draws a standing
+  object's glyph up the screen as its top, and a face sprite (a pattern
+  baked per glyph and height from the font's pixels) hangs below it where
+  nothing stands in front; walls lie flat between quarter turns.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
   at its animated position, each placed where the view camera shows it. Its

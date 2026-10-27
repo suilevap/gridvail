@@ -145,15 +145,20 @@ next to this file.
 - Settings (an addition): Esc opens a small menu to choose how the view
   behaves through portals that turn (turn with the player or keep north
   up), when the compass shows (when the view is turned, always or off),
-  the motion style and how walls stand (flat, stacked or leaning: see
-  `--walls`). The compass in the bottom-right corner shows where the
+  the motion style and how walls stand (flat, stacked, leaning or
+  composite: see `--walls`, and `--wall-face` for composite faces). The compass in the bottom-right corner shows where the
   map's north, east, south and west lie on screen. While the menu is open,
   movement and camera keys wait.
-- Height (an addition): with `--walls stacked` or `leaning`, objects stand
-  up off the floor, their glyphs extruded up the screen. How tall each
+- Height (an addition): with `--walls stacked`, `leaning` or `composite`,
+  objects stand up off the floor, their glyphs extruded up the screen. How
+  tall each
   glyph stands is set in `assets/rules/statures.txt` (walls and closed
   doors by default; any glyph can be listed), and a `Stature` component
-  gives one object its own height.
+  gives one object its own height. `stacked` and `leaning` extrude glyphs
+  with a shader; `composite` needs none: the glyph is drawn up the screen
+  as the top and a face hangs below it (`--wall-face`: the glyph extruded,
+  a block, a half-tone or bricks), and walls lie flat while the view
+  turns, standing back up at each quarter turn.
 - Enemies through portals (an addition, opt-in with `--enemy-portals`):
   enemies plan paths through portals too, with an A* estimate that knows
   the portals, so searches stay narrow.
@@ -249,7 +254,8 @@ cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up 
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --compass always   # compass: when-turned (default), always or off
-cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
+cargo run -- --walls leaning    # walls with height: flat (default), stacked, leaning or composite
+cargo run -- --walls composite --wall-face bricks  # no shader: top glyph and a face (extruded, block, shade, bricks)
 cargo test --workspace   # 259 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
@@ -395,7 +401,7 @@ https://suilevap.github.io/gridvail/?map=portals&portal-view=north&reveal
 ```
 
 Supported parameters are `motion`, `map`, `reveal`, `portal-view`, `compass`,
-`walls` and `enemy-portals`,
+`walls`, `wall-face` and `enemy-portals`,
 with the same values and defaults as the CLI. `reveal` accepts a bare flag,
 `true`/`1`, or `false`/`0`. Options apply when the page loads.
 Maps are discovered from `assets/maps/*.txt` and embedded at build time;

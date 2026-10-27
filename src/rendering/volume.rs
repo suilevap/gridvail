@@ -45,7 +45,7 @@ use super::text::{ObjectSprite, TurnedGlyphs, CELL_FONT_BYTES, CELL_SIZE};
 /// stature (times how far it has risen) over this.
 const MAX_STATURE: f32 = 4.0;
 /// The font's design size: one atlas and wall map texel per font pixel.
-const GLYPH_PX: usize = 8;
+pub(super) const GLYPH_PX: usize = 8;
 /// Atlas slots per side.
 const ATLAS_SLOTS: usize = 16;
 /// The render layer only the wall map camera sees.
@@ -204,10 +204,12 @@ fn setup(
     });
 }
 
-/// Rasterizes `ch` into atlas slot `slot`, without antialiasing.
-fn rasterize(ch: char, slot: usize, atlas: &mut Image) {
+/// The cell font's glyph for `ch` at its 8 px design size, without
+/// antialiasing: which of its pixels are inked, by row then column.
+pub(super) fn glyph_ink(ch: char) -> [[bool; GLYPH_PX]; GLYPH_PX] {
+    let mut ink = [[false; GLYPH_PX]; GLYPH_PX];
     let Some(font) = FontRef::from_index(CELL_FONT_BYTES, 0) else {
-        return;
+        return ink;
     };
     let mut context = ScaleContext::new();
     let mut scaler = context
@@ -220,14 +222,9 @@ fn rasterize(ch: char, slot: usize, atlas: &mut Image) {
         .format(Format::Alpha)
         .render(&mut scaler, font.charmap().map(ch))
     else {
-        return;
+        return ink;
     };
     let placement = image.placement;
-    let Some(data) = atlas.data.as_mut() else {
-        return;
-    };
-    let width = GLYPH_PX * ATLAS_SLOTS;
-    let (slot_x, slot_y) = (slot % ATLAS_SLOTS * GLYPH_PX, slot / ATLAS_SLOTS * GLYPH_PX);
     for row in 0..placement.height as i32 {
         for col in 0..placement.width as i32 {
             let x = placement.left + col;
@@ -236,8 +233,24 @@ fn rasterize(ch: char, slot: usize, atlas: &mut Image) {
                 continue;
             }
             let coverage = image.data[(row as u32 * placement.width + col as u32) as usize];
-            let texel = (slot_y + y as usize) * width + slot_x + x as usize;
-            data[texel * 4 + 3] = if coverage >= 128 { 255 } else { 0 };
+            ink[y as usize][x as usize] = coverage >= 128;
+        }
+    }
+    ink
+}
+
+/// Rasterizes `ch` into atlas slot `slot`.
+fn rasterize(ch: char, slot: usize, atlas: &mut Image) {
+    let ink = glyph_ink(ch);
+    let Some(data) = atlas.data.as_mut() else {
+        return;
+    };
+    let width = GLYPH_PX * ATLAS_SLOTS;
+    let (slot_x, slot_y) = (slot % ATLAS_SLOTS * GLYPH_PX, slot / ATLAS_SLOTS * GLYPH_PX);
+    for (y, row) in ink.iter().enumerate() {
+        for (x, &inked) in row.iter().enumerate() {
+            let texel = (slot_y + y) * width + slot_x + x;
+            data[texel * 4 + 3] = if inked { 255 } else { 0 };
         }
     }
 }
@@ -278,7 +291,7 @@ fn draw_wall_map(
     mut quads: Query<&mut Visibility, (With<Mesh2d>, Without<Sprite>)>,
     mut cameras: Query<(&mut RenderTarget, &mut Transform), Without<Sprite>>,
 ) {
-    let shown = *volume != WallVolume::Flat;
+    let shown = matches!(*volume, WallVolume::Stacked | WallVolume::Leaning);
     let size = IVec2::new(buffers.width, buffers.height);
     let quad = &mut *quad;
     if let Ok(mut visibility) = quads.get_mut(quad.entity) {

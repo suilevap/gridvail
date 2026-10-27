@@ -23,7 +23,7 @@ use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
     AnimatedPos, CompassMode, Player, Pos, RevealAll, SettingsMenu, ViewCamera, Vis, VisibilityMap,
-    WallVolume,
+    WallFace, WallVolume,
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
@@ -82,6 +82,7 @@ fn main() -> AppExit {
         .insert_resource(options.motion)
         .insert_resource(options.compass)
         .insert_resource(options.walls)
+        .insert_resource(options.wall_face)
         .insert_resource(PortalPolicy {
             enemies: options.enemy_portals,
         })
@@ -183,6 +184,8 @@ struct Options {
     compass: CompassMode,
     /// How walls stand out of the floor in the text renderer.
     walls: WallVolume,
+    /// The front of standing objects in the composite wall volume.
+    wall_face: WallFace,
     /// How rooms that name no planner move their walls between layouts.
     room_planner: String,
 }
@@ -247,6 +250,7 @@ impl Options {
         let mut portal_turn = None;
         let mut compass = None;
         let mut walls = None;
+        let mut wall_face = None;
         let mut room_planner = None;
         parse_options!(source, args;
             "--screenshot": native if capture.is_none() => {
@@ -277,10 +281,19 @@ impl Options {
                 );
             },
             "--walls": value if walls.is_none() => {
-                let name = args.next().expect("--walls requires flat, stacked or leaning");
+                let name = args.next().expect("--walls requires flat, stacked, leaning or composite");
                 walls = Some(
                     WallVolume::from_name(&name)
-                        .expect("--walls must be flat, stacked or leaning"),
+                        .expect("--walls must be flat, stacked, leaning or composite"),
+                );
+            },
+            "--wall-face": value if wall_face.is_none() => {
+                let name = args
+                    .next()
+                    .expect("--wall-face requires extruded, block, shade or bricks");
+                wall_face = Some(
+                    WallFace::from_name(&name)
+                        .expect("--wall-face must be extruded, block, shade or bricks"),
                 );
             },
             "--enemy-portals": flag => {
@@ -351,6 +364,7 @@ impl Options {
             portal_turn: portal_turn.unwrap_or_default(),
             compass: compass.unwrap_or_default(),
             walls: walls.unwrap_or_default(),
+            wall_face: wall_face.unwrap_or_default(),
             room_planner: room_planner.unwrap_or(RoomPlanners::default().default),
         }
     }
