@@ -15,16 +15,6 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> params: vec4<f32>;
 // Standing objects from above: lit colour times alpha, height as alpha.
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var wall_map: texture_2d<f32>;
-// x: 1 when light fades with height above the floor.
-@group(#{MATERIAL_BIND_GROUP}) @binding(5) var<uniform> shading: vec4<f32>;
-
-// Light from the floor: an object's own light is full at the floor and
-// fades by this factor per cell of height, so a taller wall's top is darker
-// than a lower one's under the same light.
-const FLOOR_LIGHT_FALLOFF: f32 = 0.9;
-// Sides are this much darker than a top at the same height, so the glyph's
-// outline still shows on top.
-const SIDE_SHADE: f32 = 0.8;
 
 struct Fragment {
     @location(0) color: vec4<f32>,
@@ -86,18 +76,10 @@ fn fragment(in: VertexOutput) -> Fragment {
             continue;
         }
         let own = wall.rgb / wall.a;
-        // Within a pixel of its height: the object's top, in its own light.
+        // Within a pixel of its height: the object's top, in its own light;
+        // its sides darker toward the floor.
         let at_top = h > height - 1.0;
-        var color: vec3<f32>;
-        if shading.x > 0.5 {
-            let cells_up = h / (params.y * camera.w);
-            let fade = exp(-cells_up * FLOOR_LIGHT_FALLOFF);
-            color = own * fade * select(SIDE_SHADE, 1.0, at_top);
-        } else if at_top {
-            color = own;
-        } else {
-            color = own * (0.3 + 0.4 * h / height);
-        }
+        let color = own * select(0.3 + 0.4 * h / height, 1.0, at_top);
         // The draw order sprites get (`depth_order`), by the cell it is in.
         let cell = floor(map + 0.5);
         let z = 1.5 - dot(to_screen(cell), lean) / 16384.0;

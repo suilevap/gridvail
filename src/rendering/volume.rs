@@ -36,7 +36,7 @@ use swash::{
 };
 
 use crate::lighting::palette_color;
-use crate::model::{GlyphStatures, RenderBuffers, Stature, ViewCamera, WallLight, WallVolume};
+use crate::model::{GlyphStatures, RenderBuffers, Stature, ViewCamera, WallVolume};
 use crate::schedule::{GamePhase, StartupPhase};
 
 use super::text::{ObjectSprite, TurnedGlyphs, CELL_FONT_BYTES, CELL_SIZE};
@@ -85,17 +85,13 @@ struct WallVolumeMaterial {
     /// xy: the frame's origin, zw: its size, in cells.
     #[uniform(2)]
     frame: Vec4,
-    /// x: the tallest stature allowed in px at zoom 1 (the wall map's
-    /// alpha is height over it), y: cell px, z: wall map texels per cell,
-    /// w: the tallest object in the frame in px at zoom 1.
+    /// x: wall height in px at zoom 1, y: cell px, z: wall map texels per
+    /// cell.
     #[uniform(3)]
     params: Vec4,
-    /// Standing objects from above: lit colour times alpha, height as alpha.
+    /// The walls from above: lit colour times height, height as alpha.
     #[texture(4)]
     wall_map: Handle<Image>,
-    /// x: 1 when light fades with height above the floor (`WallLight`).
-    #[uniform(5)]
-    shading: Vec4,
 }
 
 impl Material2d for WallVolumeMaterial {
@@ -174,7 +170,6 @@ fn setup(
         frame: Vec4::ZERO,
         params: Vec4::ZERO,
         wall_map,
-        shading: Vec4::ZERO,
     });
     // The main 2D camera never moves; the quad covers any window.
     let entity = commands
@@ -270,7 +265,6 @@ pub(super) fn depth_order(sprite: &ObjectSprite, camera: &ViewCamera, volume: Wa
 fn draw_wall_map(
     mut commands: Commands,
     volume: Res<WallVolume>,
-    wall_light: Res<WallLight>,
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
     turned: Res<TurnedGlyphs>,
@@ -402,16 +396,6 @@ fn draw_wall_map(
             texels,
             tallest * CELL_SIZE.y,
         ),
-        Vec4::new(
-            if *wall_light == WallLight::Floor {
-                1.0
-            } else {
-                0.0
-            },
-            0.0,
-            0.0,
-            0.0,
-        ),
     ];
     let unchanged = materials.get(&quad.material).is_some_and(|material| {
         [
@@ -419,7 +403,6 @@ fn draw_wall_map(
             material.offset_lean,
             material.frame,
             material.params,
-            material.shading,
         ] == uniforms
     });
     if !unchanged {
@@ -429,7 +412,6 @@ fn draw_wall_map(
                 material.offset_lean,
                 material.frame,
                 material.params,
-                material.shading,
             ] = uniforms;
         }
     }

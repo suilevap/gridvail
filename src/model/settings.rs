@@ -89,39 +89,6 @@ impl WallVolume {
     }
 }
 
-/// How standing objects are shaded (`WallVolume`).
-#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum WallLight {
-    /// Their own light, darker toward the floor.
-    #[default]
-    Gradient,
-    /// Their own light, full at the floor and fading with height in
-    /// cells: a taller wall's top is darker than a lower one's.
-    Floor,
-}
-
-impl WallLight {
-    pub const ALL: [Self; 2] = [Self::Gradient, Self::Floor];
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Gradient => "gradient",
-            Self::Floor => "floor",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|mode| mode.name() == name)
-    }
-
-    /// The next mode, or the previous one with `step` -1.
-    pub fn step(self, step: i32) -> Self {
-        let index = Self::ALL.iter().position(|mode| *mode == self).unwrap_or(0) as i32;
-        let len = Self::ALL.len() as i32;
-        Self::ALL[(index + step).rem_euclid(len) as usize]
-    }
-}
-
 /// The settings menu. While it is open it takes the arrow keys, so the
 /// player and the camera wait.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]

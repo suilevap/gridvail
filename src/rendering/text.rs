@@ -130,7 +130,6 @@ impl Plugin for TextRendererPlugin {
             .init_resource::<SettingsMenu>()
             .init_resource::<CompassMode>()
             .init_resource::<WallVolume>()
-            .init_resource::<WallLight>()
             .add_systems(Startup, setup.in_set(StartupPhase::Renderer))
             .add_systems(
                 Update,
