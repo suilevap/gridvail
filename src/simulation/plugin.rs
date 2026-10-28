@@ -2,10 +2,10 @@ use bevy::prelude::*;
 use rand::SeedableRng;
 
 use crate::model::{
-    CollisionBuffer, ControlScheme, MapGrid, PortalCrossings, SharedRng, Tile, TokenTimer,
-    TurnPacing, TurnState,
+    ChannelDone, CollisionBuffer, ControlScheme, Displace, Impact, MapGrid, PortalCrossings,
+    SharedRng, Tile, TokenTimer, TurnPacing, TurnState,
 };
-use crate::schedule::{GamePhase, PlayerCommands, StartupPhase};
+use crate::schedule::{ActionStage, GamePhase, PlayerCommands, StartupPhase};
 
 use super::*;
 
@@ -32,6 +32,34 @@ impl Plugin for SimulationPlugin {
             .init_resource::<CommitBuffer>()
             .init_resource::<super::room_plans::RoomPlanners>()
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(self.rng_seed)))
+            .add_message::<ChannelDone>()
+            .add_message::<Displace>()
+            .add_message::<Impact>()
+            // A turn's actions, in order: begun ones go on, input is read,
+            // actors decide, and the effects play out before the moves.
+            .configure_sets(
+                Update,
+                (
+                    ActionStage::Ongoing,
+                    PlayerCommands,
+                    ActionStage::Decide,
+                    ActionStage::Effects,
+                    ActionStage::Movement,
+                    ActionStage::Hits,
+                    ActionStage::Damage,
+                )
+                    .chain()
+                    .after(recharge_tokens)
+                    .before(move_commands)
+                    .in_set(GamePhase::Simulation),
+            )
+            .add_systems(
+                Update,
+                (
+                    channel.in_set(ActionStage::Ongoing),
+                    displace.in_set(ActionStage::Movement),
+                ),
+            )
             .add_systems(
                 Startup,
                 (size_commit_buffer, tile_system)

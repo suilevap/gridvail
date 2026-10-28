@@ -2,7 +2,9 @@
 
 #![allow(clippy::type_complexity)]
 
+mod channel;
 mod control;
+mod displace;
 mod items;
 mod lifecycle;
 mod motion;
@@ -15,7 +17,9 @@ mod rooms;
 mod tiles;
 mod turn;
 
+pub use channel::*;
 pub use control::*;
+pub use displace::*;
 pub use items::*;
 pub use lifecycle::*;
 pub use motion::*;

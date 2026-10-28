@@ -160,7 +160,7 @@ fn get_state(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
             &MoveCommand,
             Option<&Inventory>,
             Option<&Health>,
-            Option<&Selection>,
+            Option<&Selected>,
         ), With<Player>>();
         let (position, tokens, command, inventory, health, selection) = players
             .single(world)
@@ -190,10 +190,10 @@ fn get_state(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
         })
         .collect::<Vec<_>>();
     let strike_cells = world
-        .query::<(&Pos, &Telegraph, &Striker)>()
+        .query::<(&Pos, &Telegraph, &Weapon)>()
         .iter(world)
-        .flat_map(|(pos, telegraph, striker)| {
-            striker
+        .flat_map(|(pos, telegraph, weapon)| {
+            weapon
                 .shape
                 .cells(pos.0, telegraph.dir)
                 .map(Position::from)

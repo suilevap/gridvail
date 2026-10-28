@@ -4,9 +4,11 @@
 //! separately by the executable, so another renderer can consume the same
 //! `RenderBuffers` without changing the game.
 
+mod actors;
 mod intro;
 mod map;
 
+pub use actors::{ActorKind, ActorKinds, Tree};
 pub use intro::{intro_arrival, Intro, IntroLayout, IntroPlugin};
 pub use map::{bundled_index, bundled_map, CurrentMap, LoadMap, MapPlugin, MapText, BUNDLED_MAPS};
 
@@ -15,10 +17,12 @@ use bevy::prelude::*;
 use crate::ai::AiPlugin;
 use crate::camera::CameraPlugin;
 use crate::combat::CombatPlugin;
+use crate::damage::DamagePlugin;
 use crate::locomotion::LocomotionPlugin;
 use crate::navigation::NavigationPlugin;
 use crate::presentation::PresentationPlugin;
 use crate::schedule::{GamePhase, StartupPhase};
+use crate::selection::SelectionPlugin;
 use crate::service::ServicesPlugin;
 use crate::simulation::SimulationPlugin;
 use crate::transition::TransitionPlugin;
@@ -61,6 +65,8 @@ impl Plugin for GamePlugin {
             NavigationPlugin,
             ServicesPlugin,
             AiPlugin,
+            DamagePlugin,
+            SelectionPlugin,
             CombatPlugin,
             LocomotionPlugin,
             VisionPlugin,

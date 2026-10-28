@@ -11,7 +11,7 @@
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::ai::PortalPolicy;
-use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
+use pav_ecs_game_bevy_port::app::{ActorKinds, GamePlugin, MapText};
 use pav_ecs_game_bevy_port::lighting::YELLOW;
 use pav_ecs_game_bevy_port::model::*;
 use pav_ecs_game_bevy_port::navigation::{NavMap, PathService};
@@ -81,12 +81,6 @@ impl Game {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .insert_resource(portals)
-            // Scenarios are about where enemies go: the player outlasts
-            // every strike rather than going down and starting over.
-            .insert_resource(CombatRules {
-                player_hp: 1000,
-                ..default()
-            })
             .insert_resource(Services::new(ServiceSet { paths }))
             .init_resource::<ButtonInput<KeyCode>>()
             .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
@@ -94,6 +88,11 @@ impl Game {
             )))
             .insert_resource(MapText(map))
             .add_plugins(GamePlugin);
+        // Scenarios are about where enemies go: everyone outlasts every
+        // strike rather than going down (and the player starting over).
+        for kind in app.world_mut().resource_mut::<ActorKinds>().0.values_mut() {
+            kind.hp = 1000;
+        }
         let mut game = Self {
             app,
             map,

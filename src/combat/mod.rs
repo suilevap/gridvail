@@ -1,63 +1,54 @@
-//! Combat: picking targets, maneuvers, telegraphed strikes and damage.
+//! Combat: what attacks do, composed from small systems that each answer
+//! one message. See `COMBAT.md` for the design.
 //!
-//! See `COMBAT.md` for the design. The pieces are kept apart so each can
-//! be extended on its own:
+//! - `perform_maneuvers`: a `ContextAction` (from `selection`) by an actor
+//!   with `Maneuvers` becomes a `Hit` and `Displace`ments;
+//! - `ready_weapons` and `strike`: a `UseWeapon` (from the AI) aims a
+//!   `Weapon` (`Telegraph`) and winds it up (`Channeling`); when that is
+//!   done its cells are struck: a `Hit` on each;
+//! - `hits_deal_damage`, `critical_hits` (on `Exposed` targets) and
+//!   `impacts_deal_damage` (an `Impact` from a blocked displacement) turn
+//!   what landed into `Damage`, which `damage` takes off `Health`.
 //!
-//! - what can be picked and pushed is data on the target (`Targetable`,
-//!   `Movable`, its own `Maneuvers`), not a kind of entity: an enemy, a
-//!   crate or a lamp alike;
-//! - what each second direction does is a `Maneuver` (where the engager and
-//!   the target end up, the damage), looked up by how the direction relates
-//!   to the one the target was picked in;
-//! - a strike's cells are a `StrikeShape` in the striker's frame, so any
-//!   shape works and moves with the striker;
-//! - damage only travels as `Hurt` messages, so anything can hurt anything
-//!   with `Health`, and whatever reacts to damage reads them.
-//!
-//! Who strikes when is the AI's decision: it puts a `Telegraph` on a
-//! striker. Who is caught off guard is too: it writes `Exposed`.
+//! Each reads and writes messages and components only, so a new move, a
+//! new weapon or a new reaction to hits is data or one more system.
 
-#![allow(clippy::type_complexity)]
+mod hits;
+mod maneuvers;
+mod weapons;
 
-mod engage;
-mod strikes;
-
-pub use engage::*;
-pub use strikes::*;
+pub use hits::*;
+pub use maneuvers::*;
+pub use weapons::*;
 
 use bevy::prelude::*;
 
 use crate::model::*;
-use crate::schedule::{GamePhase, PlayerCommands};
-use crate::simulation::{move_commands, recharge_tokens};
+use crate::schedule::{ActionStage, GamePhase, MarkCells};
+use crate::simulation::channel;
 
 pub struct CombatPlugin;
 
 impl Plugin for CombatPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CombatRules>()
-            .init_resource::<CellMarks>()
-            .add_message::<Hurt>()
-            .add_message::<Defeated>()
-            .add_message::<CancelIntent>()
+        app.init_resource::<CriticalHit>()
+            .init_resource::<ImpactDamage>()
+            .add_message::<Hit>()
+            .add_message::<UseWeapon>()
             .add_systems(
                 Update,
                 (
-                    // Strikes land at the start of the striker's turn,
-                    // before anyone acts in it.
-                    (give_player_health, land_strikes)
-                        .chain()
-                        .after(recharge_tokens)
-                        .before(PlayerCommands),
-                    (keyboard_cancel, engage)
-                        .chain()
-                        .after(PlayerCommands)
-                        .before(move_commands),
-                    take_damage.after(engage).before(move_commands),
+                    strike.after(channel).in_set(ActionStage::Ongoing),
+                    (perform_maneuvers, ready_weapons).in_set(ActionStage::Effects),
+                    (hits_deal_damage, critical_hits, impacts_deal_damage)
+                        .in_set(ActionStage::Hits),
                 )
                     .in_set(GamePhase::Simulation),
             )
-            .add_systems(Update, mark_cells.in_set(GamePhase::Visibility));
+            .add_systems(
+                Update,
+                mark_strikes.in_set(MarkCells).in_set(GamePhase::Visibility),
+            );
     }
 }
 

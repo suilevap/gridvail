@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
-use crate::model::{FrameSize, MapGrid, RenderBuffers, StaticLight};
-use crate::schedule::{GamePhase, StartupPhase};
+use crate::model::{CellMarks, FrameSize, MapGrid, RenderBuffers, StaticLight};
+use crate::schedule::{GamePhase, MarkCells, StartupPhase};
 
 use super::{compose_frame, render_light_layers, DynamicLight};
 
@@ -11,7 +11,14 @@ pub struct PresentationPlugin;
 impl Plugin for PresentationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FrameSize>()
+            .init_resource::<CellMarks>()
             .add_systems(Startup, setup_buffers.in_set(StartupPhase::Presentation))
+            .add_systems(
+                Update,
+                clear_cell_marks
+                    .before(MarkCells)
+                    .in_set(GamePhase::Visibility),
+            )
             .add_systems(Update, render_light_layers.in_set(GamePhase::Lighting))
             .add_systems(
                 Update,
@@ -20,6 +27,11 @@ impl Plugin for PresentationPlugin {
                     .in_set(GamePhase::Presentation),
             );
     }
+}
+
+/// Marks are listed afresh every frame.
+fn clear_cell_marks(mut marks: ResMut<CellMarks>) {
+    marks.0.clear();
 }
 
 /// The frame is `FrameSize` (change it to resize the frame), independent of

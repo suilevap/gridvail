@@ -119,7 +119,7 @@ pub struct Hunter;
 pub enum EnemyAct {
     /// Just noticed the player: freezes for a beat.
     Alert,
-    /// Bumping into the adjacent player.
+    /// Attacking the adjacent player, this way: using its weapon.
     Attack(IVec2),
     /// Nothing to do this turn.
     #[default]
@@ -160,8 +160,7 @@ impl EnemyAct {
         step_toward: impl Fn(IVec2, IVec2) -> Option<IVec2>,
     ) -> Option<IVec2> {
         match self {
-            Self::Attack(step) => Some(*step),
-            Self::Alert | Self::Hold | Self::Rest => Some(IVec2::ZERO),
+            Self::Alert | Self::Attack(_) | Self::Hold | Self::Rest => Some(IVec2::ZERO),
             Self::Think(_) => None,
             Self::Move(_, path) => Some(
                 path.next_after(pos)

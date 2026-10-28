@@ -26,7 +26,6 @@ pub fn perceive(
             &Pos,
             &Tokens,
             Has<DestroyRequested>,
-            Has<Telegraph>,
             Option<&FovResult>,
             Option<&TraversalPrefs>,
             &mut EnemyMind,
@@ -35,12 +34,10 @@ pub fn perceive(
     >,
 ) {
     let player = players.iter().next().map(|pos| pos.0);
-    for (pos, tokens, doomed, winding_up, sight, prefs, mut mind) in enemies.iter_mut() {
+    for (pos, tokens, doomed, sight, prefs, mut mind) in enemies.iter_mut() {
         let mind = mind.bypass_change_detection();
         mind.pos = pos.0;
-        // A wound-up strike is the enemy's next turn: it decides nothing
-        // until the strike lands.
-        mind.has_turn = !turn.simulation && !doomed && !winding_up && tokens.count > 0;
+        mind.has_turn = !turn.simulation && !doomed && tokens.count > 0;
         if !mind.has_turn {
             continue;
         }
@@ -126,33 +123,25 @@ pub fn perceive_objectives(
     }
 }
 
-/// Turn each enemy's act into this turn's step.
+/// Turn each enemy's act into this turn's step, and an attack into using
+/// its weapon (the attack's step is a wait: the weapon takes the turn).
 ///
 /// A thinking enemy takes no step yet: it keeps its turn while its path is on
-/// its way, and its tree is entered again on the next frame. An attack by a
-/// `Striker` winds up a strike (a `Telegraph`, landed by `combat` on its next
-/// turn) and waits; without one it bumps.
+/// its way, and its tree is entered again on the next frame.
 pub fn carry_out(
-    mut commands: Commands,
     nav: Res<NavMap>,
-    mut enemies: Query<(
-        Entity,
-        &EnemyAct,
-        &EnemyMind,
-        &mut MoveCommand,
-        Has<Striker>,
-    )>,
+    mut weapons: MessageWriter<UseWeapon>,
+    mut enemies: Query<(Entity, &EnemyAct, &EnemyMind, &mut MoveCommand)>,
 ) {
-    for (enemy, act, mind, mut command, strikes) in enemies.iter_mut() {
+    for (enemy, act, mind, mut command) in enemies.iter_mut() {
         if !mind.has_turn {
             continue;
         }
-        if let (EnemyAct::Attack(dir), true) = (act, strikes) {
-            commands.entity(enemy).insert(Telegraph { dir: *dir });
-            command.target = IVec2::ZERO;
-            command.relative = true;
-            command.active = true;
-            continue;
+        if let EnemyAct::Attack(dir) = act {
+            weapons.write(UseWeapon {
+                user: enemy,
+                dir: *dir,
+            });
         }
         if let Some(step) = act.step(mind.pos, |from, to| nav.step_toward(from, to)) {
             command.target = step;

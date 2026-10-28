@@ -628,7 +628,8 @@ fn update_hud(
             &Tokens,
             Option<&Inventory>,
             Option<&Health>,
-            Option<&Selection>,
+            Option<&Selected>,
+            Option<&Maneuvers>,
         ),
         With<Player>,
     >,
@@ -642,12 +643,10 @@ fn update_hud(
     mut hud: Query<&mut Text, With<HudText>>,
 ) {
     let scheme = scheme.map_or(ControlScheme::default(), |scheme| *scheme);
-    let (health, selection) = players
-        .iter()
-        .next()
-        .map_or((None, None), |(.., health, selection)| {
-            (health.copied(), selection.copied())
-        });
+    let combat = players.iter().next().map(|(.., health, selected, moves)| {
+        let target_hp = selected.and_then(|selected| healths.get(selected.target).ok());
+        (health, selected.map(|_| (target_hp, moves)))
+    });
     let (position, tokens, held_keys) = players
         .iter()
         .next()
@@ -699,26 +698,42 @@ fn update_hud(
                 .map_or("off", |operator| operator.portal_turn.name()),
         )
         .expect("writing to String cannot fail");
-        if let Some(health) = health {
-            write!(text.0, "\nhp {}/{}", health.hp, health.max)
-                .expect("writing to String cannot fail");
-        }
-        if let Some(selection) = selection {
-            text.0.push_str(" | target");
-            if let Ok(hp) = healths.get(selection.target) {
-                write!(text.0, " {}/{} hp", hp.hp, hp.max).expect("writing to String cannot fail");
-            }
-            let cancel = match scheme {
-                ControlScheme::Keyboard => "C cancels",
-                ControlScheme::Touch => "tap cancels",
-            };
-            write!(
-                text.0,
-                ": same way lunge, sideways push, back yank | {cancel}"
-            )
-            .expect("writing to String cannot fail");
+        if let Some((health, pick)) = combat {
+            write_combat(&mut text.0, health, pick, scheme).expect("writing to String cannot fail");
         }
     }
+}
+
+/// The player's hit points and, with a target picked, its hit points and
+/// what each second direction does to it.
+fn write_combat(
+    text: &mut String,
+    health: Option<&Health>,
+    pick: Option<(Option<&Health>, Option<&Maneuvers>)>,
+    scheme: ControlScheme,
+) -> std::fmt::Result {
+    if let Some(health) = health {
+        write!(text, "\nhp {}/{}", health.hp, health.max)?;
+    }
+    let Some((target_hp, moves)) = pick else {
+        return Ok(());
+    };
+    text.push_str(" | target");
+    if let Some(hp) = target_hp {
+        write!(text, " {}/{} hp", hp.hp, hp.max)?;
+    }
+    if let Some(moves) = moves {
+        write!(
+            text,
+            ": same way {}, sideways {}, back {}",
+            moves.forward.name, moves.side.name, moves.back.name
+        )?;
+    }
+    let cancel = match scheme {
+        ControlScheme::Keyboard => "C cancels",
+        ControlScheme::Touch => "tap cancels",
+    };
+    write!(text, " | {cancel}")
 }
 
 // Used by the 3D walls renderer, which the web build leaves out.

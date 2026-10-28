@@ -1,57 +1,6 @@
 use bevy::prelude::*;
 
-use super::RenderCell;
-
-/// Hit points. Anything with health can be hurt by a maneuver, a slam or a
-/// strike; at zero it is down (see `combat`).
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Health {
-    pub hp: i32,
-    pub max: i32,
-}
-
-impl Health {
-    pub const fn full(max: i32) -> Self {
-        Self { hp: max, max }
-    }
-
-    pub fn is_down(&self) -> bool {
-        self.hp <= 0
-    }
-}
-
-/// Taken by surprise: a hit does critical damage. Whoever knows what the
-/// actor is aware of writes it (the AI, for enemies); combat only reads it.
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Exposed(pub bool);
-
-/// Something that can be picked as the target of a maneuver: moving into it
-/// selects it instead of bumping it. Its `Maneuvers`, if it has its own,
-/// say what each second direction does to it; otherwise the attacker's
-/// `CombatRules::maneuvers`.
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct Targetable;
-
-/// Can be moved by a maneuver. Without it a target stays where it is and
-/// takes the hit as if it were slammed into something.
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct Movable;
-
-/// Picks targets and carries out maneuvers on them (the player).
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct Engager;
-
-/// The target an engager has picked, and the direction it was picked in
-/// (from the engager to it). Picking costs no turn; it stays picked across
-/// turns while the target is next to the engager, until cancelled or used.
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Selection {
-    pub target: Entity,
-    pub dir: IVec2,
-}
-
-/// How the second direction relates to the direction the target was picked
-/// in.
+/// How a second direction relates to the direction a target was picked in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Relation {
     /// The same direction again: into the target.
@@ -75,19 +24,22 @@ impl Relation {
     }
 }
 
-/// What a maneuver does. The target is always moved one cell the way of the
-/// second direction (so forward pushes it on, sideways pushes it aside and
-/// back pulls it into the engager's cell); `follow` moves the engager into
-/// the cell the target leaves.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// One move of a maneuver set: what acting on a picked target does.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Maneuver {
-    pub name: &'static str,
+    pub name: String,
+    /// Damage of the hit, if it hits.
+    pub hit: i32,
+    /// Knocks a `Movable` target one cell the way of the second direction
+    /// (forward pushes it on, sideways aside, back into the actor's cell).
+    pub knock: bool,
+    /// The actor moves into the cell the target was in.
     pub follow: bool,
-    pub damage: i32,
 }
 
-/// A maneuver for each relation of the second direction to the first.
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+/// The moves an actor makes on a picked target, one for each `Relation` of
+/// the second direction to the first (a fighting style, a weapon's moves).
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
 pub struct Maneuvers {
     pub forward: Maneuver,
     pub side: Maneuver,
@@ -95,58 +47,53 @@ pub struct Maneuvers {
 }
 
 impl Maneuvers {
-    /// The MVP's attack: every direction hits; only where the engager and
-    /// the target end up differs.
-    pub const ATTACK: Self = Self {
-        forward: Maneuver {
-            name: "lunge",
-            follow: true,
-            damage: 1,
-        },
-        side: Maneuver {
-            name: "push",
-            follow: false,
-            damage: 1,
-        },
-        back: Maneuver {
-            name: "yank",
-            follow: true,
-            damage: 1,
-        },
-    };
-
-    pub fn get(&self, relation: Relation) -> Maneuver {
+    pub fn get(&self, relation: Relation) -> &Maneuver {
         match relation {
-            Relation::Forward => self.forward,
-            Relation::Side => self.side,
-            Relation::Back => self.back,
+            Relation::Forward => &self.forward,
+            Relation::Side => &self.side,
+            Relation::Back => &self.back,
         }
     }
 }
 
-/// The numbers combat runs on. Insert another before adding `CombatPlugin`
-/// to tune them.
-#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CombatRules {
-    /// The player's hit points.
-    pub player_hp: i32,
-    /// Damage of a hit on an `Exposed` target, in place of the maneuver's.
-    pub critical_damage: i32,
-    /// Extra damage a moved target takes when its way is blocked, and that
-    /// whatever blocked it takes too.
-    pub slam_damage: i32,
-    /// What a target without its own `Maneuvers` answers to.
-    pub maneuvers: Maneuvers,
+/// Can be knocked about by maneuvers.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Movable;
+
+/// An attack landed on `target`: a maneuver's hit or a weapon's strike.
+/// What it costs the target is up to whoever reads it (base damage,
+/// critical hits).
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Hit {
+    pub source: Entity,
+    pub target: Entity,
+    pub damage: i32,
 }
 
-impl Default for CombatRules {
+/// Caught off guard: hits on it are critical. Whoever knows what the actor
+/// is aware of writes it (the AI, for enemies).
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Exposed(pub bool);
+
+/// Extra damage of a hit on an `Exposed` target.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CriticalHit {
+    pub bonus: i32,
+}
+
+impl Default for CriticalHit {
     fn default() -> Self {
-        Self {
-            player_hp: 2,
-            critical_damage: 2,
-            slam_damage: 1,
-            maneuvers: Maneuvers::ATTACK,
-        }
+        Self { bonus: 1 }
+    }
+}
+
+/// Damage an `Impact` does to the mover and to what it was driven into.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImpactDamage(pub i32);
+
+impl Default for ImpactDamage {
+    fn default() -> Self {
+        Self(1)
     }
 }
 
@@ -171,63 +118,29 @@ impl StrikeShape {
     }
 }
 
-/// How an actor strikes: the shape it covers and the damage it does. An
-/// actor without it bumps instead.
+/// A weapon an actor strikes with: the cells it covers, the damage, and
+/// how many turns it is wound up before the strike lands (0: at once).
 #[derive(Component, Clone, Debug, PartialEq, Eq)]
-pub struct Striker {
+pub struct Weapon {
     pub shape: StrikeShape,
     pub damage: i32,
+    pub windup: u8,
 }
 
-impl Default for Striker {
-    fn default() -> Self {
-        Self {
-            shape: StrikeShape::front(),
-            damage: 1,
-        }
-    }
-}
-
-/// A strike wound up: it lands on the striker's next turn on the cells its
-/// shape covers then, counted from where the striker stands by then (moving
-/// it moves the strike), hitting whoever is there.
+/// Where a wound-up weapon will strike: a direction from its wielder, so
+/// moving the wielder moves the strike.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Telegraph {
     pub dir: IVec2,
 }
 
-/// How a marked cell is drawn: whatever stands there in `tint`, or, when
-/// nothing does, the floor as `ground`. Both keep their own colours (light
-/// does not change them).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CellMark {
-    pub ground: RenderCell,
-    pub tint: super::Rgb,
-}
-
-/// Cells marked for the player to see (where a strike lands, what is
-/// picked), drawn where the player sees them. Rebuilt every frame by
-/// whoever marks cells; a later mark of a cell wins.
-#[derive(Resource, Debug, Default)]
-pub struct CellMarks(pub Vec<(IVec2, CellMark)>);
-
-/// Something took damage: `amount` from `source` (none for a slam into a
-/// wall).
+/// `user` uses its weapon toward `dir`; the weapon decides how (at once,
+/// or wound up first).
 #[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Hurt {
-    pub target: Entity,
-    pub amount: i32,
-    pub source: Option<Entity>,
+pub struct UseWeapon {
+    pub user: Entity,
+    pub dir: IVec2,
 }
-
-/// An actor that is not removed when its health runs out (the player) went
-/// down; what happens next is up to the game.
-#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Defeated(pub Entity);
-
-/// The player asked to drop whatever they were composing (a selection).
-#[derive(Message, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct CancelIntent;
 
 #[cfg(test)]
 mod tests {

@@ -1,0 +1,36 @@
+# Who is who on a map, and what they fight with.
+
+# Weapons: damage, turns wound up between aiming and the strike, and the
+# cells they cover, drawn with the wielder `@` facing up and each struck
+# cell `x`.
+
+# The cell in front.
+@weapon jab damage 1 windup 1
+x
+@
+
+# The whole row in front: stepping aside is no escape.
+@weapon sweep damage 1 windup 1
+xxx
+.@.
+
+# Two cells straight ahead: stepping back is no escape.
+@weapon spear damage 1 windup 1
+x
+x
+@
+
+# Moves on a picked target, one for each way the second direction relates
+# to the first: a name, the hit's damage, and whether it knocks the target
+# one cell that way and the mover follows into the cell it leaves.
+@moves blade
+forward lunge hit 1 knock follow
+side push hit 1 knock
+back yank hit 1 knock follow
+
+# Actors by map glyph: a name, the behaviour they run (`enemy` or
+# `hunter`; the player runs none), hit points, and their weapon or moves.
+@actor p player hp 2 moves blade
+@actor e guard tree enemy hp 2 weapon sweep
+@actor s spearman tree enemy hp 2 weapon spear
+@actor h hunter tree hunter hp 2 weapon jab

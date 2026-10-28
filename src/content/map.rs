@@ -23,8 +23,9 @@ use bevy::prelude::*;
 pub enum SpawnKind {
     Wall,
     Player,
-    Enemy,
-    Hunter,
+    /// An actor of the kind its glyph names in the actor roster: any
+    /// lowercase letter without a meaning of its own.
+    Actor(char),
     Electricity,
     Light,
     Acid,
@@ -56,8 +57,6 @@ pub fn spawn_kind_of(c: char) -> Option<SpawnKind> {
     match c {
         'X' | 'x' => Some(SpawnKind::Wall),
         'p' => Some(SpawnKind::Player),
-        'e' => Some(SpawnKind::Enemy),
-        'h' => Some(SpawnKind::Hunter),
         '~' => Some(SpawnKind::Electricity),
         'i' => Some(SpawnKind::Light),
         '%' => Some(SpawnKind::Acid),
@@ -78,6 +77,7 @@ pub fn spawn_kind_of(c: char) -> Option<SpawnKind> {
             horizontal: true,
             vertical: true,
         }),
+        c if c.is_ascii_lowercase() => Some(SpawnKind::Actor(c)),
         _ => None,
     }
 }
@@ -351,7 +351,7 @@ mod tests {
             (IVec2::new(0, 1), SpawnKind::Electricity),
             (IVec2::new(1, 1), SpawnKind::Light),
             (IVec2::new(2, 1), SpawnKind::Acid),
-            (IVec2::new(0, 2), SpawnKind::Enemy),
+            (IVec2::new(0, 2), SpawnKind::Actor('e')),
         ] {
             assert!(
                 cells.contains(&SpawnCell { pos, kind }),
@@ -364,7 +364,7 @@ mod tests {
 
     #[test]
     fn parses_keys_and_doors() {
-        let (_, _, cells) = parse_map("kD.d");
+        let (_, _, cells) = parse_map("kD.?");
         assert_eq!(
             cells.iter().map(|cell| cell.kind).collect::<Vec<_>>(),
             [SpawnKind::Key, SpawnKind::Door]

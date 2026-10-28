@@ -130,10 +130,19 @@ Out, roughly in the order they would follow:
 
 ### As built
 
-- **Timing.** An enemy winds up on its turn; the strike lands at the start
-  of its next turn, before anyone acts in it. The player gets exactly one
-  action in between: step off, or knock the striker so its blow lands
-  elsewhere.
+- **Timing.** An enemy winds up its weapon on its turn; for a weapon wound
+  up one turn the strike lands at the start of the enemy's next turn,
+  before anyone acts in it. The player gets exactly one action in between:
+  step off, or knock the striker so its blow lands elsewhere.
+- **Strike patterns decide the answer.** Each weapon strikes its own cells
+  (drawn as art in `assets/rules/actors.txt`). Against a guard's sweep (the
+  row in front) stepping aside does not help and, of the maneuvers, only a
+  yank is safe: a lunge or a push leaves the player in the row the sweep
+  covers once the guard is knocked. Against a spearman's spear (two cells
+  ahead) stepping back does not help, but stepping aside does. Two kinds
+  side by side ask for different answers at once. This answers the first
+  playtest: a fight with one enemy that only struck the cell in front was
+  no challenge, since any move dodged it.
 - **Marks.** Whatever stands on a cell about to be struck is drawn red, a
   picked target yellow; an empty marked cell shows a red `×`. Lighting does
   not change these colours.
@@ -142,38 +151,40 @@ Out, roughly in the order they would follow:
   takes a fresh press.
 - **Knobs.** `--turn SECONDS` (or `?turn=` on the web) sets how long a turn
   waits for the player; `--hp N` the player's hit points.
-- **Found while building it.**
-  - Enemies see all around them, so one is rarely unaware when the player
-    gets next to it. Critical hits mostly land on the `!` beat, or from
-    darkness and around corners. Sight that depends on facing would make
-    stealth openers a real choice.
-  - With a strike that covers only the cell in front, a player who keeps
-    moving dodges every strike (the enemy tests show a pacing player is
-    never hit). Wider shapes (the cells beside the target too) or enemies
-    that move and strike in one turn would raise the pressure.
+- **Found while building it.** Enemies see all around them, so one is
+  rarely unaware when the player gets next to it. Critical hits mostly land
+  on the `!` beat, or from darkness and around corners. Sight that depends
+  on facing would make stealth openers a real choice.
 
-## Extensibility sketch
+## How it is put together
 
-What the MVP has, and where each extension plugs in:
+Small modules that share only data and messages (see `ARCHITECTURE.md`):
 
-- **Targets are data.** Anything `Targetable` can be picked, anything
-  `Movable` knocked about, anything with `Health` hurt. A crate or a lamp
-  joins in by carrying these, with its own `Maneuvers` if it should answer
-  differently (a crate: shoved, never followed, no damage).
-- **Maneuvers are data.** A `Maneuver` (name, whether the engager follows,
-  damage) for each `Relation` of the second direction to the first. A new
-  verb is a new table; a tool could swap the table the engager uses.
-- **Strike shapes are data.** A `StrikeShape` lists cells in the striker's
-  frame (ahead, to the side), so lines, cones and sweeps need no code.
-- **Damage is a message.** Maneuvers, slams and strikes all send `Hurt`;
-  hazards, fire or electricity later send the same, and reactions to
-  damage read it.
+- **Picking is its own thing** (`selection/`): a `Selector` picks
+  `Selectable` things and turns its next move into a `ContextAction`. What
+  that does is up to whoever answers it: maneuvers today; a door, a lever
+  or a tool tomorrow, without touching picking.
+- **Moves are data.** `Maneuvers` hold one move per `Relation` of the
+  second direction to the first (a name, the hit's damage, whether it
+  knocks the target and the actor follows). A new fighting style is a new
+  `@moves` block in the roster.
+- **Weapons own their strikes.** A `Weapon` (pattern, damage, wind-up) on
+  any actor answers `UseWeapon`: it aims (`Telegraph`) and winds up
+  (`Channeling`), then strikes its cells. The AI only decides to attack.
+  New patterns are new `@weapon` art.
+- **Multi-turn actions are general.** `Channeling` spends an actor's turns
+  before anyone decides, so nothing else needs to check whether an actor
+  is busy.
+- **Knockback is general.** `Displace` moves things together (swaps,
+  chains); a blocked forced move is an `Impact`.
+- **Damage is its own thing** (`damage/`): `Damage` comes off `Health`,
+  whatever sent it. Hits, critical hits and impacts are separate small
+  systems that each send their share; a hazard, fire or a fall can send
+  `Damage` too.
+- **Who is who is data.** Actor kinds, by map glyph, name their
+  behaviour, hit points and weapon or moves (`assets/rules/actors.txt`).
 - **Input is intent.** Keys, swipes and the agent API all write the same
-  `MoveCommand` (and `CancelIntent`); combat reads those, never devices.
-- Still to come: actions in progress beyond a selection (aiming, with a
-  charge), as one component the turn system completes, carries over or
-  drops; and reactions as rules from `(effect, target tags)` to follow-up
-  effects, run from a queue within the turn, for chain reactions.
-- A new enemy type is a behavior tree, tags, HP and a telegraph shape; a new
-  object is tags and reactions; a new tool is an aim shape, a charge curve
-  and effects.
+  `MoveCommand` (and `CancelIntent`); nothing reads devices.
+- Still to come: actions in progress beyond a pick (aiming, with a
+  charge), built on the same pieces; and reactions to impacts and damage
+  (fire, electricity, falling) as more small systems on those messages.

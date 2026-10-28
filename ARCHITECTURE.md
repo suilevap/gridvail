@@ -7,14 +7,16 @@ foundation  content  layout  model  schedule
      ↑        ↑        ↑       ↑       ↑
      simulation  vision  navigation  lighting  animation  presentation
           ↑               ↑                  ↑
-     combat   ai  →  locomotion          transition
+          ai  →  locomotion   selection  combat  damage   transition
              ↑       ↑       ↑
                     app       rendering  agent_api  debug_ui
                       \         |         /         /
                          main
 ```
 
-Arrows point toward dependencies. `transition` sits on `simulation`,
+Arrows point toward dependencies. `selection`, `combat` and `damage` sit
+on `model`, `schedule` and `simulation` and import none of each other; they
+meet only in messages and components. `transition` sits on `simulation`,
 `camera` and `model`. `camera` sits on top of `animation` (it
 eases the view with the same curves) and below `app` and `rendering`.
 `schedule` is the small, neutral contract
@@ -132,34 +134,43 @@ and renderers must not import it.
   needs `GetKey`, which needs `FetchKey(key)` for each known key in turn
   and fails only when every one has; with a key, door pricing lets the next
   plan through the door.
-- `combat/` picks targets, carries out maneuvers, lands telegraphed
-  strikes and takes damage (`COMBAT.md` has the design). It works on data,
-  not kinds of entity: anything `Targetable` can be picked by an `Engager`
-  (the player, given one with its `Health` by `give_player_health`),
-  anything `Movable` knocked about, anything with `Health` hurt, so a crate
-  or a lamp joins in by carrying the same components. `engage` runs after
-  every input has written its `MoveCommand` (the `PlayerCommands` set:
-  keys, swipes, the agent API) and before moves: a move into a target
-  picks it (a `Selection`, which costs no token and is dropped by a
-  `CancelIntent`: a tap, `C`, or the agent API), and the next one is the
-  maneuver: `plan_maneuver` works out, from the target's own `Maneuvers`
-  or `CombatRules::maneuvers`, how the second direction relates to the
-  first (`Relation`: forward, side, back), where both end up (the target
-  always one cell the way of the second direction, the engager following
-  or not) and whether a blocked way slams it; `engage` then moves both on
-  the grid itself, which lets them swap, and spends the turn as a wait.
-  Damage only travels as `Hurt` messages; `take_damage` destroys what runs
-  out, except the player, who is `Defeated` (the app plays the map again).
-  Who strikes is the AI's decision: `ai::carry_out` turns an attack by a
-  `Striker` into a `Telegraph` (a direction; the cells come from the
-  striker's `StrikeShape` in its own frame, counted from wherever it stands
-  when it lands), the enemy's tree is skipped while it waits, and
-  `land_strikes` lands it at the start of its next turn, before anyone
-  acts, on whoever has `Health` there. The AI also writes `Exposed` (not
-  aware of the player, or on its alert beat), which makes a hit critical.
-  `mark_cells` lists strike cells and picked targets in `CellMarks`, which
-  the frame composer draws: whatever stands there tinted, else a glyph on
-  the floor.
+- Fights are put together from small modules that only share data and
+  messages (`COMBAT.md` has the design). A turn's actions go through
+  `schedule::ActionStage`, in order, within the simulation before the
+  moves: `Ongoing` (actions begun earlier go on), `PlayerCommands`
+  (input), `Decide`, `Effects`, `Movement`, `Hits`, `Damage`. Each system
+  names its stage, not its neighbours.
+  - `simulation/channel.rs`: an actor `Channeling` an action of several
+    turns has each turn spent on it (its token taken before anyone
+    decides, so deciders such as the AI need no check) until
+    `ChannelDone`.
+  - `simulation/displace.rs`: `Displace` moves things at once, outside
+    walking, all of a frame's together, so swaps and chains work; a
+    blocked forced one is an `Impact`.
+  - `selection/`: a `Selector` moving into something `Selectable` picks it
+    (`Selected`), free; its next fresh move is a `ContextAction`, its
+    action for the turn, which anything may answer; a `CancelIntent` (a
+    tap, `C`, the agent API) drops the pick. Input layers mark held-on
+    commands (`MoveCommand::repeat`) so a held key never acts twice.
+  - `combat/`: `perform_maneuvers` answers a context action by an actor
+    with `Maneuvers` (one move per `Relation` of the second direction to
+    the first) with a `Hit` and `Displace`ments; `ready_weapons` answers a
+    `UseWeapon` by aiming the `Weapon` (`Telegraph`, a direction from the
+    wielder) and winding it up (`Channeling`), and `strike` hits every cell
+    of its `StrikeShape` when that is done; `hits_deal_damage`,
+    `critical_hits` (on `Exposed` targets, which the AI writes) and
+    `impacts_deal_damage` turn hits and impacts into `Damage`.
+  - `damage/`: `Damage` comes off `Health`; what runs out has `Died` and is
+    destroyed, unless it `KeepOnDeath` (the player: the app plays the map
+    again).
+  - Cells to show the player (strikes, picks) are listed each frame into
+    `CellMarks` by `MarkCells` systems; the frame composer tints whatever
+    stands there, or draws a mark on the floor.
+  - Who is who comes from data: `content/actors.rs` reads the roster
+    (`assets/rules/actors.txt`: actor kinds by map glyph, their behaviour,
+    hit points, weapon or moves; weapons with their strike pattern drawn
+    as art; move sets), and `app::ActorKinds` equips each actor spawned
+    from a map glyph with what its kind names.
 - `lighting/` contains light blending and light colour: a `LightCell` keeps
   a level per kind of light, summed over every light of that kind; each
   kind has a gradient baked into a 256-entry lookup table (`LightLut`), and

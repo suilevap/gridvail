@@ -2,10 +2,10 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXX
 X....X..........i..X.......X
 X.p.......e........X.......X
 X....X......XX.............X
-X....X.....XXX.....X...e...X
+X....X.....XXX.....X...s...X
 X....X.............X...i...X
 XXX.XXX......X.....XXX.XXXXX
 X............X.............X
-X....XXXX....X......e......X
+X....XXXX....X......s......X
 X.......X.......i..........X
 XXXXXXXXXXXXXXXXXXXXXXXXXXXX

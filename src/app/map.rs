@@ -9,9 +9,7 @@
 
 use bevy::prelude::*;
 
-use flatbt_bevy::prelude::Behavior;
-
-use crate::ai::{enemy_tree, hunter_tree};
+use super::ActorKinds;
 use crate::content::map::{parse_map, parse_next, parse_rooms, portal_links, SpawnKind};
 use crate::content::map::{PortalLink, RoomSpec, SpawnCell};
 use crate::content::statures::parse_statures;
@@ -76,6 +74,7 @@ pub struct MapPlugin;
 impl Plugin for MapPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MapText>()
+            .init_resource::<ActorKinds>()
             .add_message::<LoadMap>()
             .add_message::<MapLoaded>()
             .add_systems(Startup, construct_map.in_set(StartupPhase::Content))
@@ -92,10 +91,18 @@ fn construct_map(
     mut commands: Commands,
     map: Res<MapText>,
     planners: Option<Res<RoomPlanners>>,
+    kinds: Res<ActorKinds>,
     mut loaded: MessageWriter<MapLoaded>,
 ) {
     let mut grid = MapGrid::new(1, 1);
-    build_map(&mut commands, &mut grid, map.0, None, planners.as_deref());
+    build_map(
+        &mut commands,
+        &mut grid,
+        map.0,
+        None,
+        planners.as_deref(),
+        &kinds,
+    );
     commands.insert_resource(grid);
     commands.insert_resource(Rules {
         wall: TileRule::parse(WALL_RULE_TEXT),
@@ -129,6 +136,7 @@ fn load_map(
     players: Query<(Entity, &Pos), With<Player>>,
     walls: Query<(&Pos, &Glyph), (With<Wall>, Without<Portal>)>,
     planners: Option<Res<RoomPlanners>>,
+    kinds: Res<ActorKinds>,
     mut loaded: MessageWriter<MapLoaded>,
 ) {
     let Some(&LoadMap(text)) = requests.read().last() else {
@@ -156,7 +164,14 @@ fn load_map(
         commands.entity(room).despawn();
     }
     crossings.0.clear();
-    let start = build_map(&mut commands, &mut grid, text, player, planners.as_deref());
+    let start = build_map(
+        &mut commands,
+        &mut grid,
+        text,
+        player,
+        planners.as_deref(),
+        &kinds,
+    );
     loaded.write(MapLoaded { previous_walls });
     if let (Some(player), Some(was_at)) = (player, was_at) {
         // A map without a start keeps the player where they were, or as
@@ -196,16 +211,16 @@ fn load_map(
 /// with nothing picked.
 pub(super) fn restart_on_defeat(
     mut commands: Commands,
-    mut defeated: MessageReader<Defeated>,
+    mut died: MessageReader<Died>,
     current: Option<Res<CurrentMap>>,
     mut players: Query<(Entity, &mut Health), With<Player>>,
     mut load: MessageWriter<LoadMap>,
 ) {
     let mut restart = false;
-    for &Defeated(entity) in defeated.read() {
+    for &Died(entity) in died.read() {
         if let Ok((player, mut health)) = players.get_mut(entity) {
             health.hp = health.max;
-            commands.entity(player).remove::<Selection>();
+            commands.entity(player).remove::<Selected>();
             restart = true;
         }
     }
@@ -294,6 +309,7 @@ fn build_map(
     text: &'static str,
     player: Option<Entity>,
     planners: Option<&RoomPlanners>,
+    kinds: &ActorKinds,
 ) -> Option<IVec2> {
     let plan = MapPlan::read(text, planners);
     commands.insert_resource(CurrentMap {
@@ -308,9 +324,9 @@ fn build_map(
         let entity = match cell.kind {
             SpawnKind::Player => {
                 start = Some(cell.pos);
-                player.unwrap_or_else(|| spawn_player(commands, cell.pos, cell_count))
+                player.unwrap_or_else(|| spawn_player(commands, cell.pos, cell_count, kinds))
             }
-            kind => spawn_cell(commands, kind, cell.pos, cell_count),
+            kind => spawn_cell(commands, kind, cell.pos, cell_count, kinds),
         };
         // Colliders own their cells (mirrors the first UpdatePosition pass).
         if let Some(blocks_vision) = occupies(cell.kind) {
@@ -332,7 +348,7 @@ fn build_map(
 fn occupies(kind: SpawnKind) -> Option<bool> {
     match kind {
         SpawnKind::Wall | SpawnKind::Portal(_) | SpawnKind::Door => Some(true),
-        SpawnKind::Player | SpawnKind::Enemy | SpawnKind::Hunter => Some(false),
+        SpawnKind::Player | SpawnKind::Actor(_) => Some(false),
         _ => None,
     }
 }
@@ -355,7 +371,13 @@ fn link_portals(commands: &mut Commands, walls: &[(IVec2, Entity)], links: Vec<P
 }
 
 /// Spawns what a map cell of `kind` (anything but the player) holds at `at`.
-fn spawn_cell(commands: &mut Commands, kind: SpawnKind, at: IVec2, cell_count: usize) -> Entity {
+fn spawn_cell(
+    commands: &mut Commands,
+    kind: SpawnKind,
+    at: IVec2,
+    cell_count: usize,
+    kinds: &ActorKinds,
+) -> Entity {
     let marker = |glyph: char, color: Rgb| (Active, Pos(at), Glyph::new(glyph, 0, color));
     let light = |kind: LightKind, radius: i32, value: u8| {
         (
@@ -371,17 +393,11 @@ fn spawn_cell(commands: &mut Commands, kind: SpawnKind, at: IVec2, cell_count: u
         // A portal is a wall; only its open face differs.
         SpawnKind::Wall | SpawnKind::Portal(_) => commands.spawn(wall_bundle(at)),
         SpawnKind::Player => unreachable!("the player is placed by build_map"),
-        SpawnKind::Enemy => commands.spawn((
-            enemy_body(at, cell_count),
-            EnemyMind::default(),
-            Behavior::for_tree(enemy_tree),
-        )),
-        SpawnKind::Hunter => commands.spawn((
-            enemy_body(at, cell_count),
-            (Hunter, Order::default()),
-            EnemyMind::default(),
-            Behavior::for_tree(hunter_tree),
-        )),
+        SpawnKind::Actor(glyph) => {
+            let mut actor = commands.spawn(actor_body(at, cell_count));
+            kinds.get(glyph).equip(&mut actor);
+            actor
+        }
         SpawnKind::Electricity => commands.spawn((
             ElectroField,
             marker('Ω', WHITE),
@@ -421,42 +437,47 @@ fn spawn_cell(commands: &mut Commands, kind: SpawnKind, at: IVec2, cell_count: u
 }
 
 /// A new player at `at`, with the direction marker bound to them.
-fn spawn_player(commands: &mut Commands, at: IVec2, cell_count: usize) -> Entity {
-    let player = commands
-        .spawn((
-            Active,
-            Collider,
-            Pos(at),
-            (
-                Speed::default(),
-                MoveCommand::default(),
-                MoveIntent::default(),
-                PendingPos::default(),
-                PrevPos(at),
-            ),
-            Glyph::new('@', 1, WHITE),
-            Player(0),
-            Inventory::default(),
-            Tokens::new(1),
-            Friction(1),
-            Facing::default(),
-            DirectionBasedOnSpeed,
-            VisualSensor { radius: 16 },
-            PlayerView::with_radius(16),
-            LightSource {
-                radius: 16,
-                kind: LightKind::None,
-                value: 32,
+fn spawn_player(
+    commands: &mut Commands,
+    at: IVec2,
+    cell_count: usize,
+    kinds: &ActorKinds,
+) -> Entity {
+    let mut player = commands.spawn((
+        Active,
+        Collider,
+        Pos(at),
+        (
+            Speed::default(),
+            MoveCommand::default(),
+            MoveIntent::default(),
+            PendingPos::default(),
+            PrevPos(at),
+        ),
+        Glyph::new('@', 1, WHITE),
+        (Player(0), Selector, KeepOnDeath),
+        Inventory::default(),
+        Tokens::new(1),
+        Friction(1),
+        Facing::default(),
+        DirectionBasedOnSpeed,
+        VisualSensor { radius: 16 },
+        PlayerView::with_radius(16),
+        LightSource {
+            radius: 16,
+            kind: LightKind::None,
+            value: 32,
+        },
+        (
+            initial_fov(cell_count),
+            VisibilityMap {
+                revision: u64::MAX,
+                data: vec![Vis::empty(); cell_count],
             },
-            (
-                initial_fov(cell_count),
-                VisibilityMap {
-                    revision: u64::MAX,
-                    data: vec![Vis::empty(); cell_count],
-                },
-            ),
-        ))
-        .id();
+        ),
+    ));
+    kinds.get('p').equip(&mut player);
+    let player = player.id();
     // Bound 'i' direction marker, one step ahead of the player
     // (the original light source belongs to the player).
     commands.spawn((
@@ -480,12 +501,10 @@ fn spawn_player(commands: &mut Commands, at: IVec2, cell_count: usize) -> Entity
 /// Steps of detour an enemy takes rather than queue behind another actor.
 const ENEMY_CROWD_COST: u32 = 4;
 
-/// An enemy's hit points.
-const ENEMY_HP: i32 = 2;
-
-/// What every kind of enemy is made of: a walking, carrying, token-taking
-/// body. Its role adds a mind and a tree.
-fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
+/// What every actor from the roster is made of: a walking, carrying,
+/// token-taking body that can be picked and knocked about. Its kind adds
+/// the rest (`ActorKind::equip`).
+fn actor_body(pos: IVec2, cell_count: usize) -> impl Bundle {
     (
         (Active, Collider, Enemy, Pos(pos)),
         (
@@ -496,13 +515,7 @@ fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
         ),
         Glyph::new('☺', 1, RED),
         Inventory::default(),
-        (
-            Health::full(ENEMY_HP),
-            Targetable,
-            Movable,
-            Exposed::default(),
-            Striker::default(),
-        ),
+        (Selectable, Movable, Exposed::default()),
         (
             Destination::default(),
             TraversalPrefs {

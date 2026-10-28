@@ -19,13 +19,13 @@ use pav_ecs_game_bevy_port::agent_api::{AgentApiPlugin, DEFAULT_AGENT_PORT};
 use pav_ecs_game_bevy_port::ai::PortalPolicy;
 use pav_ecs_game_bevy_port::animation::{MotionStyle, ObjectAnimationPlugin};
 use pav_ecs_game_bevy_port::app::{
-    CurrentMap, GamePlugin, Intro, IntroLayout, LoadMap, MapText, BUNDLED_MAPS,
+    ActorKinds, CurrentMap, GamePlugin, Intro, IntroLayout, LoadMap, MapText, BUNDLED_MAPS,
 };
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
-    AnimatedPos, CombatRules, CompassMode, Player, Pos, RevealAll, SettingsMenu, TokenTimer,
-    ViewCamera, Vis, VisibilityMap, WallVolume,
+    AnimatedPos, CompassMode, Player, Pos, RevealAll, SettingsMenu, TokenTimer, ViewCamera, Vis,
+    VisibilityMap, WallVolume,
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
@@ -86,12 +86,6 @@ fn main() -> AppExit {
     if let Some(seconds) = options.turn {
         app.insert_resource(TokenTimer(Timer::from_seconds(seconds, TimerMode::Once)));
     }
-    if let Some(player_hp) = options.hp {
-        app.insert_resource(CombatRules {
-            player_hp,
-            ..default()
-        });
-    }
     app.insert_resource(ClearColor(Color::BLACK))
         .insert_resource(options.motion)
         .insert_resource(options.compass)
@@ -117,6 +111,9 @@ fn main() -> AppExit {
     }
     app.add_plugins(DebugPerformancePlugin);
     app.world_mut().resource_mut::<CameraOperator>().portal_turn = options.portal_turn;
+    if let Some(hp) = options.hp {
+        app.world_mut().resource_mut::<ActorKinds>().player_mut().hp = hp;
+    }
     if options.reveal {
         app.insert_resource(RevealAll).add_systems(
             Update,
