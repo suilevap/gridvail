@@ -278,7 +278,7 @@ cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same ro
 cargo run -- --intro noise   # the map comes together from noise instead of the title
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
-cargo test --workspace   # 282 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 287 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
