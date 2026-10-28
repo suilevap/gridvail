@@ -151,7 +151,11 @@ next to this file.
   dimmed with the wall shapes joined to the rails they run into, and
   `along-walls` counts floor with a rail running the way a wall glides
   apart, so where walls must cross the floor they glide along rails rather
-  than off them, even the longer way. In `rails.txt` one plate switches two rooms
+  than off them, even the longer way. Over bare floor a wall glides
+  straight; on rails it follows them round corners, turning where a rail
+  runs both ways (`+`, drawn joined to the rails it meets: a corner or a
+  crossing). In `bends.txt` pillars ride a rail loop round its corners and
+  one winds down an S of rail. In `rails.txt` one plate switches two rooms
   alike, but for the rails in the top one: its pillars ride them, while
   the bare room's go the short way across. In `rebuild.txt` a whole hall rebuilds
   itself: its partitions ride rails along every row through three
@@ -291,12 +295,13 @@ cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up 
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --map assets/maps/rails.txt --reveal  # walls riding rails, beside a room without
 cargo run -- --map assets/maps/rebuild.txt --walls leaning  # a hall rebuilding itself on rails
+cargo run -- --map assets/maps/bends.txt --walls leaning  # walls riding rails round corners
 cargo run -- --map assets/maps/rooms.txt --room-planner lines  # the same room, walls sliding along rows and columns, across the floor too
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --intro noise   # the map comes together from noise instead of the title
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
-cargo test --workspace   # 295 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 299 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

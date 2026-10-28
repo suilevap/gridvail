@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::room_plans::{MoveKind, RoomPlanners, SwitchContext, SwitchPlan};
+use super::room_plans::{MoveKind, RoomPlanners, SwitchContext, SwitchPlan, WallMove};
 use super::wall_bundle;
 use crate::model::*;
 
@@ -99,12 +99,14 @@ fn carry_out(
                 commands
                     .entity(wall)
                     .insert((Pos(step.to), Sliding, Tile::wall()));
+                route(commands, wall, &step);
             }
             MoveKind::Sink if animated => {
                 commands
                     .entity(wall)
                     .remove::<(Wall, Collider, Active, Tile)>()
                     .insert((Pos(step.to), Sliding, Sinking));
+                route(commands, wall, &step);
             }
             MoveKind::Sink => commands.entity(wall).despawn(),
             MoveKind::Rise => {}
@@ -114,7 +116,17 @@ fn carry_out(
         if step.kind == MoveKind::Rise {
             let rising = Rising { from: step.from };
             let wall = commands.spawn((wall_bundle(step.to), rising, Sliding)).id();
+            route(commands, wall, step);
             grid.set(step.to, wall);
         }
+    }
+}
+
+/// Marks the route a wall's slide turns along, or that it goes straight.
+fn route(commands: &mut Commands, wall: Entity, step: &WallMove) {
+    if step.via.is_empty() {
+        commands.entity(wall).remove::<SlideRoute>();
+    } else {
+        commands.entity(wall).insert(SlideRoute(step.via));
     }
 }

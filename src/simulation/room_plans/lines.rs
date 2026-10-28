@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use bevy::prelude::*;
 
-use super::{Candidate, RoomPlanner, SwitchContext, SwitchPlan};
+use super::{Candidate, RoomPlanner, SwitchContext, SwitchPlan, WallMove};
 
 /// Walls slide along rows and columns. A cell the new layout loses and one
 /// it gains, in the same row or column, become a slide when every cell
@@ -58,7 +58,10 @@ fn line_slides(switch: &SwitchContext) -> Vec<Candidate> {
                 candidates.push(Candidate {
                     rank: (0, 0, length),
                     cells: (0..=length).map(|i| start + step * i).collect(),
-                    moves,
+                    moves: moves
+                        .into_iter()
+                        .map(|(from, to)| WallMove::slide(from, to))
+                        .collect(),
                 });
             }
         }

@@ -37,40 +37,45 @@ pub enum MoveKind {
     Sink,
 }
 
-/// One wall's part in a switch: every wall slides, from `from` to `to`, and
-/// `kind` says whether it rises first or sinks after.
+/// One wall's part in a switch: every wall slides, from `from` to `to`
+/// (straight, or turning at the cells `via`), and `kind` says whether it
+/// rises first or sinks after.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WallMove {
     pub from: IVec2,
     pub to: IVec2,
     pub kind: MoveKind,
+    pub via: Corners,
 }
 
 impl WallMove {
-    pub fn slide(from: IVec2, to: IVec2) -> Self {
+    fn new(from: IVec2, to: IVec2, kind: MoveKind) -> Self {
         Self {
             from,
             to,
-            kind: MoveKind::Slide,
+            kind,
+            via: Corners::default(),
         }
+    }
+
+    pub fn slide(from: IVec2, to: IVec2) -> Self {
+        Self::new(from, to, MoveKind::Slide)
     }
 
     /// A new wall that rises at `from` and slides to its cell, `to`.
     pub fn rise(from: IVec2, to: IVec2) -> Self {
-        Self {
-            from,
-            to,
-            kind: MoveKind::Rise,
-        }
+        Self::new(from, to, MoveKind::Rise)
     }
 
     /// A wall that goes: it slides from its cell, `from`, to `to` and sinks.
     pub fn sink(from: IVec2, to: IVec2) -> Self {
-        Self {
-            from,
-            to,
-            kind: MoveKind::Sink,
-        }
+        Self::new(from, to, MoveKind::Sink)
+    }
+
+    /// The same move, turning at `corners` on its way.
+    pub fn via(mut self, corners: Corners) -> Self {
+        self.via = corners;
+        self
     }
 
     pub fn rise_at(at: IVec2) -> Self {
@@ -138,12 +143,7 @@ impl SwitchPlan {
                 continue;
             }
             used.extend(&candidate.cells);
-            plan.moves.extend(
-                candidate
-                    .moves
-                    .into_iter()
-                    .map(|(from, to)| WallMove::slide(from, to)),
-            );
+            plan.moves.extend(candidate.moves);
         }
         let to: HashSet<IVec2> = switch.to.iter().copied().collect();
         let from: HashSet<IVec2> = switch.from.iter().copied().collect();
@@ -219,7 +219,7 @@ pub(crate) struct Candidate {
     /// tier, a cost), then a length.
     pub rank: (i32, i32, i32),
     pub cells: Vec<IVec2>,
-    pub moves: Vec<(IVec2, IVec2)>,
+    pub moves: Vec<WallMove>,
 }
 
 /// What a planner sees of a switch.

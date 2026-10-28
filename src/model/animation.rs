@@ -50,3 +50,48 @@ pub struct Sinking;
 /// pace, rather than stepping the way actors walk.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Sliding;
+
+/// The most corners one slide can turn.
+pub const MAX_CORNERS: usize = 8;
+
+/// The cells a slide turns at between where it starts and where it ends, in
+/// order: a wall riding rails that bend. None for a straight slide.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Corners {
+    cells: [IVec2; MAX_CORNERS],
+    len: u8,
+}
+
+impl Corners {
+    /// `None` with more than [`MAX_CORNERS`].
+    pub fn new(cells: &[IVec2]) -> Option<Self> {
+        let mut corners = Self::default();
+        corners.cells.get_mut(..cells.len())?.copy_from_slice(cells);
+        corners.len = cells.len() as u8;
+        Some(corners)
+    }
+
+    pub fn as_slice(&self) -> &[IVec2] {
+        &self.cells[..self.len as usize]
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Cells along the slide from `from` through the corners to `to`.
+    pub fn length(&self, from: IVec2, to: IVec2) -> i32 {
+        let mut length = 0;
+        let mut at = from;
+        for &next in self.as_slice().iter().chain([&to]) {
+            length += (next - at).abs().element_sum();
+            at = next;
+        }
+        length
+    }
+}
+
+/// The corners of the slide a [`Sliding`] object is on, when it turns: the
+/// animation step follows them instead of going straight.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SlideRoute(pub Corners);

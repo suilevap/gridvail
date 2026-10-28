@@ -515,3 +515,56 @@ fn a_whole_room_rebuilds_itself_by_walls_riding_rails() {
         assert_eq!(entities(&mut app), before, "the same walls, slid");
     }
 }
+
+#[test]
+fn walls_ride_rails_round_bends() {
+    // `bends.txt`: two pillars on a rail loop ride round its corners, from
+    // the middle of its top and bottom to the middle of its sides, and one
+    // winds down an S of rail through two corners.
+    let mut app = boot_map(include_str!("../assets/maps/bends.txt"), |app| {
+        app.add_plugins(ObjectAnimationPlugin);
+    });
+    let s_pillar = entity_at(&mut app, IVec2::new(17, 2)).unwrap();
+    let loop_pillars =
+        [IVec2::new(8, 2), IVec2::new(8, 10)].map(|p| entity_at(&mut app, p).unwrap());
+    step(&mut app, KeyCode::ArrowRight);
+
+    let world = app.world();
+    assert_eq!(world.get::<Pos>(s_pillar).unwrap().0, IVec2::new(20, 10));
+    assert_eq!(
+        world.get::<SlideRoute>(s_pillar).unwrap().0.as_slice(),
+        [IVec2::new(17, 5), IVec2::new(20, 5)]
+    );
+    let mut sides: Vec<IVec2> = loop_pillars
+        .iter()
+        .map(|&pillar| world.get::<Pos>(pillar).unwrap().0)
+        .collect();
+    sides.sort_by_key(|p| p.x);
+    assert_eq!(sides, [IVec2::new(2, 6), IVec2::new(14, 6)]);
+    for pillar in loop_pillars {
+        assert_eq!(
+            world.get::<SlideRoute>(pillar).unwrap().0.as_slice().len(),
+            1,
+            "one corner"
+        );
+    }
+
+    // Shown on its way, it keeps to the rails: down column 17, along row 5,
+    // down column 20, never cutting across.
+    let mut shown = Vec::new();
+    for _ in 0..150 {
+        app.update();
+        shown.push(shown_at(&mut app, s_pillar));
+    }
+    for p in &shown {
+        let on_rails = (p.x == 17.0 && p.y <= 5.0)
+            || (p.y == 5.0 && (17.0..=20.0).contains(&p.x))
+            || (p.x == 20.0 && p.y >= 5.0);
+        assert!(on_rails, "{p} is off the rails");
+    }
+    assert!(
+        shown.iter().any(|p| p.y == 5.0 && p.x > 17.5 && p.x < 19.5),
+        "seen along the middle"
+    );
+    assert_eq!(*shown.last().unwrap(), Vec2::new(20.0, 10.0));
+}

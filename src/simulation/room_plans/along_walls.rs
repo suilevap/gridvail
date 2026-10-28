@@ -2,7 +2,8 @@ use std::collections::HashSet;
 
 use bevy::prelude::*;
 
-use super::{Candidate, RoomPlanner, SwitchContext, SwitchPlan};
+use super::{Candidate, RoomPlanner, SwitchContext, SwitchPlan, WallMove};
+use crate::model::Corners;
 use crate::navigation::path::grid::{Cell, Grid};
 use crate::navigation::path::{Lex, PathSearch, Rules};
 
@@ -14,23 +15,24 @@ use crate::navigation::path::{Lex, PathSearch, Rules};
 /// - through cells that are wall in both layouts, one step at a time and
 ///   around corners: each wall on the way shifts one cell along, as a gap
 ///   travels along a wall;
-/// - across empty floor (floor in both layouts, nothing standing on it) in
-///   straight runs from wall to wall: the wall at the run's start glides
-///   to its end.
+/// - across empty floor (floor in both layouts, nothing standing on it)
+///   from wall to wall: the wall at the start glides to the end. Over bare
+///   floor it glides straight; on rails it follows them, turning where a
+///   rail runs both ways (a corner or a crossing).
 ///
-/// Floor with a rail (`Rail`) running the way a wall glides counts apart: of paths crossing the same bare
-/// floor, the one crossing the least floor on rails wins, so where no path
-/// keeps off the floor, walls glide along rails rather than off them. A
-/// path through walls always wins; with none, walls shift as far as they
-/// can along their wall, then glide across the floor, along rails where
-/// they can. In a room inside
-/// a room the inner walls stay inner walls and the outer ones outer.
+/// Floor with a rail (`Rail`) running the way a wall glides counts apart:
+/// of paths crossing the same bare floor, the one crossing the least floor
+/// on rails wins, so where no path keeps off the floor, walls glide along
+/// rails rather than off them. A path through walls always wins; with none,
+/// walls shift as far as they can along their wall, then glide across the
+/// floor, along rails where they can. In a room inside a room the inner
+/// walls stay inner walls and the outer ones outer.
 /// [`LineSlides`](super::LineSlides)' slides are the straight paths.
 ///
-/// Paths are searched with the game's pathfinding (`gridvail_path`): a
-/// floor run is a jump. Each lost cell looks for its [`NEAREST`] nearest
-/// gained cells; the best paths are taken first, and no cell is part of
-/// two. What is left rises or sinks in place.
+/// Paths are searched with the game's pathfinding (`gridvail_path`), the
+/// way a wall glides being the search's state. Each lost cell looks for its
+/// [`NEAREST`] nearest gained cells; the best paths are taken first, and no
+/// cell is part of two. What is left rises or sinks in place.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AlongWalls;
 
@@ -42,6 +44,12 @@ const NEAREST: usize = 8;
 /// A path's cost: bare floor cells crossed, then floor cells on rails, then
 /// steps.
 type Cost = Lex<u32, Lex<u32, u32>>;
+
+/// The way a wall glides across the floor: an index into [`STEPS`], or
+/// [`STILL`] on a wall (or before a step).
+type Heading = u8;
+const STILL: Heading = 4;
+const STEPS: [IVec2; 4] = [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y];
 
 impl RoomPlanner for AlongWalls {
     fn plan(&self, switch: &SwitchContext) -> SwitchPlan {
@@ -67,8 +75,10 @@ impl RoomPlanner for AlongWalls {
                 |cell| moves.added.contains(&moves.pos(cell)),
                 &mut path,
                 |cost, cells| {
-                    candidates.push(moves.candidate(cost, cells));
-                    left -= 1;
+                    if let Some(candidate) = moves.candidate(cost, cells) {
+                        candidates.push(candidate);
+                        left -= 1;
+                    }
                     left > 0
                 },
             );
@@ -78,8 +88,8 @@ impl RoomPlanner for AlongWalls {
 }
 
 /// How walls may move in a switch, as pathfinding rules over the room's
-/// cells (relative to its origin): a step into a wall that stays, or onto
-/// a gained cell, and jumps over straight runs of empty floor.
+/// cells (relative to its origin): steps into walls that stay or onto
+/// gained cells, and glides over empty floor, straight or along rails.
 struct WallMoves<'a> {
     switch: &'a SwitchContext<'a>,
     from: &'a HashSet<IVec2>,
@@ -97,11 +107,6 @@ impl WallMoves<'_> {
         self.switch.room.origin + IVec2::new(cell.x, cell.y)
     }
 
-    fn inside(&self, p: IVec2) -> bool {
-        let room = self.switch.room;
-        p.cmpge(room.origin).all() && p.cmplt(room.origin + room.size).all()
-    }
-
     /// A wall in both layouts, there to shift along.
     fn wall(&self, p: IVec2) -> bool {
         self.from.contains(&p) && self.to.contains(&p) && self.switch.holds_wall(p)
@@ -109,83 +114,90 @@ impl WallMoves<'_> {
 
     /// Empty floor in both layouts, there to glide across.
     fn floor(&self, p: IVec2) -> bool {
-        self.inside(p) && !self.from.contains(&p) && !self.to.contains(&p) && self.switch.is_free(p)
+        !self.from.contains(&p) && !self.to.contains(&p) && self.switch.is_free(p)
     }
 
-    /// Where a path may go next: a wall to shift along, or a gained cell.
+    /// Where a wall stops: a wall to shift along, or a gained cell.
     fn landing(&self, p: IVec2) -> bool {
         self.wall(p) || self.added.contains(&p)
     }
 
-    /// A found path as slides: each wall on it moves on to the next node,
-    /// and it takes up every cell it passes.
-    fn candidate(&self, cost: Cost, nodes: &[Cell]) -> Candidate {
-        let nodes: Vec<IVec2> = nodes.iter().map(|&cell| self.pos(cell)).collect();
-        let mut cells = vec![nodes[0]];
-        for pair in nodes.windows(2) {
-            let step = (pair[1] - pair[0]).signum();
-            let mut p = pair[0];
-            while p != pair[1] {
-                p += step;
-                cells.push(p);
+    /// Whether a wall gliding `heading` over `p` may go on `step`: straight
+    /// on, or turning where a rail at `p` runs both ways.
+    fn may_go(&self, p: IVec2, heading: Heading, step: IVec2) -> bool {
+        let Some(&was) = STEPS.get(heading as usize) else {
+            return true;
+        };
+        step == was
+            || (step != -was
+                && self.floor(p)
+                && self.switch.has_rail(p, was)
+                && self.switch.has_rail(p, step))
+    }
+
+    /// A found path as moves: the walls on it (where it starts, and the
+    /// walls it shifts through) each move on to the next, gliding over the
+    /// floor between and turning where it turns. `None` if one would turn
+    /// more often than a move can.
+    fn candidate(&self, cost: Cost, cells: &[Cell]) -> Option<Candidate> {
+        let cells: Vec<IVec2> = cells.iter().map(|&cell| self.pos(cell)).collect();
+        let mut moves = Vec::new();
+        let (mut from, mut corners) = (cells[0], Vec::new());
+        for (i, &p) in cells.iter().enumerate().skip(1) {
+            if self.landing(p) {
+                moves.push(WallMove::slide(from, p).via(Corners::new(&corners)?));
+                (from, corners) = (p, Vec::new());
+            } else if cells[i + 1] - p != p - cells[i - 1] {
+                corners.push(p);
             }
         }
-        Candidate {
+        Some(Candidate {
             rank: (cost.0 as i32, cost.1 .0 as i32, cost.1 .1 as i32),
             cells,
-            moves: nodes.windows(2).map(|pair| (pair[0], pair[1])).collect(),
-        }
+            moves,
+        })
     }
 }
 
 impl Rules for WallMoves<'_> {
     type Node = Cell;
     type Cost = Cost;
-    type State = ();
+    type State = Heading;
 
     fn state_count(&self) -> usize {
-        1
+        STEPS.len() + 1
     }
 
-    fn state_index(&self, _state: &()) -> usize {
-        0
+    fn state_index(&self, heading: &Heading) -> usize {
+        *heading as usize
     }
 
-    fn start_state(&self, _start: Cell) {}
+    fn start_state(&self, _start: Cell) -> Heading {
+        STILL
+    }
 
-    /// A step costs one; a jump costs the floor it crosses (bare, then on
-    /// rails), and its length.
-    fn step(&self, from: Cell, to: Cell, _state: &()) -> Option<(Cost, ())> {
+    /// A step onto a wall or a gained cell costs one, and stops the glide;
+    /// one over floor costs one, and a floor cell (on a rail running that
+    /// way, or bare).
+    fn step(&self, from: Cell, to: Cell, heading: &Heading) -> Option<(Cost, Heading)> {
         let (from, to) = (self.pos(from), self.pos(to));
-        if !self.landing(to) {
+        let step = to - from;
+        if !self.may_go(from, *heading, step) {
             return None;
         }
-        let length = (to - from).abs().element_sum() as u32;
-        let step = (to - from).signum();
-        let on_rails = (1..length as i32)
-            .filter(|&i| self.switch.has_rail(from + step * i, step))
-            .count() as u32;
-        Some((Lex(length - 1 - on_rails, Lex(on_rails, length)), ()))
-    }
-
-    fn for_each_jump(&self, from: Cell, _state: &(), visit: &mut dyn FnMut(Cell)) {
-        let from = self.pos(from);
-        for step in [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y] {
-            let mut next = from + step;
-            if !self.floor(next) {
-                continue;
-            }
-            while self.floor(next) {
-                next += step;
-            }
-            if self.landing(next) {
-                visit(self.cell(next));
-            }
+        if self.landing(to) {
+            return Some((Lex(0, Lex(0, 1)), STILL));
         }
-    }
-
-    fn has_jumps(&self) -> bool {
-        true
+        if !self.floor(to) {
+            return None;
+        }
+        let heading = STEPS.iter().position(|&s| s == step)? as Heading;
+        let cost = if self.switch.has_rail(to, step) {
+            Lex(0, Lex(1, 1))
+        } else {
+            Lex(1, Lex(0, 1))
+        };
+        Some((cost, heading))
     }
 }
 
@@ -293,6 +305,49 @@ mod tests {
         let plan = AlongWalls.plan(&railed);
         plan.check(&railed).unwrap();
         assert_eq!(slides(&plan), vec![(IVec2::new(1, 1), IVec2::new(1, 5))]);
+    }
+
+    #[test]
+    fn walls_follow_rails_round_their_corners() {
+        // A wall goes at (1, 1) and one comes at (5, 4): no straight way
+        // between them, but a rail runs right along row 1, turns at (5, 1)
+        // and runs down column 5.
+        let from = cells(&[(1, 1)]);
+        let to = cells(&[(5, 4)]);
+        let room = Room::new(IVec2::ZERO, IVec2::splat(8), vec![]);
+        let wall = |p: IVec2| from.contains(&p);
+        let plain = SwitchContext::new(&room, &from, &to, &|_| true, &wall);
+        assert!(slides(&AlongWalls.plan(&plain)).is_empty(), "rise and sink");
+
+        let rail = |p: IVec2, step: IVec2| match (p.x, p.y) {
+            (2..=4, 1) => step.y == 0,
+            (5, 1) => true,
+            (5, 2..=3) => step.x == 0,
+            _ => false,
+        };
+        let railed = SwitchContext::new(&room, &from, &to, &|_| true, &wall).with_rails(&rail);
+        let plan = AlongWalls.plan(&railed);
+        plan.check(&railed).unwrap();
+        assert_eq!(plan.moves.len(), 1);
+        let step = plan.moves[0];
+        assert_eq!((step.from, step.to), (IVec2::new(1, 1), IVec2::new(5, 4)));
+        assert_eq!(step.via.as_slice(), [IVec2::new(5, 1)]);
+    }
+
+    #[test]
+    fn a_wall_does_not_turn_on_bare_floor_or_a_rail_running_one_way() {
+        let from = cells(&[(1, 1)]);
+        let to = cells(&[(5, 4)]);
+        let room = Room::new(IVec2::ZERO, IVec2::splat(8), vec![]);
+        let wall = |p: IVec2| from.contains(&p);
+        // The corner cell runs only across: no turn there.
+        let rail = |p: IVec2, step: IVec2| match (p.x, p.y) {
+            (2..=5, 1) => step.y == 0,
+            (5, 2..=3) => step.x == 0,
+            _ => false,
+        };
+        let railed = SwitchContext::new(&room, &from, &to, &|_| true, &wall).with_rails(&rail);
+        assert!(slides(&AlongWalls.plan(&railed)).is_empty());
     }
 
     #[test]
