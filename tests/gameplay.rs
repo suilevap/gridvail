@@ -170,7 +170,7 @@ fn vision_and_light_fields_stay_sane() {
     assert!(seen > 50, "only {seen} cells visible");
     let idx = (5 * world.resource::<MapGrid>().width + 8) as usize;
     let light = world.resource::<pav_ecs_game_bevy_port::presentation::DynamicLight>();
-    assert!(light.data[idx].value > 1);
+    assert!(light.data[idx].total() > 1);
 }
 
 /// Presses `key` once and waits until the player can act again.

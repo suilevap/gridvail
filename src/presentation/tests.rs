@@ -170,7 +170,10 @@ fn static_light_rebuilds_only_on_change() {
     app.world_mut()
         .run_system_once(render_light_layers)
         .unwrap();
-    assert_eq!(app.world().resource::<DynamicLight>().data[36].value, 100);
+    assert_eq!(
+        app.world().resource::<DynamicLight>().data[36].level(LightKind::Fire),
+        100
+    );
     app.world_mut().get_mut::<FovResult>(lamp).unwrap().revision = 7;
     app.world_mut()
         .run_system_once(render_light_layers)

@@ -48,7 +48,7 @@ fn map1_spawns_all_factions_and_settles() {
     assert!(vis.data.iter().any(|v| v.contains(Vis::VISIBLE)));
     let dyn_light = world.resource::<DynamicLight>();
     assert_eq!(dyn_light.data.len(), (w * h) as usize);
-    assert!(dyn_light.data.iter().any(|c| c.value > 1));
+    assert!(dyn_light.data.iter().any(|c| c.total() > 1));
 
     // Occupancy is consistent: every collider owns its cell.
     let bodies: Vec<(Entity, IVec2)> = world

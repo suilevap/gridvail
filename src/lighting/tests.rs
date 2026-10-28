@@ -9,10 +9,10 @@ fn context(kind: LightKind, value: u8) -> LightContext {
 fn falloff_is_full_at_center_and_fades() {
     let mut center = LightCell::default();
     merge_light(&mut center, 1.0, 0, 0, &context(LightKind::Fire, 100));
-    assert_eq!((center.value, center.kind), (100, LightKind::Fire));
+    assert_eq!(center, LightCell::of(LightKind::Fire, 100));
     let mut edge = LightCell::default();
     merge_light(&mut edge, 1.0, 4, 0, &context(LightKind::Fire, 100));
-    assert_eq!(edge.value, 36);
+    assert_eq!(edge.level(LightKind::Fire), 36);
 }
 
 #[test]
@@ -21,44 +21,74 @@ fn same_kind_saturates_at_255() {
     let context = context(LightKind::Fire, 200);
     merge_light(&mut cell, 1.0, 0, 0, &context);
     merge_light(&mut cell, 1.0, 0, 0, &context);
-    assert_eq!(cell.value, 255);
+    assert_eq!(cell.level(LightKind::Fire), 255);
 }
 
 #[test]
-fn different_kind_wins_only_when_brighter() {
+fn every_kind_keeps_its_own_light() {
     let mut cell = LightCell::default();
     merge_light(&mut cell, 1.0, 0, 0, &context(LightKind::Fire, 100));
     merge_light(&mut cell, 1.0, 0, 0, &context(LightKind::Acid, 50));
-    assert_eq!((cell.value, cell.kind), (100, LightKind::Fire));
-    merge_light(&mut cell, 1.0, 0, 0, &context(LightKind::Acid, 150));
-    assert_eq!((cell.value, cell.kind), (150, LightKind::Acid));
+    merge_light(&mut cell, 1.0, 0, 0, &context(LightKind::None, 20));
+    merge_light(&mut cell, 1.0, 0, 0, &context(LightKind::None, 20));
+    assert_eq!(cell.levels, [40, 100, 0, 50]);
+    assert_eq!(cell.total(), 190);
+    merge_light(&mut cell, 1.0, 0, 0, &context(LightKind::Electricity, 100));
+    assert_eq!(cell.total(), 255, "saturates");
+}
+
+#[test]
+fn one_kind_alone_is_its_gradient() {
+    for kind in LightKind::ALL {
+        for value in [1, 60, 200, 255] {
+            assert_eq!(
+                light_color(&LightCell::of(kind, value)),
+                light_lut(kind).get(value)
+            );
+        }
+    }
+}
+
+#[test]
+fn kinds_mix_by_their_share_at_their_combined_brightness() {
+    let mut cell = LightCell::of(LightKind::Fire, 60);
+    cell.add(LightKind::Electricity, 60);
+    let fire = FIRE.get(120);
+    let electricity = ELECTRICITY.get(120);
+    let half = |a: u8, b: u8| (a as u16 + b as u16).div_ceil(2) as u8;
+    assert_eq!(
+        light_color(&cell),
+        Rgb::new(
+            half(fire.r, electricity.r),
+            half(fire.g, electricity.g),
+            half(fire.b, electricity.b)
+        ),
+        "an even mix of both gradients at 120"
+    );
+    // A faint light barely tints a bright one.
+    let mut lamp = LightCell::of(LightKind::Fire, 200);
+    lamp.add(LightKind::Acid, 2);
+    let color = light_color(&lamp);
+    let lit = FIRE.get(202);
+    assert!(color.r.abs_diff(lit.r) <= 3 && color.g.abs_diff(lit.g) <= 3);
+    assert!(color.b.abs_diff(lit.b) <= 3);
 }
 
 #[test]
 fn no_light_is_black() {
-    for kind in [
-        LightKind::None,
-        LightKind::Fire,
-        LightKind::Electricity,
-        LightKind::Acid,
-    ] {
-        assert_eq!(light_color(&LightCell { value: 0, kind }), BLACK);
+    for kind in LightKind::ALL {
+        assert_eq!(light_color(&LightCell::of(kind, 0)), BLACK);
     }
 }
 
 #[test]
 fn light_brightens_smoothly_with_its_value() {
     let luma = |c: Rgb| c.r as u32 * 299 + c.g as u32 * 587 + c.b as u32 * 114;
-    for kind in [
-        LightKind::None,
-        LightKind::Fire,
-        LightKind::Electricity,
-        LightKind::Acid,
-    ] {
-        let mut previous = light_color(&LightCell { value: 1, kind });
+    for kind in LightKind::ALL {
+        let mut previous = light_color(&LightCell::of(kind, 1));
         assert_ne!(previous, BLACK, "{kind:?}: the least light shows");
         for value in 2..=255 {
-            let color = light_color(&LightCell { value, kind });
+            let color = light_color(&LightCell::of(kind, value));
             assert!(luma(color) >= luma(previous), "{kind:?} {value}");
             for (a, b) in [
                 (color.r, previous.r),
@@ -70,13 +100,7 @@ fn light_brightens_smoothly_with_its_value() {
             previous = color;
         }
     }
-    assert_eq!(
-        light_color(&LightCell {
-            value: 255,
-            kind: LightKind::Fire
-        }),
-        WHITE
-    );
+    assert_eq!(light_color(&LightCell::of(LightKind::Fire, 255)), WHITE);
 }
 
 #[test]
@@ -92,10 +116,7 @@ fn lut_passes_through_its_stops() {
 fn remembered_colours_are_darker_and_greyer() {
     assert_eq!(dimmed(BLACK), BLACK);
     assert!(dimmed(WHITE).r < WHITE.r);
-    let faint = light_color(&LightCell {
-        value: 1,
-        kind: LightKind::None,
-    });
+    let faint = light_color(&LightCell::of(LightKind::None, 1));
     assert!(dimmed(faint).r >= faint.r, "still visible");
     let yellow = dimmed(YELLOW);
     assert!(yellow.r < YELLOW.r && yellow.g < YELLOW.g);

@@ -356,7 +356,7 @@ mod tests {
             .unwrap();
         let light = app.world().resource::<DynamicLight>().data[through];
         // Faded as 2 cells away: 100 * (1 - 4 / 25).
-        assert_eq!((light.value, light.kind), (84, LightKind::Fire));
+        assert_eq!(light.level(LightKind::Fire), 84);
 
         // Without the portal the wall stops it, and (5, 6) stays dark.
         app.world_mut()
@@ -369,8 +369,8 @@ mod tests {
             .run_system_once(render_light_layers)
             .unwrap();
         assert_eq!(
-            app.world().resource::<DynamicLight>().data[through].kind,
-            LightKind::None
+            app.world().resource::<DynamicLight>().data[through].level(LightKind::Fire),
+            0
         );
     }
 

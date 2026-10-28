@@ -24,20 +24,20 @@ impl LightContext {
     }
 }
 
-pub fn merge_light(target: &mut LightCell, fov: f32, x: i32, y: i32, context: &LightContext) {
+/// How much of a light reaches `(x, y)`, seen by it with visibility `fov`:
+/// its base value fading as `1 - distance² / (radius + 1)²`.
+pub fn light_amount(fov: f32, x: i32, y: i32, context: &LightContext) -> u8 {
     let dx = x - context.center_x;
     let dy = y - context.center_y;
     let distance_sq = dx * dx + dy * dy;
     if distance_sq > context.radius_sq {
-        return;
+        return 0;
     }
-    let amount = (fov
-        * (1.0 - distance_sq as f32 * context.inv_radius_sq)
-        * context.base_value as f32) as u8;
-    if target.kind.overlaps(context.kind) {
-        target.value = target.value.saturating_add(amount);
-    } else if amount > target.value {
-        target.value = amount;
-        target.kind = context.kind;
-    }
+    (fov * (1.0 - distance_sq as f32 * context.inv_radius_sq) * context.base_value as f32) as u8
+}
+
+/// Adds a light to the cell at `(x, y)`, to the level of its kind: every
+/// light counts, and the cell's colour mixes them all.
+pub fn merge_light(target: &mut LightCell, fov: f32, x: i32, y: i32, context: &LightContext) {
+    target.add(context.kind, light_amount(fov, x, y, context));
 }
