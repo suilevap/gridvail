@@ -137,6 +137,33 @@ fn static_decor_renders_when_known_but_unseen() {
 }
 
 #[test]
+fn each_frame_cell_records_the_light_it_shows() {
+    let mut app = test_app::headless();
+    let mut light = DynamicLight::sized(64);
+    light.data[0] = LightCell::of(LightKind::Fire, 200);
+    light.data[1] = LightCell::of(LightKind::Fire, 200);
+    light.data[2] = LightCell::of(LightKind::Fire, 200);
+    app.insert_resource(light)
+        .insert_resource(RenderBuffers::new(8, 8));
+    app.world_mut().spawn((
+        Player(0),
+        Pos(IVec2::ZERO),
+        Speed::default(),
+        visibility(&[
+            (IVec2::new(0, 0), Vis::VISIBLE | Vis::KNOWN),
+            (IVec2::new(1, 0), Vis::KNOWN),
+        ]),
+    ));
+    app.world_mut().run_system_once(compose_frame).unwrap();
+    let buffers = app.world().resource::<RenderBuffers>();
+    let lit = crate::lighting::light_color(&LightCell::of(LightKind::Fire, 200));
+    let at = |x| buffers.light[buffers.idx(IVec2::new(x, 0)).unwrap()];
+    assert_eq!(at(0), lit, "seen");
+    assert_eq!(at(1), crate::lighting::dimmed(lit), "remembered");
+    assert_eq!(at(2), Rgb::BLACK, "unknown, though lit");
+}
+
+#[test]
 fn static_light_rebuilds_only_on_change() {
     let mut app = test_app::headless();
     app.insert_resource(StaticLight::new())

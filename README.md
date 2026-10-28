@@ -176,8 +176,9 @@ next to this file.
 - Settings (an addition): Esc opens a small menu to choose how the view
   behaves through portals that turn (turn with the player or keep north
   up), when the compass shows (when the view is turned, always or off),
-  the motion style and how walls stand (flat, stacked or leaning: see
-  `--walls`). The compass in the bottom-right corner shows where the
+  the motion style, how walls stand (flat, stacked or leaning: see
+  `--walls`) and how light is drawn (flat, smooth or glow: see `--light`).
+  The compass in the bottom-right corner shows where the
   map's north, east, south and west lie on screen. While the menu is open,
   movement and camera keys wait.
 - Height (an addition): with `--walls stacked` or `leaning`, objects stand
@@ -185,6 +186,11 @@ next to this file.
   glyph stands is set in `assets/rules/statures.txt` (walls and closed
   doors by default; any glyph can be listed), and a `Stature` component
   gives one object its own height.
+- Light effects (an addition, `--light`): with `smooth`, light blends
+  between cells across standing walls, pixel by pixel, instead of one
+  colour a cell; with `glow` (the default) the brightest light also blooms,
+  and the air glows with the light it passes through, a haze rising toward
+  the viewer like the walls do. `flat` draws every cell in its own light.
 - Enemies through portals (an addition, opt-in with `--enemy-portals`):
   enemies plan paths through portals too, with an A* estimate that knows
   the portals, so searches stay narrow.
@@ -283,6 +289,7 @@ cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same ro
 cargo run -- --intro noise   # the map comes together from noise instead of the title
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
+cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
 cargo test --workspace   # 288 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check

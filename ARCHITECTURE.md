@@ -187,7 +187,7 @@ and renderers must not import it.
   Changing `FrameSize` rebuilds the frame. `PresentationPlugin` owns those
   systems and the frame and light-map resources.
 - `model::settings` holds settings the player changes in game
-  (`CompassMode`, `WallVolume`) and the open state of the settings menu (`SettingsMenu`),
+  (`CompassMode`, `WallVolume`, `LightEffects`) and the open state of the settings menu (`SettingsMenu`),
   which player input and camera controls check so the menu's keys do not
   also move them. The menu and the compass are drawn by the text renderer
   (`rendering/settings.rs`).
@@ -200,7 +200,17 @@ and renderers must not import it.
   object's glyph at its animated position into a wall map (8 texels per
   cell, height as alpha), and one full-screen shader (`wall_volume.wgsl`)
   extrudes it up the screen, writing the depth the text sprites are sorted
-  by, so what stands hides actors behind it.
+  by, so what stands hides actors behind it. With smooth light it colours
+  each pixel from the light map below, blended between cells.
+- `rendering/light.rs` (`LightEffectsPlugin`) turns the light each frame
+  cell shows (`RenderBuffers::light`, filled by `compose_frame`) into
+  textures with a texel per cell for the text renderer's shaders, sent to
+  the GPU only when they change: the light map, and with `LightEffects::Glow`
+  a glow map, the brightest light blurred on the CPU. A full-screen quad
+  over everything (`light_glow.wgsl`, blended additively) blooms the glow
+  and gathers the light along each pixel's view ray as haze. The shaders
+  share the view's screen-to-map functions (`view.wgsl`) and blend the
+  textures between cells themselves, the same on every GPU.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
   at its animated position, each placed where the view camera shows it. Its

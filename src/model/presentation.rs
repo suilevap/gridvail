@@ -143,6 +143,10 @@ pub struct RenderBuffers {
     pub ground: Vec<RenderCell>,
     pub previous_ground: Vec<RenderCell>,
     pub objects: Vec<ObjectCell>,
+    /// The light each frame cell shows: its map cell's light colour while
+    /// seen, dimmed while remembered, black otherwise. Renderers blend it
+    /// between cells to light things smoothly.
+    pub light: Vec<Rgb>,
     /// What each frame cell shows while seen; `None` when not seen now.
     pub seen: Vec<Option<SeenCell>>,
     /// For each map cell (indexed like the map), the first frame cell seen
@@ -168,6 +172,7 @@ impl RenderBuffers {
             ground: vec![RenderCell::default(); n],
             previous_ground: vec![RenderCell::default(); n],
             objects: Vec::with_capacity(n),
+            light: vec![Rgb::BLACK; n],
             seen: vec![None; n],
             seen_first: vec![Self::NO_CELL; n],
             seen_next: vec![Self::NO_CELL; n],

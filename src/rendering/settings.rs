@@ -1,8 +1,8 @@
 //! The in-game settings menu (Esc) and the compass.
 //!
 //! The menu lists the settings a player may want to choose between: how the
-//! view behaves through portals that turn, when the compass shows, and the
-//! motion style. Up and down pick a line, left, right and Enter change it.
+//! view behaves through portals that turn, when the compass shows, the
+//! motion style, how walls stand and how light is drawn. Up and down pick a line, left, right and Enter change it.
 //! While it is open the player and the camera ignore the keys.
 //!
 //! The compass shows which way the map's north, east, south and west lie on
@@ -15,7 +15,7 @@ use crate::camera::{CameraOperator, PortalTurn};
 use crate::model::*;
 
 /// The menu's lines, in order.
-const LINES: usize = 4;
+const LINES: usize = 5;
 /// The compass's size and how far its letters sit from its centre, in px.
 const COMPASS_SIZE: f32 = 72.0;
 const COMPASS_RADIUS: f32 = 26.0;
@@ -103,6 +103,7 @@ pub(super) fn settings_input(
     mut menu: ResMut<SettingsMenu>,
     mut compass: ResMut<CompassMode>,
     mut walls: ResMut<WallVolume>,
+    mut light: ResMut<LightEffects>,
     operator: Option<ResMut<CameraOperator>>,
     motion: Option<ResMut<MotionStyle>>,
 ) {
@@ -139,6 +140,7 @@ pub(super) fn settings_input(
         }
         1 => *compass = compass.step(step),
         3 => *walls = walls.step(step),
+        4 => *light = light.step(step),
         _ => {
             if let Some(mut motion) = motion {
                 let presets = MotionStyle::PRESETS.len() as i32;
@@ -171,6 +173,7 @@ pub(super) fn draw_settings(
     menu: Res<SettingsMenu>,
     compass: Res<CompassMode>,
     walls: Res<WallVolume>,
+    light: Res<LightEffects>,
     operator: Option<Res<CameraOperator>>,
     motion: Option<Res<MotionStyle>>,
     mut panels: Query<(&mut Text, &mut Visibility), With<SettingsText>>,
@@ -198,6 +201,7 @@ pub(super) fn draw_settings(
                 motion.as_ref().map_or("-", |motion| motion.name()),
             ),
             ("Walls", walls.name()),
+            ("Light", light.name()),
         ];
         let mut drawn = String::from("Settings (Esc closes)\n");
         for (index, (name, value)) in lines.iter().enumerate() {
