@@ -50,10 +50,7 @@ pub fn render_light_layers(
             ..
         } = &mut *static_layer;
         std::mem::swap(last_seen_revisions, current_revisions);
-        static_layer.data.fill(LightCell {
-            value: 1,
-            kind: LightKind::None,
-        });
+        static_layer.data.fill(LightCell::of(LightKind::None, 1));
         for (_, pos, light, fov) in static_sources.iter() {
             blend_source(&mut static_layer.data, &grid, pos.0, &light, fov);
         }

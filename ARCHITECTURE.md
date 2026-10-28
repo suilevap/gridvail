@@ -124,8 +124,10 @@ and renderers must not import it.
   needs `GetKey`, which needs `FetchKey(key)` for each known key in turn
   and fails only when every one has; with a key, door pricing lets the next
   plan through the door.
-- `lighting/` contains light blending and light colour: each kind of light
-  has a gradient baked into a 256-entry lookup table (`LightLut`), and the
+- `lighting/` contains light blending and light colour: a `LightCell` keeps
+  a level per kind of light, summed over every light of that kind; each
+  kind has a gradient baked into a 256-entry lookup table (`LightLut`), and
+  a cell's colour mixes every kind's gradient by its share. It also holds the
   named colours glyphs are given (`Rgb`, in `model/`). It does not know
   about Bevy text entities or the application schedule.
 - `animation/` turns cell moves of any length into continuous motion for

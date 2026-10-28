@@ -9,7 +9,7 @@ The target is `PavEcsLiteGame`; the legacy demo and Tetris are outside this port
 | --- | --- |
 | Assets | All five maps and four rule files match upstream byte-for-byte. |
 | Field of view | 5,769 samples match the original C# algorithm within `1e-5`: all five maps, open field, northwest angular seam, east wall, and closed ring. |
-| Light merging | 2,880 cases match C# exactly across light kinds, initial brightness, distances, radii, and fractional visibility. |
+| Light merging | The light each source adds matches C# exactly on 576 cases across light kinds, distances, radii, and fractional visibility, and same-kind sums on 432 more. Different kinds no longer replace each other (C# kept the brighter): each kind keeps its own level and their colours mix. |
 | Palettes | No longer compared: light is coloured from smooth gradients instead of the original's console colours. |
 | Spawn configuration | Reviewed six map entity kinds, player sight/light radii, light values, token recharge, friction, and marker rotation against `SpawnEntitySystem`. |
 | Collision contract | Swaps stay blocked, contenders reserve cells before vacating, and collisions are recorded without damage (the Lite container disables that consumer). Existing tests cover swaps/contention; a new regression covers direct wrapped requests and first placement. |

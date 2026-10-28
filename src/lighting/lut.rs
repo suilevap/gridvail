@@ -84,8 +84,30 @@ pub const fn light_lut(kind: LightKind) -> &'static LightLut {
 }
 
 /// The colour a cell with this light is drawn in; black without light.
+///
+/// All its light together sets how bright it is, and each kind tints it by
+/// its share: every kind's gradient is read at the total, and those colours
+/// are averaged, weighted by each kind's level.
 pub fn light_color(cell: &LightCell) -> Rgb {
-    light_lut(cell.kind).get(cell.value)
+    let total = cell.total();
+    let mut sum = [0u32; 3];
+    let mut weight = 0u32;
+    for kind in LightKind::ALL {
+        let level = cell.level(kind) as u32;
+        if level == 0 {
+            continue;
+        }
+        let color = light_lut(kind).get(total);
+        sum[0] += color.r as u32 * level;
+        sum[1] += color.g as u32 * level;
+        sum[2] += color.b as u32 * level;
+        weight += level;
+    }
+    if weight == 0 {
+        return Rgb::BLACK;
+    }
+    let channel = |sum: u32| ((sum + weight / 2) / weight) as u8;
+    Rgb::new(channel(sum[0]), channel(sum[1]), channel(sum[2]))
 }
 
 /// The dimmest a remembered cell that had any light is drawn in.

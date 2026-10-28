@@ -86,10 +86,13 @@ next to this file.
 - Interval-based fractional FOV with obstacle caching, player
   Visible/Known layers (threshold 0.1, Known persists).
 - CPU lightmaps: static layer with dirty-flag rebuild + dynamic layer,
-  `(1 - sqD/radiusSq)` falloff, 255 saturation, same-kind sum,
-  brighter-kind-wins. Light is coloured from a smooth gradient per kind
-  (fire, electricity, acid, plain), baked into a 256-entry lookup table, in
-  place of the original's stepped console-colour palettes.
+  `(1 - sqD/radiusSq)` falloff and 255 saturation. Each cell keeps a level
+  per kind of light (fire, electricity, acid, plain), summing every light of
+  that kind, instead of the original's brighter-kind-wins. Each kind has a
+  smooth colour gradient baked into a 256-entry lookup table, in place of
+  the original's stepped console-colour palettes; a cell's colour reads
+  every kind's gradient at the cell's total light and mixes them by each
+  kind's share.
 - Portals (an addition, in progress, see `PORTALS.md`): digits `1`-`9` in
   a map are portal walls, and the two walls with the same digit are paired.
   Seen from the floor in front of it, a portal wall shows what lies beyond

@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use pav_ecs_game_bevy_port::{
     content::map::{parse_map, SpawnKind},
     foundation::fov::FovComputer,
-    lighting::{merge_light, LightContext},
+    lighting::{light_amount, merge_light, LightContext},
     model::{LightCell, LightKind},
 };
 use std::collections::HashSet;
@@ -93,40 +93,35 @@ fn fov_matches_csharp_on_five_maps_and_shadow_edge_cases() {
     assert_eq!(cases, 9);
 }
 
+/// Light merging differs from C# by design: every kind keeps its own level
+/// and they mix, where C# kept only the brighter kind. What a light adds to
+/// a cell (its falloff) and the summing of one kind still match: the amount
+/// on a dark cell, and the sum on a cell already lit by the same kind.
 #[test]
-fn light_merge_matches_csharp_for_2880_combinations() {
-    let mut count = 0;
+fn light_amount_and_same_kind_sums_match_csharp() {
+    let (mut amounts, mut sums) = (0, 0);
     for line in include_str!("fixtures/light_reference.tsv")
         .lines()
         .filter(|l| !l.starts_with('#'))
     {
         let f: Vec<_> = line.split('\t').collect();
-        let mut cell = LightCell {
-            value: f[0].parse().unwrap(),
-            kind: kind(f[1].parse().unwrap()),
-        };
-        let ctx = LightContext::new(
-            (0, 0),
-            f[4].parse().unwrap(),
-            f[2].parse().unwrap(),
-            kind(f[3].parse().unwrap()),
-        );
-        merge_light(
-            &mut cell,
-            f[7].parse().unwrap(),
-            f[5].parse().unwrap(),
-            f[6].parse().unwrap(),
-            &ctx,
-        );
-        assert_eq!(
-            cell,
-            LightCell {
-                value: f[8].parse().unwrap(),
-                kind: kind(f[9].parse().unwrap())
-            },
-            "{line}"
-        );
-        count += 1;
+        let (value, target): (u8, _) = (f[0].parse().unwrap(), kind(f[1].parse().unwrap()));
+        let source = kind(f[3].parse().unwrap());
+        let ctx = LightContext::new((0, 0), f[4].parse().unwrap(), f[2].parse().unwrap(), source);
+        let fov = f[7].parse().unwrap();
+        let (x, y) = (f[5].parse().unwrap(), f[6].parse().unwrap());
+        let expected: u8 = f[8].parse().unwrap();
+        // C# sums light only of the same kind, and "no kind" never sums.
+        let summed = target == source && source != LightKind::None;
+        if value == 0 {
+            assert_eq!(light_amount(fov, x, y, &ctx), expected, "{line}");
+            amounts += 1;
+        } else if summed {
+            let mut cell = LightCell::of(target, value);
+            merge_light(&mut cell, fov, x, y, &ctx);
+            assert_eq!(cell, LightCell::of(target, expected), "{line}");
+            sums += 1;
+        }
     }
-    assert_eq!(count, 2880);
+    assert_eq!((amounts, sums), (576, 432));
 }
