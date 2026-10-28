@@ -98,7 +98,7 @@ jobs:
       - name: Shrink with wasm-opt
         run: |
           curl -sSL https://github.com/WebAssembly/binaryen/releases/download/version_123/binaryen-version_123-x86_64-linux.tar.gz | tar xz
-          ./binaryen-version_123/bin/wasm-opt -Os --all-features -o dist/gridvail_bg.wasm dist/gridvail_bg.wasm
+          ./binaryen-version_123/bin/wasm-opt -Oz --all-features -o dist/gridvail_bg.wasm dist/gridvail_bg.wasm
       - name: Assemble site
         env:
           PR_NUMBER: ${{ needs.target.outputs.pr }}
