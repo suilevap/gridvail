@@ -6,6 +6,7 @@
 // walls, and parts around things moving through it.
 
 #import bevy_sprite::mesh2d_vertex_output::VertexOutput
+#import bevy_sprite::mesh2d_view_bindings::globals
 #import gridvail::view::{frame_uv, on_texture, to_map}
 
 // xy: the map point at the screen centre, z: rotation, w: zoom.
@@ -23,24 +24,21 @@
 // Tiling noise, repeated.
 @group(#{MATERIAL_BIND_GROUP}) @binding(7) var noise: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(8) var noise_sampler: sampler;
-// x: 1 for fog, 0 for the haze as it is; y: seconds (wrapping hourly).
+// x: 1 for fog, 0 for the haze as it is; y: how many of `trail` are live.
 @group(#{MATERIAL_BIND_GROUP}) @binding(9) var<uniform> fog: vec4<f32>;
-// Where things moving through the fog have just been: xy the map point, z
-// the time they were there, w 1 (0: none).
+// The wakes of things moving through the fog, live ones first: xy the map
+// point, z its width in cells, w its strength.
 @group(#{MATERIAL_BIND_GROUP}) @binding(10) var<uniform> trail: array<vec4<f32>, 32>;
 
-// How long a mover's wake lasts (seconds for it to fade to 1/e), how wide
-// it starts and how fast it spreads (cells, cells a second), and how much
-// it clears and swirls the fog.
-const WAKE_LIFE: f32 = 1.2;
-const WAKE_WIDTH: f32 = 0.7;
-const WAKE_SPREAD: f32 = 0.6;
+// How much a wake clears and swirls the fog.
 const WAKE_CLEARS: f32 = 0.85;
 const WAKE_SWIRL: f32 = 0.08;
+// Past this many widths a wake does not reach.
+const WAKE_REACH: f32 = 3.0;
 
 // The fog's two layers: how often the noise repeats per map cell, and how
 // far it drifts per second. Each drift over an hour is a whole number of
-// repeats, so the hourly wrap of the time does not jump.
+// repeats, so the hourly wrap of the time (`globals.time`) does not jump.
 const NEAR_SCALE: f32 = 0.06;
 const NEAR_DRIFT: vec2<f32> = vec2<f32>(0.02, 0.01);
 const FAR_SCALE: f32 = 0.11;
@@ -53,21 +51,22 @@ const FAR_DRIFT: vec2<f32> = vec2<f32>(-0.0125, 0.0175);
 fn fog_density(map: vec2<f32>, open: f32) -> f32 {
     var cleared = 0.0;
     var swirl = vec2<f32>(0.0);
-    for (var i = 0; i < 32; i = i + 1) {
-        let point = trail[i];
-        let age = fog.y - point.z;
-        if point.w == 0.0 || age < 0.0 || age > WAKE_LIFE * 4.0 {
+    let live = i32(fog.y);
+    for (var i = 0; i < live; i = i + 1) {
+        let wake = trail[i];
+        let d = map - wake.xy;
+        let spread = dot(d, d) / (wake.z * wake.z);
+        if spread > WAKE_REACH * WAKE_REACH {
             continue;
         }
-        let width = WAKE_WIDTH + age * WAKE_SPREAD;
-        let d = map - point.xy;
-        let weight = exp(-age / WAKE_LIFE) * exp(-dot(d, d) / (width * width));
+        let weight = wake.w * exp(-spread);
         cleared += weight;
         swirl += vec2<f32>(-d.y, d.x) * weight;
     }
+    let time = globals.time;
     let stirred = map + swirl * WAKE_SWIRL / NEAR_SCALE;
-    let near_uv = stirred * NEAR_SCALE + NEAR_DRIFT * fog.y;
-    let far_uv = stirred * FAR_SCALE + FAR_DRIFT * fog.y;
+    let near_uv = stirred * NEAR_SCALE + NEAR_DRIFT * time;
+    let far_uv = stirred * FAR_SCALE + FAR_DRIFT * time;
     let near = textureSampleLevel(noise, noise_sampler, near_uv, 0.0).r;
     let far = textureSampleLevel(noise, noise_sampler, far_uv, 0.0).r;
     let density = smoothstep(0.2, 0.8, near * 0.65 + far * 0.35) * 2.2;

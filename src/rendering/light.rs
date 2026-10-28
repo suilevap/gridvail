@@ -128,10 +128,8 @@ pub(super) struct LightTextures {
     /// The frame's light this frame, to compare with `current`'s.
     texels: Vec<u8>,
     /// Which frame cells are walls (anything that blocks sight, and off the
-    /// map) this frame, and when the glow was last baked: fog keeps to the
-    /// open floor between them.
+    /// map), read with the light: fog keeps to the open floor between them.
     walls: Vec<bool>,
-    baked_walls: Vec<bool>,
     baker: AirBaker,
 }
 
@@ -175,10 +173,11 @@ struct GlowMaterial {
     #[texture(7)]
     #[sampler(8)]
     noise: Handle<Image>,
-    /// x: 1 for fog (0: the haze as it is), y: seconds, the fog's drift.
+    /// x: 1 for fog (0: the haze as it is), y: how many of `trail` are
+    /// live.
     #[uniform(9)]
     fog: Vec4,
-    /// Where things moving through the fog have just been (`FogTrail`).
+    /// The wakes of things moving through the fog (`FogTrail::wakes`).
     #[uniform(10)]
     trail: [Vec4; TRAIL_POINTS],
 }
@@ -187,18 +186,31 @@ struct GlowMaterial {
 const TRAIL_POINTS: usize = 32;
 /// How far (in cells) a mover goes between its trail points.
 const TRAIL_SPACING: f32 = 0.35;
+/// How long a mover's wake lasts (seconds for it to fade to 1/e; it is gone
+/// after four), how wide it starts and how fast it spreads (cells, cells a
+/// second).
+const WAKE_LIFE: f32 = 1.2;
+const WAKE_WIDTH: f32 = 0.7;
+const WAKE_SPREAD: f32 = 0.6;
 
 /// Where things moving through fog (anything with a `Speed`) have just
-/// been: a ring of points, xy the map point, z the time it was left there
-/// (`Time::elapsed_secs_wrapped`), w 1 (0: no point yet). The fog shader
-/// clears and swirls the fog around each, less as it ages, so movers leave
-/// a wake that closes behind them.
+/// been, and the wakes they leave there: the fog shader clears and swirls
+/// the fog around each, less as it ages, so movers leave a wake that closes
+/// behind them.
 #[derive(Resource)]
 struct FogTrail {
+    /// A ring of points: xy the map point, z the time it was left there
+    /// (`Time::elapsed_secs_wrapped`), w 1 (0: no point yet).
     points: [Vec4; TRAIL_POINTS],
     next: usize,
     /// Where each mover left its latest point.
     last: HashMap<Entity, Vec2>,
+    /// The wakes still stirring the fog, first: xy the map point, z its
+    /// width in cells, w its strength (1 when new); the rest are zero.
+    /// Worked out once a frame here, so the shader loops over the live ones
+    /// only, none once the fog has settled.
+    wakes: [Vec4; TRAIL_POINTS],
+    live: usize,
 }
 
 impl Default for FogTrail {
@@ -207,6 +219,8 @@ impl Default for FogTrail {
             points: [Vec4::ZERO; TRAIL_POINTS],
             next: 0,
             last: HashMap::default(),
+            wakes: [Vec4::ZERO; TRAIL_POINTS],
+            live: 0,
         }
     }
 }
@@ -222,6 +236,25 @@ impl FogTrail {
         *last = at;
         self.points[self.next] = Vec4::new(at.x, at.y, time, 1.0);
         self.next = (self.next + 1) % TRAIL_POINTS;
+    }
+
+    /// The wakes as they are at `now`.
+    fn age(&mut self, now: f32) {
+        self.wakes = [Vec4::ZERO; TRAIL_POINTS];
+        self.live = 0;
+        for point in self.points {
+            let age = now - point.z;
+            if point.w == 0.0 || !(0.0..WAKE_LIFE * 4.0).contains(&age) {
+                continue;
+            }
+            self.wakes[self.live] = Vec4::new(
+                point.x,
+                point.y,
+                WAKE_WIDTH + age * WAKE_SPREAD,
+                (-age / WAKE_LIFE).exp(),
+            );
+            self.live += 1;
+        }
     }
 }
 
@@ -539,7 +572,6 @@ impl LightTextures {
             since_change: None,
             texels: Vec::new(),
             walls: Vec::new(),
-            baked_walls: Vec::new(),
             baker: AirBaker::new(),
         };
         textures.resize(size, images);
@@ -560,7 +592,6 @@ impl LightTextures {
         self.blend = 1.0;
         self.texels = vec![0; texels * 4];
         self.walls = vec![false; texels];
-        self.baked_walls = vec![false; texels];
         self.baker.resize(texels);
     }
 
@@ -586,9 +617,8 @@ impl LightTextures {
         self.texels != self.current.texels
     }
 
-    /// Fills `walls` from the map, for the frame at `origin`; whether they
-    /// differ from those the glow was baked with.
-    fn build_walls(&mut self, grid: &MapGrid, origin: IVec2) -> bool {
+    /// Fills `walls` from the map, for the frame at `origin`.
+    fn build_walls(&mut self, grid: &MapGrid, origin: IVec2) {
         for y in 0..self.size.y {
             for x in 0..self.size.x {
                 let p = origin + IVec2::new(x, y);
@@ -596,7 +626,6 @@ impl LightTextures {
                     !grid.is_valid(p) || grid.blocks_vision(p);
             }
         }
-        self.walls != self.baked_walls
     }
 
     /// Takes the frame's light, built into the texels, as the current
@@ -632,7 +661,6 @@ impl LightTextures {
     fn bake_glow(&mut self, haze: Vec2, images: &mut Assets<Image>) {
         self.baker
             .bake(&self.current.texels, &self.walls, self.size, haze);
-        self.baked_walls.copy_from_slice(&self.walls);
         self.haze = haze;
         upload(images, &self.glow, &self.baker.bloom);
         upload(images, &self.air, &self.baker.air);
@@ -767,15 +795,13 @@ pub(super) fn update_light_textures(
         .glows()
         .then(|| haze_direction(camera.rotation, super::volume::lean(volume)));
     // Light shown while the effects were off is stale: show the light now.
-    let walls_moved = textures.build_walls(&grid, buffers.origin);
+    // Walls that move change what light falls where, so they are read again
+    // with the light.
     if textures.build_light(&buffers) || effects.is_changed() {
+        textures.build_walls(&grid, buffers.origin);
         textures.change(buffers.origin, haze, effects.is_changed(), &mut images);
     } else if let Some(haze) = haze {
-        if walls_moved {
-            textures.bake_glow(haze, &mut images);
-        } else {
-            textures.turn_haze(haze, &mut images);
-        }
+        textures.turn_haze(haze, &mut images);
     }
 }
 
@@ -793,13 +819,13 @@ fn stir_fog(
     for (mover, shown) in &movers {
         trail.track(mover, shown.position, now);
     }
+    trail.age(now);
 }
 
 /// Shows the glow quad with `Glow` or `Fog` and passes it the view, the
 /// light and, for fog, the time it drifts by and the movers' trail.
 #[allow(clippy::too_many_arguments)]
 fn draw_glow(
-    time: Res<Time>,
     effects: Res<LightEffects>,
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
@@ -819,8 +845,11 @@ fn draw_glow(
     if !shown {
         return;
     }
+    // The shader drifts the fog by the time itself (`globals.time`), so
+    // nothing here changes while the view, the light and the fog's wakes
+    // stay still.
     let fog = if *effects == LightEffects::Fog {
-        Vec4::new(1.0, time.elapsed_secs_wrapped(), 0.0, 0.0)
+        Vec4::new(1.0, trail.live as f32, 0.0, 0.0)
     } else {
         Vec4::ZERO
     };
@@ -844,7 +873,7 @@ fn draw_glow(
         ] == uniforms
             && material.glow == textures.glow
             && material.air == textures.air
-            && material.trail == trail.points
+            && material.trail == trail.wakes
     });
     if !unchanged {
         if let Some(mut material) = materials.get_mut(&quad.material) {
@@ -856,7 +885,7 @@ fn draw_glow(
             ] = uniforms;
             material.glow = textures.glow.clone();
             material.air = textures.air.clone();
-            material.trail = trail.points;
+            material.trail = trail.wakes;
         }
     }
 }
@@ -1061,6 +1090,24 @@ mod tests {
             trail.track(mover, Vec2::new(0.4 + step as f32, 0.0), 0.2);
         }
         assert_eq!(trail.points[0].x, 0.4 + TRAIL_POINTS as f32);
+    }
+
+    #[test]
+    fn only_wakes_still_stirring_go_to_the_shader() {
+        let mut trail = FogTrail::default();
+        let mover = Entity::from_raw_u32(1).unwrap();
+        trail.track(mover, Vec2::ZERO, 0.0);
+        trail.track(mover, Vec2::new(1.0, 0.0), 0.0);
+        trail.track(mover, Vec2::new(2.0, 0.0), 3.0);
+        trail.age(3.0);
+        assert_eq!(trail.live, 2);
+        // New: full strength, its first width; older: weaker and wider.
+        assert_eq!(trail.wakes[1], Vec4::new(2.0, 0.0, WAKE_WIDTH, 1.0));
+        assert!(trail.wakes[0].w < 0.1 && trail.wakes[0].z > WAKE_WIDTH);
+        // Once settled, none: the shader loops over nothing.
+        trail.age(3.0 + WAKE_LIFE * 4.0);
+        assert_eq!(trail.live, 0);
+        assert_eq!(trail.wakes, [Vec4::ZERO; TRAIL_POINTS]);
     }
 
     /// The frame slot of cell (x, y) of an 8x8 frame at the origin.
