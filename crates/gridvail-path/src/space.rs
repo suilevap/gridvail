@@ -103,4 +103,55 @@ mod tests {
             None
         );
     }
+
+    #[test]
+    fn every_goal_is_found_nearest_first_and_goals_end_paths() {
+        let rooms = Rooms {
+            corridors: &[(0, 1, 5), (1, 3, 5), (0, 2, 2), (2, 3, 9)],
+            count: 4,
+        };
+        let mut search = PathSearch::new();
+        let mut path = Vec::new();
+        let mut found = Vec::new();
+        search.find_each(
+            &rooms,
+            &rooms,
+            0,
+            |room| room != 2,
+            &mut path,
+            |cost, path| {
+                found.push((cost, path.to_vec()));
+                true
+            },
+        );
+        // 3 is not reached through 1, which is a goal itself.
+        assert_eq!(found, [(5, vec![0, 1]), (11, vec![0, 2, 3])]);
+        found.clear();
+        search.find_each(
+            &rooms,
+            &rooms,
+            0,
+            |_| true,
+            &mut path,
+            |cost, path| {
+                found.push((cost, path.to_vec()));
+                true
+            },
+        );
+        assert_eq!(found, [(2, vec![0, 2]), (5, vec![0, 1])], "nor past 2");
+
+        let mut first = Vec::new();
+        search.find_each(
+            &rooms,
+            &rooms,
+            0,
+            |room| room != 2,
+            &mut path,
+            |cost, path| {
+                first.push((cost, path.to_vec()));
+                false
+            },
+        );
+        assert_eq!(first, [(5, vec![0, 1])], "stops when asked");
+    }
 }

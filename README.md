@@ -126,11 +126,20 @@ next to this file.
   rises out of the floor where its slide starts and a wall that goes
   sinks into it where its slide ends (they fade in and out in the text
   view), which can be anywhere, even inside another wall. Rising or
-  sinking in place is a slide of no length. `lines`, the default,
+  sinking in place is a slide of no length. `lines`
   slides a wall when a cell the layout loses and one it gains are in the
   same row or column with empty floor between them (it glides across), or
   with wall in both layouts between them (the stretch shifts one cell, as
-  a gap moving along a wall), and raises and sinks the rest; `rise-sink`
+  a gap moving along a wall), and raises and sinks the rest;
+  `along-walls`, the default, keeps walls to the walls they are part of: a lost cell and
+  a gained one are joined by the path crossing the fewest floor cells, then
+  the shortest, where walls shift one cell each through cells that are
+  wall in both layouts (around corners too) and glide across floor in
+  straight runs. A path through walls always wins; with none, walls shift
+  as far as they can along their wall and then cross the floor, so in a
+  room inside a room the inner walls stay inner and the outer ones outer
+  (paths come from the game's pathfinding, `gridvail-path`, a floor run
+  being a jump); `rise-sink`
   only raises and sinks. `@room <x> <y> <planner>` picks a room's planner,
   so strategies can be compared side by side in one map, and
   `--room-planner NAME` picks the one for rooms that name none. Code adds
@@ -269,11 +278,12 @@ cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk through portals too
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
+cargo run -- --map assets/maps/rooms.txt --room-planner lines  # the same room, walls sliding along rows and columns, across the floor too
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --intro noise   # the map comes together from noise instead of the title
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
-cargo test --workspace   # 282 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 288 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
