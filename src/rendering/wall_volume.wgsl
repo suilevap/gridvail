@@ -16,28 +16,59 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> params: vec4<f32>;
 // Standing objects from above: lit colour times alpha, height as alpha.
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var wall_map: texture_2d<f32>;
-// The light each frame cell shows, a texel per cell (`LightTextures`).
-@group(#{MATERIAL_BIND_GROUP}) @binding(5) var light_map: texture_2d<f32>;
-// x: 1 to light walls smoothly from the light map, 0 for one colour a cell.
-@group(#{MATERIAL_BIND_GROUP}) @binding(6) var<uniform> lighting: vec4<f32>;
+// The light each frame cell shows, a texel per cell (`LightTextures`):
+// before its latest change, and the latest.
+@group(#{MATERIAL_BIND_GROUP}) @binding(5) var light_previous: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(6) var light_current: texture_2d<f32>;
+// x: 1 to light walls smoothly from the light maps, 0 for one colour a
+// cell; y: how far the light has faded from the previous map to the current.
+@group(#{MATERIAL_BIND_GROUP}) @binding(7) var<uniform> lighting: vec4<f32>;
+// xy: the previous light map's frame origin, zw: the current one's.
+@group(#{MATERIAL_BIND_GROUP}) @binding(8) var<uniform> light_origins: vec4<f32>;
 
-fn light_texel(cell: vec2<i32>) -> vec4<f32> {
+fn previous_texel(cell: vec2<i32>) -> vec4<f32> {
     if !on_frame(cell, frame) {
         return vec4<f32>(0.0);
     }
-    return textureLoad(light_map, cell, 0);
+    return textureLoad(light_previous, cell, 0);
 }
 
-// The light map blended between cells at map point `map`.
-fn light_at(map: vec2<f32>) -> vec4<f32> {
-    let c = blend_corner(map, frame);
+fn current_texel(cell: vec2<i32>) -> vec4<f32> {
+    if !on_frame(cell, frame) {
+        return vec4<f32>(0.0);
+    }
+    return textureLoad(light_current, cell, 0);
+}
+
+// The latest light at map point `map`, blended between cells.
+fn current_at(map: vec2<f32>) -> vec4<f32> {
+    let at = vec4<f32>(light_origins.zw, frame.zw);
+    let c = blend_corner(map, at);
     let texels = array<vec4<f32>, 4>(
-        light_texel(c),
-        light_texel(c + vec2<i32>(1, 0)),
-        light_texel(c + vec2<i32>(0, 1)),
-        light_texel(c + vec2<i32>(1, 1)),
+        current_texel(c),
+        current_texel(c + vec2<i32>(1, 0)),
+        current_texel(c + vec2<i32>(0, 1)),
+        current_texel(c + vec2<i32>(1, 1)),
     );
-    return blend(map, frame, texels);
+    return blend(map, at, texels);
+}
+
+// The light shown at map point `map`: faded from the previous light to the
+// latest, each blended between cells.
+fn light_at(map: vec2<f32>) -> vec4<f32> {
+    let now = current_at(map);
+    if lighting.y >= 1.0 {
+        return now;
+    }
+    let at = vec4<f32>(light_origins.xy, frame.zw);
+    let c = blend_corner(map, at);
+    let texels = array<vec4<f32>, 4>(
+        previous_texel(c),
+        previous_texel(c + vec2<i32>(1, 0)),
+        previous_texel(c + vec2<i32>(0, 1)),
+        previous_texel(c + vec2<i32>(1, 1)),
+    );
+    return mix(blend(map, at, texels), now, lighting.y);
 }
 
 struct Fragment {
@@ -74,17 +105,17 @@ fn fragment(in: VertexOutput) -> Fragment {
         }
         var own = wall.rgb / wall.a;
         // With smooth light, a wall drawn black into the wall map takes its
-        // colour wholly from the light map, blended between cells (it
+        // colour wholly from the light maps, blended between cells (it
         // changes across a wall pixel by pixel, and fades from turn to
         // turn); one of another colour (a portal's) keeps it, and takes on
-        // how the light here differs from its cell's.
+        // how the light shown here differs from its cell's latest.
         let cell = floor(map + 0.5);
         if lighting.x > 0.5 {
             let blended = light_at(map);
             if all(own < vec3<f32>(1.0 / 512.0)) {
                 own = blended.rgb;
             } else {
-                let flat = light_texel(vec2<i32>(cell - frame.xy));
+                let flat = current_at(cell);
                 own = max(own + blended.rgb - flat.rgb, vec3<f32>(0.0));
             }
         }

@@ -206,10 +206,13 @@ and renderers must not import it.
   colour wholly from the light map, so it fades with it.
 - `rendering/light.rs` (`LightEffectsPlugin`) turns the light each frame
   cell shows (`RenderBuffers::light`, filled by `compose_frame`) into
-  textures with a texel per cell for the text renderer's shaders: the
-  light they show eases toward the frame's (kept on its map cells as the
-  frame scrolls), so it fades from turn to turn, and they are sent to the
-  GPU only while it changes. They are the light map, and with `LightEffects::Glow`
+  textures with a texel per cell for the text renderer's shaders, sent to
+  the GPU only when the light changes. There are two of each, the light
+  before its latest change and the latest, each with the frame origin it
+  was built for (so light stays on its map cells as the frame scrolls); a
+  change is written over the older pair, which becomes the latest, and the
+  shaders fade from one to the other (`LightTextures::blend`), so light
+  fades from turn to turn on the GPU. They are the light map, and with `LightEffects::Glow`
   a glow map, the brightest light blurred on the CPU. A full-screen quad
   over everything (`light_glow.wgsl`, blended additively) blooms the glow
   and gathers the light along each pixel's view ray as haze. The shaders

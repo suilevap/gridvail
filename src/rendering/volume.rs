@@ -73,7 +73,8 @@ impl Plugin for WallVolumePlugin {
                 Update,
                 draw_wall_map
                     .in_set(GamePhase::Output)
-                    .after(super::text::place_object_sprites),
+                    .after(super::text::place_object_sprites)
+                    .after(super::light::update_light_textures),
             );
     }
 }
@@ -96,13 +97,19 @@ struct WallVolumeMaterial {
     /// The walls from above: lit colour times height, height as alpha.
     #[texture(4)]
     wall_map: Handle<Image>,
-    /// The light each frame cell shows (`LightTextures`), blended between
-    /// cells by the shader.
+    /// The light each frame cell shows (`LightTextures`) before its latest
+    /// change and the latest, blended between cells by the shader.
     #[texture(5)]
-    light_map: Handle<Image>,
-    /// x: 1 to light walls smoothly from `light_map`.
-    #[uniform(6)]
+    light_previous: Handle<Image>,
+    #[texture(6)]
+    light_current: Handle<Image>,
+    /// x: 1 to light walls smoothly from the light maps, y: how far they
+    /// have faded from the previous to the current one.
+    #[uniform(7)]
     lighting: Vec4,
+    /// xy: the previous light map's frame origin, zw: the current one's.
+    #[uniform(8)]
+    light_origins: Vec4,
 }
 
 impl Material2d for WallVolumeMaterial {
@@ -181,8 +188,10 @@ fn setup(
         frame: Vec4::ZERO,
         params: Vec4::ZERO,
         wall_map,
-        light_map: Handle::default(),
+        light_previous: Handle::default(),
+        light_current: Handle::default(),
         lighting: Vec4::ZERO,
+        light_origins: Vec4::ZERO,
     });
     // The main 2D camera never moves; the quad covers any window.
     let entity = commands
@@ -293,10 +302,8 @@ fn draw_wall_map(
     (light, effects): (Option<Res<LightTextures>>, Option<Res<LightEffects>>),
 ) {
     let shown = *volume != WallVolume::Flat;
-    // Smooth light needs the light map, which `LightEffectsPlugin` keeps.
-    let light = light
-        .filter(|_| effects.is_some_and(|effects| *effects != LightEffects::Flat))
-        .map(|light| light.light.clone());
+    // Smooth light needs the light maps, which `LightEffectsPlugin` keeps.
+    let light = light.filter(|_| effects.is_some_and(|effects| *effects != LightEffects::Flat));
     let smooth = light.is_some();
     let size = IVec2::new(buffers.width, buffers.height);
     let quad = &mut *quad;
@@ -427,8 +434,23 @@ fn draw_wall_map(
             tallest * CELL_SIZE.y,
         ),
     ];
-    let lighting = Vec4::new(if smooth { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0);
-    let light_map = light.unwrap_or_default();
+    let (lighting, light_origins, light_previous, light_current) = match light {
+        Some(light) => (
+            Vec4::new(1.0, light.blend, 0.0, 0.0),
+            light.origins(),
+            light.previous.light.clone(),
+            light.current.light.clone(),
+        ),
+        None => (Vec4::ZERO, Vec4::ZERO, Handle::default(), Handle::default()),
+    };
+    let uniforms = [
+        uniforms[0],
+        uniforms[1],
+        uniforms[2],
+        uniforms[3],
+        lighting,
+        light_origins,
+    ];
     let unchanged = materials.get(&quad.material).is_some_and(|material| {
         [
             material.camera,
@@ -436,8 +458,10 @@ fn draw_wall_map(
             material.frame,
             material.params,
             material.lighting,
-        ] == [uniforms[0], uniforms[1], uniforms[2], uniforms[3], lighting]
-            && material.light_map == light_map
+            material.light_origins,
+        ] == uniforms
+            && material.light_previous == light_previous
+            && material.light_current == light_current
     });
     if !unchanged {
         if let Some(mut material) = materials.get_mut(&quad.material) {
@@ -446,9 +470,11 @@ fn draw_wall_map(
                 material.offset_lean,
                 material.frame,
                 material.params,
+                material.lighting,
+                material.light_origins,
             ] = uniforms;
-            material.lighting = lighting;
-            material.light_map = light_map;
+            material.light_previous = light_previous;
+            material.light_current = light_current;
         }
     }
 }
