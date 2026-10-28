@@ -18,7 +18,7 @@ use crate::navigation::path::{Lex, PathSearch, Rules};
 ///   straight runs from wall to wall: the wall at the run's start glides
 ///   to its end.
 ///
-/// Floor with a rail (`Rail`) counts apart: of paths crossing the same bare
+/// Floor with a rail (`Rail`) running the way a wall glides counts apart: of paths crossing the same bare
 /// floor, the one crossing the least floor on rails wins, so where no path
 /// keeps off the floor, walls glide along rails rather than off them. A
 /// path through walls always wins; with none, walls shift as far as they
@@ -163,7 +163,7 @@ impl Rules for WallMoves<'_> {
         let length = (to - from).abs().element_sum() as u32;
         let step = (to - from).signum();
         let on_rails = (1..length as i32)
-            .filter(|&i| self.switch.has_rail(from + step * i))
+            .filter(|&i| self.switch.has_rail(from + step * i, step))
             .count() as u32;
         Some((Lex(length - 1 - on_rails, Lex(on_rails, length)), ()))
     }
@@ -286,8 +286,9 @@ mod tests {
         plan.check(&plain).unwrap();
         assert_eq!(slides(&plan), vec![(IVec2::new(1, 1), IVec2::new(4, 1))]);
 
-        // A rail down the column: the longer glide along it wins.
-        let rail = |p: IVec2| p.x == 1 && (2..5).contains(&p.y);
+        // A rail down the column: the longer glide along it wins. (Crossing
+        // a rail does not count: one across row 1 would change nothing.)
+        let rail = |p: IVec2, step: IVec2| p.x == 1 && (2..5).contains(&p.y) && step.x == 0;
         let railed = SwitchContext::new(&room, &from, &to, &|_| true, &wall).with_rails(&rail);
         let plan = AlongWalls.plan(&railed);
         plan.check(&railed).unwrap();

@@ -471,3 +471,47 @@ fn a_wall_gliding_most_of_the_way_across_the_map_glides_rather_than_jumps() {
     );
     assert_eq!(*shown.last().unwrap(), 16.0);
 }
+
+#[test]
+fn a_whole_room_rebuilds_itself_by_walls_riding_rails() {
+    // `rebuild.txt`: a hall whose partitions ride rails along every row,
+    // cycling three rooms, one wide hall, and two halves back to back.
+    // Every wall slides each time: the same walls throughout, none rising
+    // or sinking.
+    let mut app = boot_map(include_str!("../assets/maps/rebuild.txt"), |_| {});
+    let walls = |app: &mut App| {
+        let world = app.world_mut();
+        let mut walls: Vec<(Entity, IVec2)> = world
+            .query_filtered::<(Entity, &Pos), With<Wall>>()
+            .iter(world)
+            .map(|(entity, pos)| (entity, pos.0))
+            .collect();
+        walls.sort_by_key(|(entity, _)| *entity);
+        walls
+    };
+    let partitions = |app: &mut App| {
+        let mut columns: Vec<i32> = walls(app)
+            .into_iter()
+            .map(|(_, pos)| pos)
+            .filter(|pos| (1..22).contains(&pos.x) && (1..12).contains(&pos.y))
+            .map(|pos| pos.x)
+            .collect();
+        columns.dedup();
+        columns.sort();
+        columns.dedup();
+        columns
+    };
+    let entities = |app: &mut App| walls(app).into_iter().map(|(e, _)| e).collect::<Vec<_>>();
+    let before = entities(&mut app);
+    assert_eq!(partitions(&mut app), [8, 15]);
+    for expected in [[4, 19], [11, 12], [8, 15]] {
+        // On and off the plate: one press, one switch.
+        step(&mut app, KeyCode::ArrowRight);
+        step(&mut app, KeyCode::ArrowLeft);
+        for _ in 0..5 {
+            app.update();
+        }
+        assert_eq!(partitions(&mut app), expected);
+        assert_eq!(entities(&mut app), before, "the same walls, slid");
+    }
+}

@@ -1,10 +1,38 @@
 use bevy::prelude::*;
 
-/// A rail in the floor: room planners prefer walls to glide along rails
-/// over bare floor. It lies flat, drawn with the wall shapes joined to the
-/// rails next to it (`Tile::rail`), dimmed.
+/// A rail in the floor, running across (`horizontal`), up and down
+/// (`vertical`) or both (a crossing): room planners prefer walls to glide
+/// along rails over bare floor. It lies flat, drawn with the wall shapes
+/// joined to the rails it runs on into (`Tile::rail`), dimmed.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Rail;
+pub struct Rail {
+    pub horizontal: bool,
+    pub vertical: bool,
+}
+
+impl Rail {
+    pub const HORIZONTAL: Self = Self {
+        horizontal: true,
+        vertical: false,
+    };
+    pub const VERTICAL: Self = Self {
+        horizontal: false,
+        vertical: true,
+    };
+    pub const CROSSING: Self = Self {
+        horizontal: true,
+        vertical: true,
+    };
+
+    /// Whether it runs along `step` (a unit step on the grid).
+    pub fn along(self, step: IVec2) -> bool {
+        if step.y == 0 {
+            self.horizontal
+        } else {
+            self.vertical
+        }
+    }
+}
 
 /// A floor cell that presses when an actor steps onto it and springs back
 /// when it leaves. Each press switches every [`Room`] to its next layout.

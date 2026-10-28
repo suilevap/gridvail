@@ -80,6 +80,7 @@ fn every_bundled_map_boots_and_portal_faces_reach_the_grid() {
         ("portals", include_str!("../assets/maps/portals.txt")),
         ("rooms", include_str!("../assets/maps/rooms.txt")),
         ("rails", include_str!("../assets/maps/rails.txt")),
+        ("rebuild", include_str!("../assets/maps/rebuild.txt")),
     ] {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
