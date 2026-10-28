@@ -192,7 +192,7 @@ and renderers must not import it.
   Changing `FrameSize` rebuilds the frame. `PresentationPlugin` owns those
   systems and the frame and light-map resources.
 - `model::settings` holds settings the player changes in game
-  (`CompassMode`, `WallVolume`) and the open state of the settings menu (`SettingsMenu`),
+  (`CompassMode`, `WallVolume`, `LightEffects`) and the open state of the settings menu (`SettingsMenu`),
   which player input and camera controls check so the menu's keys do not
   also move them. The menu and the compass are drawn by the text renderer
   (`rendering/settings.rs`).
@@ -205,7 +205,28 @@ and renderers must not import it.
   object's glyph at its animated position into a wall map (8 texels per
   cell, height as alpha), and one full-screen shader (`wall_volume.wgsl`)
   extrudes it up the screen, writing the depth the text sprites are sorted
-  by, so what stands hides actors behind it.
+  by, so what stands hides actors behind it. With smooth light it colours
+  each pixel from the light map below, blended between cells: a wall in
+  its cell's own light is drawn black into the wall map, and takes its
+  colour wholly from the light map, so it fades with it.
+- `rendering/light.rs` (`LightEffectsPlugin`) turns the light each frame
+  cell shows (`RenderBuffers::light`, filled by `compose_frame`) into
+  textures with a texel per cell for the text renderer's shaders, sent to
+  the GPU only when the light changes. There are two light maps, the light
+  before its latest change and the latest, each with the frame origin it
+  was built for (so light stays on its map cells as the frame scrolls); a
+  change is written over the older map, which becomes the latest, and the
+  wall shader fades from one to the other (`LightTextures::blend`), so
+  light on walls fades from turn to turn on the GPU. With
+  `LightEffects::Glow` there is also a glow map: the light in the air above each cell,
+  baked on the CPU when the light changes or the view turns (the brightest
+  light blurred, for bloom, and the light along the view ray, which rises
+  a fixed way in map space whatever the zoom, for haze). A full-screen quad
+  over everything (`light_glow.wgsl`, blended additively) draws it with one
+  filtered read a pixel, without fading, so its cost follows the frame's
+  cells, not the window's pixels. The textures are filtered linearly, so
+  one read blends them between cells; the shaders share the view's
+  screen-to-map functions (`view.wgsl`).
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
   at its animated position, each placed where the view camera shows it. Its

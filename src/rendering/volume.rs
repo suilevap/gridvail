@@ -15,7 +15,10 @@
 //! is the nearest. So a wall is its glyph extruded, without seams at any
 //! zoom or turn, and it turns with the map smoothly: the map is sampled in
 //! map space. It writes the depth sprites are sorted by, so actors behind a
-//! wall are hidden by it and actors in front of it are not.
+//! wall are hidden by it and actors in front of it are not. With smooth
+//! light (`LightEffects`) a wall's colour follows the light map
+//! (`LightTextures`) across it, pixel by pixel, rather than one colour a
+//! cell.
 
 use bevy::{
     asset::{embedded_asset, RenderAssetUsages},
@@ -35,9 +38,10 @@ use swash::{
     FontRef,
 };
 
-use crate::model::{GlyphStatures, RenderBuffers, Stature, ViewCamera, WallVolume};
+use crate::model::{GlyphStatures, LightEffects, RenderBuffers, Stature, ViewCamera, WallVolume};
 use crate::schedule::{GamePhase, StartupPhase};
 
+use super::light::LightTextures;
 use super::text::{ObjectSprite, TurnedGlyphs, CELL_FONT_BYTES, CELL_SIZE};
 
 /// The tallest an object may stand, in cells: the wall map's alpha is its
@@ -56,6 +60,7 @@ pub struct WallVolumePlugin;
 
 impl Plugin for WallVolumePlugin {
     fn build(&self, app: &mut App) {
+        super::load_view_shader(app);
         embedded_asset!(app, "wall_volume.wgsl");
         app.add_plugins(Material2dPlugin::<WallVolumeMaterial>::default())
             .add_systems(
@@ -68,7 +73,8 @@ impl Plugin for WallVolumePlugin {
                 Update,
                 draw_wall_map
                     .in_set(GamePhase::Output)
-                    .after(super::text::place_object_sprites),
+                    .after(super::text::place_object_sprites)
+                    .after(super::light::update_light_textures),
             );
     }
 }
@@ -91,6 +97,21 @@ struct WallVolumeMaterial {
     /// The walls from above: lit colour times height, height as alpha.
     #[texture(4)]
     wall_map: Handle<Image>,
+    /// The light each frame cell shows (`LightTextures`) before its latest
+    /// change and the latest, blended between cells by the shader.
+    #[texture(5)]
+    light_previous: Handle<Image>,
+    /// Its sampler (linear) serves both.
+    #[texture(6)]
+    #[sampler(7)]
+    light_current: Handle<Image>,
+    /// x: 1 to light walls smoothly from the light maps, y: how far they
+    /// have faded from the previous to the current one.
+    #[uniform(8)]
+    lighting: Vec4,
+    /// xy: the previous light map's frame origin, zw: the current one's.
+    #[uniform(9)]
+    light_origins: Vec4,
 }
 
 impl Material2d for WallVolumeMaterial {
@@ -169,6 +190,10 @@ fn setup(
         frame: Vec4::ZERO,
         params: Vec4::ZERO,
         wall_map,
+        light_previous: Handle::default(),
+        light_current: Handle::default(),
+        lighting: Vec4::ZERO,
+        light_origins: Vec4::ZERO,
     });
     // The main 2D camera never moves; the quad covers any window.
     let entity = commands
@@ -242,7 +267,7 @@ fn rasterize(ch: char, slot: usize, atlas: &mut Image) {
 }
 
 /// Which way height goes on screen, per unit of height.
-fn lean(volume: WallVolume) -> Vec2 {
+pub(super) fn lean(volume: WallVolume) -> Vec2 {
     match volume {
         WallVolume::Leaning => Vec2::new(0.5, 1.0),
         _ => Vec2::Y,
@@ -276,8 +301,12 @@ fn draw_wall_map(
     mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility)>,
     mut quads: Query<&mut Visibility, (With<Mesh2d>, Without<Sprite>)>,
     mut cameras: Query<(&mut RenderTarget, &mut Transform), Without<Sprite>>,
+    (light, effects): (Option<Res<LightTextures>>, Option<Res<LightEffects>>),
 ) {
     let shown = *volume != WallVolume::Flat;
+    // Smooth light needs the light maps, which `LightEffectsPlugin` keeps.
+    let light = light.filter(|_| effects.is_some_and(|effects| *effects != LightEffects::Flat));
+    let smooth = light.is_some();
     let size = IVec2::new(buffers.width, buffers.height);
     let quad = &mut *quad;
     if let Ok(mut visibility) = quads.get_mut(quad.entity) {
@@ -335,7 +364,18 @@ fn draw_wall_map(
                 (slot % ATLAS_SLOTS * GLYPH_PX) as f32,
                 (slot / ATLAS_SLOTS * GLYPH_PX) as f32,
             );
-            let lit = Color::from(object.cell.color).to_linear();
+            // With smooth light, a wall in its cell's own light is drawn
+            // black into the wall map: the shader then lights it wholly from
+            // the light map, which fades from turn to turn. Any other colour
+            // (a portal's) is kept, and only varies with the light.
+            let in_light = buffers
+                .idx(object.pos)
+                .is_some_and(|index| buffers.light[index] == object.cell.color);
+            let lit = if smooth && in_light {
+                LinearRgba::BLACK
+            } else {
+                Color::from(object.cell.color).to_linear()
+            };
             let risen = stature * object.height.clamp(0.0, 1.0);
             let color = Color::LinearRgba(lit.with_alpha(risen / MAX_STATURE));
             let at = (object.position - buffers.origin.as_vec2() + 0.5) * texels;
@@ -396,13 +436,34 @@ fn draw_wall_map(
             tallest * CELL_SIZE.y,
         ),
     ];
+    let (lighting, light_origins, light_previous, light_current) = match light {
+        Some(light) => (
+            Vec4::new(1.0, light.blend, 0.0, 0.0),
+            light.origins(),
+            light.previous.light.clone(),
+            light.current.light.clone(),
+        ),
+        None => (Vec4::ZERO, Vec4::ZERO, Handle::default(), Handle::default()),
+    };
+    let uniforms = [
+        uniforms[0],
+        uniforms[1],
+        uniforms[2],
+        uniforms[3],
+        lighting,
+        light_origins,
+    ];
     let unchanged = materials.get(&quad.material).is_some_and(|material| {
         [
             material.camera,
             material.offset_lean,
             material.frame,
             material.params,
+            material.lighting,
+            material.light_origins,
         ] == uniforms
+            && material.light_previous == light_previous
+            && material.light_current == light_current
     });
     if !unchanged {
         if let Some(mut material) = materials.get_mut(&quad.material) {
@@ -411,7 +472,11 @@ fn draw_wall_map(
                 material.offset_lean,
                 material.frame,
                 material.params,
+                material.lighting,
+                material.light_origins,
             ] = uniforms;
+            material.light_previous = light_previous;
+            material.light_current = light_current;
         }
     }
 }
