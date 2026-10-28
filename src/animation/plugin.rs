@@ -289,7 +289,9 @@ pub fn animate_objects(
                 pos.0.as_vec2(),
                 path.map(|path| path.0),
                 motion,
-                |from, to| wrapped(from, to, &grid),
+                // A sliding wall stays in its room, so however far it goes
+                // it never crossed the map's edge.
+                |from, to| !sliding && wrapped(from, to, &grid),
                 dt,
             );
         }

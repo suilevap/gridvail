@@ -22,10 +22,26 @@ pub fn wall_bundle(pos: IVec2) -> impl Bundle {
     )
 }
 
+/// A rail as the map spawns it: flat, and `tile_system` gives it its glyph.
+pub fn rail_bundle(pos: IVec2, rail: Rail) -> impl Bundle {
+    (
+        Active,
+        rail,
+        Pos(pos),
+        Glyph::new('=', 0, RAIL_COLOR),
+        Stature(0.0),
+        Tile::rail(),
+    )
+}
+
+/// Rails are drawn dimmer than walls.
+const RAIL_COLOR: Rgb = crate::lighting::DARK_GRAY;
+
 /// Wall autotiling: every wall marked with a `Tile` gets the glyph that
 /// joins it to its neighbours, at startup and when walls change (a room
-/// switching layouts). Its temporary collections are deliberately outside
-/// the steady gameplay path; it runs only while a wall is marked.
+/// switching layouts); rails get the same shapes, joined to rails, flat and
+/// dimmed. Its temporary collections are deliberately outside the steady
+/// gameplay path; it runs only while something is marked.
 pub fn tile_system(
     mut commands: Commands,
     grid: Res<MapGrid>,
@@ -33,16 +49,30 @@ pub fn tile_system(
     tiles: Query<(Entity, &Pos, &Tile)>,
     walls: Query<&Pos, With<Wall>>,
     doors: Query<&Pos, With<Door>>,
+    rails: Query<(&Pos, &Rail)>,
 ) {
     // Walls connect to doors set into them.
-    let present: std::collections::HashSet<IVec2> =
+    let walls: std::collections::HashSet<IVec2> =
         walls.iter().chain(doors.iter()).map(|pos| pos.0).collect();
+    // Rails connect to rails they run on into.
+    let rails: std::collections::HashMap<IVec2, Rail> =
+        rails.iter().map(|(pos, rail)| (pos.0, *rail)).collect();
     let mut masks = Vec::new();
     for (entity, pos, tile) in tiles.iter() {
-        if tile.rule != "wall_rule" {
-            continue;
-        }
-        let at = |delta| present.contains(&grid.safe_pos(pos.0 + delta));
+        let (depth, color) = match tile.rule.as_str() {
+            "wall_rule" => (1, crate::lighting::GRAY),
+            "rail_rule" => (0, RAIL_COLOR),
+            _ => continue,
+        };
+        let at = |delta: IVec2| {
+            let next = grid.safe_pos(pos.0 + delta);
+            match rails.get(&pos.0).filter(|_| tile.rule == "rail_rule") {
+                Some(rail) => {
+                    rail.along(delta) && rails.get(&next).is_some_and(|next| next.along(delta))
+                }
+                None => walls.contains(&next),
+            }
+        };
         let mut mask = 0;
         for (bit, delta) in [IVec2::X, IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y]
             .into_iter()
@@ -52,13 +82,13 @@ pub fn tile_system(
                 mask |= 1 << bit;
             }
         }
-        masks.push((entity, mask));
+        masks.push((entity, mask, depth, color));
     }
-    for (entity, mask) in masks {
+    for (entity, mask, depth, color) in masks {
         commands.entity(entity).insert(Glyph {
             ch: rules.wall.symbol(mask),
-            depth: 1,
-            color: crate::lighting::GRAY,
+            depth,
+            color,
         });
         commands.entity(entity).remove::<Tile>();
     }

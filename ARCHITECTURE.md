@@ -79,7 +79,10 @@ and renderers must not import it.
   ends (despawned at once without the animation step). It marks their neighbours with `Tile`,
   which `tile_system` autotiles again. It does not know what asked:
   `plates.rs` is a stand-in trigger (`PressurePlate`) until a trigger/action
-  system, where a room switch is one kind of action.
+  system, where a room switch is one kind of action. Rails (`Rail`, floor
+  that planners prefer walls to glide along) reach planners through
+  `SwitchContext::has_rail`, and `tile_system` autotiles them with the wall
+  rule, flat and dimmed.
 - `vision/` converts sensors and blocker state into cached FOV and visibility
   components. Every field of view sees through portals: lights' and
   sensors' `FovResult` (its samples for lights, which fade by the way the

@@ -36,6 +36,14 @@ pub enum SpawnKind {
     /// A wall whose open face is a portal to the other cell with the same
     /// digit.
     Portal(u8),
+    /// A rail in the floor, which room planners prefer walls to glide
+    /// along: `=` runs across, `|` up and down, `+` is a crossing. `#` is a
+    /// wall standing on a rail: both, at one cell, the rail running on into
+    /// the rails beside it.
+    Rail {
+        horizontal: bool,
+        vertical: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,6 +66,18 @@ pub fn spawn_kind_of(c: char) -> Option<SpawnKind> {
         '_' => Some(SpawnKind::Plate),
         '>' => Some(SpawnKind::Exit),
         '1'..='9' => Some(SpawnKind::Portal(c as u8 - b'0')),
+        '=' => Some(SpawnKind::Rail {
+            horizontal: true,
+            vertical: false,
+        }),
+        '|' => Some(SpawnKind::Rail {
+            horizontal: false,
+            vertical: true,
+        }),
+        '+' => Some(SpawnKind::Rail {
+            horizontal: true,
+            vertical: true,
+        }),
         _ => None,
     }
 }
@@ -70,21 +90,47 @@ fn lines_of(text: &str) -> impl Iterator<Item = &str> {
     text.lines().map(|l| l.strip_suffix('\r').unwrap_or(l))
 }
 
-/// Parses the map, up to its first `@` block.
+/// Parses the map, up to its first `@` block. A `#` (a wall on a rail) is a
+/// wall and a rail at the same cell, in that order; the rail runs across if
+/// a rail across (`=`, `+`) is beside it, up and down if one up and down
+/// (`|`, `+`) is above or below, and both ways with neither.
 pub fn parse_map(text: &str) -> (i32, i32, Vec<SpawnCell>) {
     let lines: Vec<&str> = lines_of(text)
         .take_while(|line| !line.starts_with('@'))
         .collect();
     let width = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as i32;
     let height = lines.len() as i32;
+    let grid: Vec<Vec<char>> = lines.iter().map(|line| line.chars().collect()).collect();
+    let at = |x: usize, y: usize, dx: isize, dy: isize| {
+        let (x, y) = (x.checked_add_signed(dx)?, y.checked_add_signed(dy)?);
+        grid.get(y)?.get(x).copied()
+    };
     let mut cells = Vec::new();
-    for (y, line) in lines.iter().enumerate() {
-        for (x, c) in line.chars().enumerate() {
-            if let Some(kind) = spawn_kind_of(c) {
+    for (y, line) in grid.iter().enumerate() {
+        for (x, &c) in line.iter().enumerate() {
+            let pos = IVec2::new(x as i32, y as i32);
+            if c == '#' {
                 cells.push(SpawnCell {
-                    pos: IVec2::new(x as i32, y as i32),
-                    kind,
+                    pos,
+                    kind: SpawnKind::Wall,
                 });
+                let beside = |deltas: [(isize, isize); 2], joins: [char; 2]| {
+                    deltas
+                        .iter()
+                        .any(|&(dx, dy)| at(x, y, dx, dy).is_some_and(|c| joins.contains(&c)))
+                };
+                let horizontal = beside([(-1, 0), (1, 0)], ['=', '+']);
+                let vertical = beside([(0, -1), (0, 1)], ['|', '+']);
+                let neither = !horizontal && !vertical;
+                cells.push(SpawnCell {
+                    pos,
+                    kind: SpawnKind::Rail {
+                        horizontal: horizontal || neither,
+                        vertical: vertical || neither,
+                    },
+                });
+            } else if let Some(kind) = spawn_kind_of(c) {
+                cells.push(SpawnCell { pos, kind });
             }
         }
     }
@@ -151,7 +197,7 @@ pub fn parse_rooms(text: &str, cells: &[SpawnCell]) -> Result<Vec<RoomSpec>, Str
             .enumerate()
             .flat_map(|(y, row)| {
                 row.chars().enumerate().filter_map(move |(x, c)| {
-                    matches!(c, 'X' | 'x').then_some(origin + IVec2::new(x as i32, y as i32))
+                    matches!(c, 'X' | 'x' | '#').then_some(origin + IVec2::new(x as i32, y as i32))
                 })
             })
             .collect();
@@ -456,5 +502,28 @@ mod tests {
         let (w, h, cells) = parse_map("");
         assert_eq!((w, h), (0, 0));
         assert!(cells.is_empty());
+    }
+
+    #[test]
+    fn rails_run_their_way_and_walls_on_rails_join_the_rails_beside_them() {
+        let rail = |horizontal, vertical| SpawnKind::Rail {
+            horizontal,
+            vertical,
+        };
+        let (_, _, cells) = parse_map("=#=\n|+.\n#..\n");
+        let at = |x, y| {
+            cells
+                .iter()
+                .filter(|cell| cell.pos == IVec2::new(x, y))
+                .map(|cell| cell.kind)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(at(0, 0), [rail(true, false)]);
+        // Between two rails across, and above a crossing: both ways.
+        assert_eq!(at(1, 0), [SpawnKind::Wall, rail(true, true)]);
+        assert_eq!(at(0, 1), [rail(false, true)]);
+        assert_eq!(at(1, 1), [rail(true, true)]);
+        // Below a rail up and down only.
+        assert_eq!(at(0, 2), [SpawnKind::Wall, rail(false, true)]);
     }
 }

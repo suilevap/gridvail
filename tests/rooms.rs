@@ -44,13 +44,17 @@ fn boot_animated() -> App {
 }
 
 fn boot_with(extra: impl FnOnce(&mut App)) -> App {
+    boot_map(MAP, extra)
+}
+
+fn boot_map(map: &'static str, extra: impl FnOnce(&mut App)) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .init_resource::<ButtonInput<KeyCode>>()
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
             16,
         )))
-        .insert_resource(MapText(MAP))
+        .insert_resource(MapText(map))
         .add_plugins(GamePlugin);
     extra(&mut app);
     app.update();
@@ -391,4 +395,123 @@ fn walls_can_rise_elsewhere_and_sink_elsewhere() {
         app.world().get_entity(below).is_err(),
         "the old one sank and went"
     );
+}
+
+#[test]
+fn walls_ride_rails_where_the_floor_has_them() {
+    // Two rooms alike, switched by one plate: each has a pillar top left
+    // and bottom right, going to top right and bottom left. Straight down
+    // or up is shorter, and the bare room takes it; the top room has rails
+    // along its top and bottom rows, and its pillars ride them.
+    let mut app = boot_map(include_str!("../assets/maps/rails.txt"), |_| {});
+    let (top, bottom) = (IVec2::new(2, 2), IVec2::new(2, 10));
+    let (top_pillar, bottom_pillar) = (
+        entity_at(&mut app, top).unwrap(),
+        entity_at(&mut app, bottom).unwrap(),
+    );
+
+    // Rails lie flat and dim, joined like walls: under the pillar too.
+    let world = app.world_mut();
+    let rails: Vec<(IVec2, Glyph, Option<&Stature>)> = world
+        .query_filtered::<(&Pos, &Glyph, Option<&Stature>), With<Rail>>()
+        .iter(world)
+        .map(|(pos, glyph, stature)| (pos.0, *glyph, stature))
+        .collect();
+    assert_eq!(rails.len(), 30);
+    assert!(
+        rails.iter().any(|(pos, _, _)| *pos == top),
+        "under the pillar"
+    );
+    for (pos, glyph, stature) in &rails {
+        assert_eq!(glyph.depth, 0, "{pos}: on the floor");
+        assert_eq!(stature.map(|s| s.0), Some(0.0), "{pos}: flat");
+        assert_ne!(glyph.ch, '=', "{pos}: autotiled");
+        if (3..16).contains(&pos.x) {
+            assert_eq!(glyph.ch, '═', "{pos}: a straight run");
+        }
+    }
+
+    step(&mut app, KeyCode::ArrowRight);
+    step(&mut app, KeyCode::ArrowRight);
+    for _ in 0..5 {
+        app.update();
+    }
+    let at = |app: &mut App, entity| app.world().get::<Pos>(entity).unwrap().0;
+    assert_eq!(
+        at(&mut app, top_pillar),
+        IVec2::new(16, 2),
+        "along the rail"
+    );
+    assert_eq!(
+        at(&mut app, bottom_pillar),
+        IVec2::new(2, 14),
+        "straight down"
+    );
+}
+
+#[test]
+fn a_wall_gliding_most_of_the_way_across_the_map_glides_rather_than_jumps() {
+    // `rails.txt` is 19 cells wide and its top pillar rides 14 cells: more
+    // than half the map, which for anything else would be a step across the
+    // map's wrapping edge, shown as a jump.
+    let mut app = boot_map(include_str!("../assets/maps/rails.txt"), |app| {
+        app.add_plugins(ObjectAnimationPlugin);
+    });
+    let pillar = entity_at(&mut app, IVec2::new(2, 2)).unwrap();
+    step(&mut app, KeyCode::ArrowRight);
+    step(&mut app, KeyCode::ArrowRight);
+    let mut shown = Vec::new();
+    for _ in 0..120 {
+        app.update();
+        shown.push(shown_at(&mut app, pillar).x);
+    }
+    assert!(
+        shown.iter().any(|&x| x > 4.0 && x < 14.0),
+        "seen on its way: {shown:?}"
+    );
+    assert_eq!(*shown.last().unwrap(), 16.0);
+}
+
+#[test]
+fn a_whole_room_rebuilds_itself_by_walls_riding_rails() {
+    // `rebuild.txt`: a hall whose partitions ride rails along every row,
+    // cycling three rooms, one wide hall, and two halves back to back.
+    // Every wall slides each time: the same walls throughout, none rising
+    // or sinking.
+    let mut app = boot_map(include_str!("../assets/maps/rebuild.txt"), |_| {});
+    let walls = |app: &mut App| {
+        let world = app.world_mut();
+        let mut walls: Vec<(Entity, IVec2)> = world
+            .query_filtered::<(Entity, &Pos), With<Wall>>()
+            .iter(world)
+            .map(|(entity, pos)| (entity, pos.0))
+            .collect();
+        walls.sort_by_key(|(entity, _)| *entity);
+        walls
+    };
+    let partitions = |app: &mut App| {
+        let mut columns: Vec<i32> = walls(app)
+            .into_iter()
+            .map(|(_, pos)| pos)
+            .filter(|pos| (1..22).contains(&pos.x) && (1..12).contains(&pos.y))
+            .map(|pos| pos.x)
+            .collect();
+        columns.dedup();
+        columns.sort();
+        columns.dedup();
+        columns
+    };
+    let entities = |app: &mut App| walls(app).into_iter().map(|(e, _)| e).collect::<Vec<_>>();
+    let before = entities(&mut app);
+    assert_eq!(partitions(&mut app), [8, 15]);
+    for expected in [[4, 19], [11, 12], [8, 15]] {
+        // On and off the plate: one press, one switch.
+        step(&mut app, KeyCode::ArrowRight);
+        step(&mut app, KeyCode::ArrowLeft);
+        for _ in 0..5 {
+            app.update();
+        }
+        assert_eq!(partitions(&mut app), expected);
+        assert_eq!(entities(&mut app), before, "the same walls, slid");
+    }
 }

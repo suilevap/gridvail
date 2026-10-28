@@ -249,6 +249,8 @@ fn every_bundled_map_comes_together_from_the_intro() {
         ("lightTest", include_str!("../assets/maps/lightTest.txt")),
         ("portals", include_str!("../assets/maps/portals.txt")),
         ("rooms", include_str!("../assets/maps/rooms.txt")),
+        ("rails", include_str!("../assets/maps/rails.txt")),
+        ("rebuild", include_str!("../assets/maps/rebuild.txt")),
         ("chasers", include_str!("../assets/maps/chasers.txt")),
         (
             "hunter_keys",
