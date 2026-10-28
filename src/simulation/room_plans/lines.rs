@@ -25,7 +25,7 @@ impl RoomPlanner for LineSlides {
 }
 
 /// Every slide along a row or column the switch allows (see [`LineSlides`]).
-pub(super) fn line_slides(switch: &SwitchContext) -> Vec<Candidate> {
+fn line_slides(switch: &SwitchContext) -> Vec<Candidate> {
     // Sets: a room may be the whole map (the intro).
     let from: HashSet<IVec2> = switch.from.iter().copied().collect();
     let to: HashSet<IVec2> = switch.to.iter().copied().collect();

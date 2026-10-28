@@ -126,7 +126,7 @@ impl SwitchPlan {
         }
     }
 
-    /// Takes `candidates` best first (lowest rank: tier, then length), each
+    /// Takes `candidates` best first (lowest rank), each
     /// only if none of its cells is part of one already taken. What is left
     /// rises or sinks in place.
     pub(crate) fn from_candidates(switch: &SwitchContext, mut candidates: Vec<Candidate>) -> Self {
@@ -215,8 +215,9 @@ impl SwitchPlan {
 /// slides, and its rank (lower is taken first).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Candidate {
-    /// A tier (a planner's order of preference), then a length.
-    pub rank: (u8, i32),
+    /// Compared as a pair: a planner's own measure (a tier, a cost), then
+    /// a length.
+    pub rank: (i32, i32),
     pub cells: Vec<IVec2>,
     pub moves: Vec<(IVec2, IVec2)>,
 }

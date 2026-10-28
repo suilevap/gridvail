@@ -1,87 +1,118 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use bevy::prelude::*;
 
-use super::lines::line_slides;
 use super::{Candidate, RoomPlanner, SwitchContext, SwitchPlan};
 
-/// Walls move along the walls they belong to, as a gap travels along a
-/// wall: a cell the new layout loses and one it gains, joined by a path of
-/// cells that are wall in both layouts (stepping up, down, left or right,
-/// around corners), become a shift where every wall on the path moves one
-/// cell towards the gained one. A wall never leaves its structure for open
-/// floor this way, so in a room inside a room the inner walls stay inner
-/// walls and the outer ones outer.
+/// Walls move along the walls they belong to, and across floor only as far
+/// as they must. A cell the new layout loses and one it gains are joined by
+/// the path that crosses the fewest floor cells, and of those the one with
+/// the fewest steps. A path goes
 ///
-/// The shortest paths are taken first, and no cell is part of two. Only
-/// what no path joins slides across floor or along a line, as with
-/// [`LineSlides`](super::LineSlides); what is left rises or sinks in place.
+/// - through cells that are wall in both layouts, one step at a time and
+///   around corners: each wall on the way shifts one cell along, as a gap
+///   travels along a wall;
+/// - across empty floor (floor in both layouts, nothing standing on it) in
+///   straight runs from wall to wall: the wall at the run's start glides
+///   to its end.
+///
+/// So a path through walls always wins; with none, walls shift as far as
+/// they can along their wall, then glide across the floor. In a room inside
+/// a room the inner walls stay inner walls and the outer ones outer.
+/// [`LineSlides`](super::LineSlides)' slides are the straight paths.
+///
+/// The best paths are taken first, and no cell is part of two. What is
+/// left rises or sinks in place.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AlongWalls;
 
-/// Cells farther along a wall than this are not worth shifting.
-const MAX_PATH: i32 = 64;
+/// A path's cost: floor cells crossed, then steps.
+type Cost = (i32, i32);
+
+/// Paths longer than this, in steps, are not worth taking.
+const MAX_STEPS: i32 = 64;
 
 impl RoomPlanner for AlongWalls {
     fn plan(&self, switch: &SwitchContext) -> SwitchPlan {
-        let mut candidates = wall_paths(switch);
-        candidates.extend(line_slides(switch).into_iter().map(|mut slide| {
-            slide.rank.0 = 1;
-            slide
-        }));
-        SwitchPlan::from_candidates(switch, candidates)
+        SwitchPlan::from_candidates(switch, paths(switch))
     }
 }
 
-/// From every lost cell, the shortest path through walls to each gained
-/// cell it reaches.
-fn wall_paths(switch: &SwitchContext) -> Vec<Candidate> {
+/// From every lost cell, the cheapest path to each gained cell it reaches.
+fn paths(switch: &SwitchContext) -> Vec<Candidate> {
     let from: HashSet<IVec2> = switch.from.iter().copied().collect();
     let to: HashSet<IVec2> = switch.to.iter().copied().collect();
     let added: HashSet<IVec2> = switch.added_in(&from).collect();
-    let both = |p: IVec2| from.contains(&p) && to.contains(&p) && switch.holds_wall(p);
+    let (low, high) = (switch.room.origin, switch.room.origin + switch.room.size);
+    let inside = |p: IVec2| p.cmpge(low).all() && p.cmplt(high).all();
+    let wall = |p: IVec2| from.contains(&p) && to.contains(&p) && switch.holds_wall(p);
+    let floor = |p: IVec2| inside(p) && !from.contains(&p) && !to.contains(&p) && switch.is_free(p);
 
     let mut candidates = Vec::new();
     for start in switch.removed_in(&to).filter(|&p| switch.holds_wall(p)) {
-        let mut came_from: HashMap<IVec2, IVec2> = HashMap::new();
-        let mut queue = VecDeque::from([(start, 0)]);
-        while let Some((p, length)) = queue.pop_front() {
-            if length >= MAX_PATH {
+        // Where each node was reached from, at what cost.
+        let mut best: HashMap<IVec2, (Cost, IVec2)> = HashMap::new();
+        let mut queue = BinaryHeap::from([Reverse(((0, 0), (start.x, start.y)))]);
+        while let Some(Reverse((cost, (x, y)))) = queue.pop() {
+            let p = IVec2::new(x, y);
+            if p != start && best.get(&p).is_some_and(|&(known, _)| known < cost) {
+                continue;
+            }
+            if added.contains(&p) {
+                candidates.push(path(start, p, &best));
                 continue;
             }
             for step in [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y] {
-                let next = p + step;
-                if next == start || came_from.contains_key(&next) {
+                // Over a straight run of floor (maybe none) to a wall or a
+                // gained cell.
+                let mut next = p + step;
+                let mut crossed = 0;
+                while floor(next) && crossed < MAX_STEPS {
+                    next += step;
+                    crossed += 1;
+                }
+                if next == start || !(wall(next) || added.contains(&next)) {
                     continue;
                 }
-                if added.contains(&next) {
-                    came_from.insert(next, p);
-                    candidates.push(shift(start, next, &came_from, length + 1));
-                } else if both(next) {
-                    came_from.insert(next, p);
-                    queue.push_back((next, length + 1));
+                let reached = (cost.0 + crossed, cost.1 + crossed + 1);
+                if reached.1 > MAX_STEPS
+                    || best.get(&next).is_some_and(|&(known, _)| known <= reached)
+                {
+                    continue;
                 }
+                best.insert(next, (reached, p));
+                queue.push(Reverse((reached, (next.x, next.y))));
             }
         }
     }
     candidates
 }
 
-/// The path from `start` to `end`, each wall on it moving one cell on.
-fn shift(start: IVec2, end: IVec2, came_from: &HashMap<IVec2, IVec2>, length: i32) -> Candidate {
-    let mut cells = vec![end];
-    while let Some(&previous) = cells.last().and_then(|p| came_from.get(p)) {
-        cells.push(previous);
+/// The path from `start` to `end`: each wall on it moves on to the next
+/// node, and it takes up every cell it passes.
+fn path(start: IVec2, end: IVec2, best: &HashMap<IVec2, (Cost, IVec2)>) -> Candidate {
+    let mut nodes = vec![end];
+    while let Some(&(_, previous)) = nodes.last().and_then(|p| best.get(p)) {
+        nodes.push(previous);
         if previous == start {
             break;
         }
     }
-    cells.reverse();
-    let moves = cells.windows(2).map(|pair| (pair[0], pair[1])).collect();
+    nodes.reverse();
+    let mut cells = vec![start];
+    for pair in nodes.windows(2) {
+        let step = (pair[1] - pair[0]).signum();
+        let mut p = pair[0];
+        while p != pair[1] {
+            p += step;
+            cells.push(p);
+        }
+    }
     Candidate {
-        rank: (0, length),
+        rank: best[&end].0,
         cells,
-        moves,
+        moves: nodes.windows(2).map(|pair| (pair[0], pair[1])).collect(),
     }
 }
 
@@ -147,6 +178,25 @@ mod tests {
     fn with_no_wall_to_move_along_a_wall_still_slides_across_the_floor() {
         let plan = switch(&[(0, 0)], &[(3, 0)]);
         assert_eq!(slides(&plan), vec![(IVec2::new(0, 0), IVec2::new(3, 0))]);
+    }
+
+    #[test]
+    fn walls_shift_as_far_as_they_can_along_their_wall_then_cross_the_floor() {
+        // A wall along row 0 loses its left end; the cell gained is below
+        // its right end. The walls shift right and the last one glides down.
+        let plan = switch(
+            &[(0, 0), (1, 0), (2, 0), (3, 0)],
+            &[(1, 0), (2, 0), (3, 0), (3, 3)],
+        );
+        assert_eq!(
+            slides(&plan),
+            vec![
+                (IVec2::new(0, 0), IVec2::new(1, 0)),
+                (IVec2::new(1, 0), IVec2::new(2, 0)),
+                (IVec2::new(2, 0), IVec2::new(3, 0)),
+                (IVec2::new(3, 0), IVec2::new(3, 3)),
+            ]
+        );
     }
 
     #[test]

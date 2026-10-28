@@ -129,10 +129,12 @@ next to this file.
   with wall in both layouts between them (the stretch shifts one cell, as
   a gap moving along a wall), and raises and sinks the rest;
   `along-walls` keeps walls to the walls they are part of: a lost cell and
-  a gained one joined through cells that are wall in both layouts, around
-  corners too, become a shift where each wall on the way moves one cell,
-  so in a room inside a room the inner walls stay inner and the outer ones
-  outer, and only what no wall joins slides as `lines` would; `rise-sink`
+  a gained one are joined by the path crossing the fewest floor cells, then
+  the shortest, where walls shift one cell each through cells that are
+  wall in both layouts (around corners too) and glide across floor in
+  straight runs. A path through walls always wins; with none, walls shift
+  as far as they can along their wall and then cross the floor, so in a
+  room inside a room the inner walls stay inner and the outer ones outer; `rise-sink`
   only raises and sinks. `@room <x> <y> <planner>` picks a room's planner,
   so strategies can be compared side by side in one map, and
   `--room-planner NAME` picks the one for rooms that name none. Code adds
