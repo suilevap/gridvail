@@ -11,6 +11,7 @@ fn touch_app() -> (App, Entity) {
         .init_resource::<Pinch>()
         .init_resource::<ControlScheme>()
         .init_resource::<crate::camera::CameraOperator>()
+        .add_message::<CancelIntent>()
         .add_systems(
             PreUpdate,
             (read_swipes, read_pinch).after(bevy::input::InputSystems),
@@ -180,4 +181,41 @@ fn a_second_finger_cancels_the_swipe_until_all_fingers_lift() {
     touch(&mut app, TouchPhase::Started, 100.0, 100.0);
     touch(&mut app, TouchPhase::Moved, 160.0, 100.0);
     assert_eq!(step_taken(&mut app, player), Some(IVec2::X));
+}
+
+fn cancels(app: &App) -> usize {
+    let messages = app.world().resource::<Messages<CancelIntent>>();
+    messages.iter_current_update_messages().count()
+}
+
+#[test]
+fn a_tap_asks_to_cancel() {
+    let (mut app, _) = touch_app();
+    touch(&mut app, TouchPhase::Started, 100.0, 100.0);
+    touch(&mut app, TouchPhase::Moved, 104.0, 102.0);
+    touch(&mut app, TouchPhase::Ended, 104.0, 102.0);
+    assert_eq!(cancels(&app), 1);
+}
+
+#[test]
+fn a_swipe_does_not_cancel() {
+    let (mut app, _) = touch_app();
+    touch(&mut app, TouchPhase::Started, 100.0, 100.0);
+    touch(&mut app, TouchPhase::Moved, 160.0, 100.0);
+    touch(&mut app, TouchPhase::Ended, 160.0, 100.0);
+    assert_eq!(cancels(&app), 0);
+}
+
+#[test]
+fn a_swipe_is_fresh_and_a_finger_kept_down_repeats() {
+    let (mut app, player) = touch_app();
+    let repeat = |app: &App| app.world().get::<MoveCommand>(player).unwrap().repeat;
+    touch(&mut app, TouchPhase::Started, 100.0, 100.0);
+    touch(&mut app, TouchPhase::Moved, 160.0, 100.0);
+    assert_eq!(step_taken(&mut app, player), Some(IVec2::X));
+    assert!(!repeat(&app), "a swipe is a fresh input");
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    touch(&mut app, TouchPhase::Moved, 161.0, 100.0);
+    assert_eq!(step_taken(&mut app, player), Some(IVec2::X), "held");
+    assert!(repeat(&app), "walking on is not a fresh input");
 }

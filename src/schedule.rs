@@ -30,3 +30,9 @@ pub enum GamePhase {
     Output,
     Finalize,
 }
+
+/// Systems that turn the player's input (keys, touch, agents) into this
+/// frame's `MoveCommand`, so whatever reads those commands before they are
+/// carried out (combat picking targets) runs after all of them.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PlayerCommands;

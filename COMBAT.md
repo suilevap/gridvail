@@ -1,8 +1,8 @@
 # Combat design
 
 Design notes for the battle system: what it aims for, the control scheme,
-and the cut taken for the first playable version (MVP). Nothing here is
-implemented yet; enemies currently only bump the player (`EnemyAct::Attack`).
+and the cut taken for the first playable version (MVP). The MVP is in
+`src/combat/` (see `ARCHITECTURE.md`); try it on `assets/maps/arena.txt`.
 
 ## Goals
 
@@ -128,18 +128,52 @@ Out, roughly in the order they would follow:
 - Light-based detection, noise and alarms, bodies as evidence.
 - More enemy types and telegraph shapes (lines, cones).
 
+### As built
+
+- **Timing.** An enemy winds up on its turn; the strike lands at the start
+  of its next turn, before anyone acts in it. The player gets exactly one
+  action in between: step off, or knock the striker so its blow lands
+  elsewhere.
+- **Marks.** Whatever stands on a cell about to be struck is drawn red, a
+  picked target yellow; an empty marked cell shows a red `×`. Lighting does
+  not change these colours.
+- **Holding a key.** Walking into an enemy with a held key picks it; the
+  same key held on does nothing until it is let go, so a lunge always
+  takes a fresh press.
+- **Knobs.** `--turn SECONDS` (or `?turn=` on the web) sets how long a turn
+  waits for the player; `--hp N` the player's hit points.
+- **Found while building it.**
+  - Enemies see all around them, so one is rarely unaware when the player
+    gets next to it. Critical hits mostly land on the `!` beat, or from
+    darkness and around corners. Sight that depends on facing would make
+    stealth openers a real choice.
+  - With a strike that covers only the cell in front, a player who keeps
+    moving dodges every strike (the enemy tests show a pacing player is
+    never hit). Wider shapes (the cells beside the target too) or enemies
+    that move and strike in one turn would raise the pressure.
+
 ## Extensibility sketch
 
-- An action in progress is one component checked every turn:
-  `PendingAction { kind, target, since_turn, charge }` with `valid`,
-  `preview` and `complete`. The turn system completes, carries over or drops
-  it; the timer never fires it.
-- Input layers (touch, keyboard, gamepad) emit the same intents: `Select`,
-  `Act`, `AimUpdate`, `Release`, `Cancel`.
-- Verbs produce effects (`Damage`, `Displace`, later `Launch`, `Impact`,
-  `Ignite`, `Electrify`, `Noise`); reactions are rules from
-  `(effect, target tags)` to follow-up effects, run from a queue within the
-  turn. Chain reactions come from those rules, not special cases.
+What the MVP has, and where each extension plugs in:
+
+- **Targets are data.** Anything `Targetable` can be picked, anything
+  `Movable` knocked about, anything with `Health` hurt. A crate or a lamp
+  joins in by carrying these, with its own `Maneuvers` if it should answer
+  differently (a crate: shoved, never followed, no damage).
+- **Maneuvers are data.** A `Maneuver` (name, whether the engager follows,
+  damage) for each `Relation` of the second direction to the first. A new
+  verb is a new table; a tool could swap the table the engager uses.
+- **Strike shapes are data.** A `StrikeShape` lists cells in the striker's
+  frame (ahead, to the side), so lines, cones and sweeps need no code.
+- **Damage is a message.** Maneuvers, slams and strikes all send `Hurt`;
+  hazards, fire or electricity later send the same, and reactions to
+  damage read it.
+- **Input is intent.** Keys, swipes and the agent API all write the same
+  `MoveCommand` (and `CancelIntent`); combat reads those, never devices.
+- Still to come: actions in progress beyond a selection (aiming, with a
+  charge), as one component the turn system completes, carries over or
+  drops; and reactions as rules from `(effect, target tags)` to follow-up
+  effects, run from a queue within the turn, for chain reactions.
 - A new enemy type is a behavior tree, tags, HP and a telegraph shape; a new
   object is tags and reactions; a new tool is an aim shape, a charge curve
   and effects.

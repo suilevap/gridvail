@@ -617,11 +617,22 @@ fn glyph_rotation(camera: &ViewCamera) -> Quat {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 fn update_hud(
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
-    players: Query<(&Pos, &Tokens, Option<&Inventory>), With<Player>>,
+    players: Query<
+        (
+            &Pos,
+            &Tokens,
+            Option<&Inventory>,
+            Option<&Health>,
+            Option<&Selection>,
+        ),
+        With<Player>,
+    >,
+    healths: Query<&Health>,
     keys: Query<(), With<Key>>,
     enemies: Query<Entity, (With<Enemy>, Without<DestroyRequested>)>,
     collisions: Res<CollisionBuffer>,
@@ -631,10 +642,16 @@ fn update_hud(
     mut hud: Query<&mut Text, With<HudText>>,
 ) {
     let scheme = scheme.map_or(ControlScheme::default(), |scheme| *scheme);
+    let (health, selection) = players
+        .iter()
+        .next()
+        .map_or((None, None), |(.., health, selection)| {
+            (health.copied(), selection.copied())
+        });
     let (position, tokens, held_keys) = players
         .iter()
         .next()
-        .map(|(pos, tokens, inventory)| {
+        .map(|(pos, tokens, inventory, ..)| {
             let held_keys = inventory.map_or(0, |inventory| {
                 inventory
                     .0
@@ -682,6 +699,25 @@ fn update_hud(
                 .map_or("off", |operator| operator.portal_turn.name()),
         )
         .expect("writing to String cannot fail");
+        if let Some(health) = health {
+            write!(text.0, "\nhp {}/{}", health.hp, health.max)
+                .expect("writing to String cannot fail");
+        }
+        if let Some(selection) = selection {
+            text.0.push_str(" | target");
+            if let Ok(hp) = healths.get(selection.target) {
+                write!(text.0, " {}/{} hp", hp.hp, hp.max).expect("writing to String cannot fail");
+            }
+            let cancel = match scheme {
+                ControlScheme::Keyboard => "C cancels",
+                ControlScheme::Touch => "tap cancels",
+            };
+            write!(
+                text.0,
+                ": same way lunge, sideways push, back yank | {cancel}"
+            )
+            .expect("writing to String cannot fail");
+        }
     }
 }
 

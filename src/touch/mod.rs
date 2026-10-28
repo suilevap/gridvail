@@ -7,7 +7,7 @@
 use bevy::prelude::*;
 
 use crate::model::*;
-use crate::schedule::GamePhase;
+use crate::schedule::{GamePhase, PlayerCommands};
 use crate::simulation::{move_commands, player_input};
 
 mod pinch;
@@ -23,7 +23,8 @@ pub struct TouchControlPlugin;
 
 impl Plugin for TouchControlPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Swipe>()
+        app.add_message::<CancelIntent>()
+            .init_resource::<Swipe>()
             .init_resource::<Pinch>()
             .init_resource::<ControlScheme>()
             .add_systems(
@@ -37,6 +38,7 @@ impl Plugin for TouchControlPlugin {
                 swipe_commands
                     .after(player_input)
                     .before(move_commands)
+                    .in_set(PlayerCommands)
                     .in_set(GamePhase::Simulation),
             );
     }

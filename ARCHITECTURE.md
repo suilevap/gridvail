@@ -7,7 +7,7 @@ foundation  content  layout  model  schedule
      ↑        ↑        ↑       ↑       ↑
      simulation  vision  navigation  lighting  animation  presentation
           ↑               ↑                  ↑
-          ai  →  locomotion              transition
+     combat   ai  →  locomotion          transition
              ↑       ↑       ↑
                     app       rendering  agent_api  debug_ui
                       \         |         /         /
@@ -132,6 +132,34 @@ and renderers must not import it.
   needs `GetKey`, which needs `FetchKey(key)` for each known key in turn
   and fails only when every one has; with a key, door pricing lets the next
   plan through the door.
+- `combat/` picks targets, carries out maneuvers, lands telegraphed
+  strikes and takes damage (`COMBAT.md` has the design). It works on data,
+  not kinds of entity: anything `Targetable` can be picked by an `Engager`
+  (the player, given one with its `Health` by `give_player_health`),
+  anything `Movable` knocked about, anything with `Health` hurt, so a crate
+  or a lamp joins in by carrying the same components. `engage` runs after
+  every input has written its `MoveCommand` (the `PlayerCommands` set:
+  keys, swipes, the agent API) and before moves: a move into a target
+  picks it (a `Selection`, which costs no token and is dropped by a
+  `CancelIntent`: a tap, `C`, or the agent API), and the next one is the
+  maneuver: `plan_maneuver` works out, from the target's own `Maneuvers`
+  or `CombatRules::maneuvers`, how the second direction relates to the
+  first (`Relation`: forward, side, back), where both end up (the target
+  always one cell the way of the second direction, the engager following
+  or not) and whether a blocked way slams it; `engage` then moves both on
+  the grid itself, which lets them swap, and spends the turn as a wait.
+  Damage only travels as `Hurt` messages; `take_damage` destroys what runs
+  out, except the player, who is `Defeated` (the app plays the map again).
+  Who strikes is the AI's decision: `ai::carry_out` turns an attack by a
+  `Striker` into a `Telegraph` (a direction; the cells come from the
+  striker's `StrikeShape` in its own frame, counted from wherever it stands
+  when it lands), the enemy's tree is skipped while it waits, and
+  `land_strikes` lands it at the start of its next turn, before anyone
+  acts, on whoever has `Health` there. The AI also writes `Exposed` (not
+  aware of the player, or on its alert beat), which makes a hit critical.
+  `mark_cells` lists strike cells and picked targets in `CellMarks`, which
+  the frame composer draws: whatever stands there tinted, else a glyph on
+  the floor.
 - `lighting/` contains light blending and light colour: a `LightCell` keeps
   a level per kind of light, summed over every light of that kind; each
   kind has a gradient baked into a 256-entry lookup table (`LightLut`), and

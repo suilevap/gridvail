@@ -5,7 +5,7 @@ use crate::model::{
     CollisionBuffer, ControlScheme, MapGrid, PortalCrossings, SharedRng, Tile, TokenTimer,
     TurnPacing, TurnState,
 };
-use crate::schedule::{GamePhase, StartupPhase};
+use crate::schedule::{GamePhase, PlayerCommands, StartupPhase};
 
 use super::*;
 
@@ -44,7 +44,7 @@ impl Plugin for SimulationPlugin {
                     sync_portals,
                     turn_tick,
                     recharge_tokens,
-                    player_input,
+                    player_input.in_set(PlayerCommands),
                     move_commands,
                     update_direction,
                     movement,

@@ -192,6 +192,28 @@ fn load_map(
     }
 }
 
+/// A defeated player plays the map again from its start, at full health,
+/// with nothing picked.
+pub(super) fn restart_on_defeat(
+    mut commands: Commands,
+    mut defeated: MessageReader<Defeated>,
+    current: Option<Res<CurrentMap>>,
+    mut players: Query<(Entity, &mut Health), With<Player>>,
+    mut load: MessageWriter<LoadMap>,
+) {
+    let mut restart = false;
+    for &Defeated(entity) in defeated.read() {
+        if let Ok((player, mut health)) = players.get_mut(entity) {
+            health.hp = health.max;
+            commands.entity(player).remove::<Selection>();
+            restart = true;
+        }
+    }
+    if let (true, Some(current)) = (restart, current) {
+        load.write(LoadMap(current.text));
+    }
+}
+
 /// Leaves for the next map as soon as the player steps onto an exit, even
 /// mid-run: waiting for the step to finish would let a held key carry them
 /// over it.
@@ -458,6 +480,9 @@ fn spawn_player(commands: &mut Commands, at: IVec2, cell_count: usize) -> Entity
 /// Steps of detour an enemy takes rather than queue behind another actor.
 const ENEMY_CROWD_COST: u32 = 4;
 
+/// An enemy's hit points.
+const ENEMY_HP: i32 = 2;
+
 /// What every kind of enemy is made of: a walking, carrying, token-taking
 /// body. Its role adds a mind and a tree.
 fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
@@ -471,6 +496,13 @@ fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
         ),
         Glyph::new('☺', 1, RED),
         Inventory::default(),
+        (
+            Health::full(ENEMY_HP),
+            Targetable,
+            Movable,
+            Exposed::default(),
+            Striker::default(),
+        ),
         (
             Destination::default(),
             TraversalPrefs {

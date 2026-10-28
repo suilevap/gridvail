@@ -50,7 +50,9 @@ impl Plugin for AiPlugin {
                         .chain()
                         .after(share_paths)
                         .before(BehaviorSystems),
-                    carry_out.after(BehaviorSystems).before(follow_paths),
+                    (carry_out, expose_unaware)
+                        .after(BehaviorSystems)
+                        .before(follow_paths),
                     wait_if_idle.after(follow_paths),
                 )
                     .in_set(GamePhase::Simulation)

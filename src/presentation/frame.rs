@@ -26,14 +26,22 @@ pub const PORTAL_GLYPH: char = '░';
 /// portal's wall seen from behind or side-on, so a portal stands out from
 /// any side.
 ///
+/// `CellMarks` tint whatever stands on the seen cells they mark, or replace
+/// their floor where nothing does, in their own colours.
+///
 /// Two indexes are kept apart: map data (visibility, light) is indexed by
 /// `MapGrid::idx`, frame data by `RenderBuffers::idx`.
 #[allow(clippy::type_complexity)]
 pub fn compose_frame(
     grid: Res<MapGrid>,
     dynamic: Res<DynamicLight>,
-    // What is in sight beyond what the player sees: all, or an oval.
-    (reveal, area): (Option<Res<RevealAll>>, Option<Res<RevealArea>>),
+    // What is in sight beyond what the player sees (all, or an oval), and
+    // what is marked on the floor.
+    (reveal, area, marks): (
+        Option<Res<RevealAll>>,
+        Option<Res<RevealArea>>,
+        Option<Res<CellMarks>>,
+    ),
     viewers: Query<(&Pos, &VisibilityMap, Option<&PlayerView>), With<Player>>,
     glyphs: Query<(
         Entity,
@@ -215,6 +223,26 @@ pub fn compose_frame(
         shown
     });
     buffers.objects = objects;
+
+    for &(cell, mark) in marks.iter().flat_map(|marks| &marks.0) {
+        let Some(world) = grid.idx(cell) else {
+            continue;
+        };
+        let mut frame = buffers.seen_first[world];
+        while frame != RenderBuffers::NO_CELL {
+            let index = frame as usize;
+            let at = buffers.pos_of(index);
+            let mut stood_on = false;
+            for object in buffers.objects.iter_mut().filter(|object| object.pos == at) {
+                object.cell.color = mark.tint;
+                stood_on = true;
+            }
+            if !stood_on {
+                buffers.ground[index] = mark.ground;
+            }
+            frame = buffers.seen_next[index];
+        }
+    }
 }
 
 /// Lights frame cell `cell` at `position`, seen now through `seen` or else

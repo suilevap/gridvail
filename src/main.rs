@@ -24,8 +24,8 @@ use pav_ecs_game_bevy_port::app::{
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
-    AnimatedPos, CompassMode, Player, Pos, RevealAll, SettingsMenu, ViewCamera, Vis, VisibilityMap,
-    WallVolume,
+    AnimatedPos, CombatRules, CompassMode, Player, Pos, RevealAll, SettingsMenu, TokenTimer,
+    ViewCamera, Vis, VisibilityMap, WallVolume,
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
@@ -82,6 +82,15 @@ fn main() -> AppExit {
     }
     if let Some(layout) = options.intro {
         app.insert_resource(Intro(layout));
+    }
+    if let Some(seconds) = options.turn {
+        app.insert_resource(TokenTimer(Timer::from_seconds(seconds, TimerMode::Once)));
+    }
+    if let Some(player_hp) = options.hp {
+        app.insert_resource(CombatRules {
+            player_hp,
+            ..default()
+        });
     }
     app.insert_resource(ClearColor(Color::BLACK))
         .insert_resource(options.motion)
@@ -192,6 +201,10 @@ struct Options {
     room_planner: String,
     /// What the map's walls come together from when it loads, if anything.
     intro: Option<IntroLayout>,
+    /// Seconds a turn waits for the player before it passes anyway.
+    turn: Option<f32>,
+    /// The player's hit points.
+    hp: Option<i32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -256,6 +269,8 @@ impl Options {
         let mut walls = None;
         let mut room_planner = None;
         let mut intro = None;
+        let mut turn = None;
+        let mut hp = None;
         parse_options!(source, args;
             "--screenshot": native if capture.is_none() => {
                 capture = Some(
@@ -274,6 +289,26 @@ impl Options {
             },
             "--reveal": flag => {
                 reveal = true;
+            },
+            "--turn": value if turn.is_none() => {
+                let seconds = args.next().expect("--turn requires seconds");
+                turn = Some(
+                    seconds
+                        .parse::<f32>()
+                        .ok()
+                        .filter(|seconds| *seconds > 0.0)
+                        .expect("--turn must be a positive number of seconds"),
+                );
+            },
+            "--hp": value if hp.is_none() => {
+                let points = args.next().expect("--hp requires hit points");
+                hp = Some(
+                    points
+                        .parse::<i32>()
+                        .ok()
+                        .filter(|points| *points > 0)
+                        .expect("--hp must be a positive whole number"),
+                );
             },
             "--compass": value if compass.is_none() => {
                 let name = args
@@ -378,6 +413,8 @@ impl Options {
             // Screenshots and recordings play a walk from a fixed frame, which
             // the intro's cutscene would hold back: no intro unless asked.
             intro,
+            turn,
+            hp,
         }
     }
 }
@@ -435,6 +472,10 @@ mod option_tests {
                 "rise-sink",
                 "--intro",
                 "noise",
+                "--turn",
+                "1.5",
+                "--hp",
+                "1",
             ]
             .map(String::from)
         });
@@ -444,6 +485,8 @@ mod option_tests {
         assert_eq!(options.portal_turn, PortalTurn::KeepNorth);
         assert_eq!(options.room_planner, RoomPlanners::RISE_SINK);
         assert_eq!(options.intro, Some(IntroLayout::Noise));
+        assert_eq!(options.turn, Some(1.5));
+        assert_eq!(options.hp, Some(1));
     }
 
     #[test]

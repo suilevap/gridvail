@@ -14,6 +14,7 @@ use bevy::prelude::*;
 
 use crate::ai::AiPlugin;
 use crate::camera::CameraPlugin;
+use crate::combat::CombatPlugin;
 use crate::locomotion::LocomotionPlugin;
 use crate::navigation::NavigationPlugin;
 use crate::presentation::PresentationPlugin;
@@ -60,10 +61,12 @@ impl Plugin for GamePlugin {
             NavigationPlugin,
             ServicesPlugin,
             AiPlugin,
+            CombatPlugin,
             LocomotionPlugin,
             VisionPlugin,
             PresentationPlugin,
             CameraPlugin,
-        ));
+        ))
+        .add_systems(Update, map::restart_on_defeat.in_set(GamePhase::Finalize));
     }
 }
