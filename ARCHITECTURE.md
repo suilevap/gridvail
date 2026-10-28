@@ -222,9 +222,20 @@ and renderers must not import it.
   baked on the CPU when the light changes or the view turns (the brightest
   light blurred, for bloom, and the light along the view ray, which rises
   a fixed way in map space whatever the zoom, for haze). A full-screen quad
-  over everything (`light_glow.wgsl`, blended additively) draws it with one
-  filtered read a pixel, without fading, so its cost follows the frame's
-  cells, not the window's pixels. The textures are filtered linearly, so
+  (`light_glow.wgsl`) draws it with one filtered read a pixel, without
+  fading, at a quarter of the window's resolution: a camera of its own
+  draws it into a texture, and a quad over everything
+  (`light_composite.wgsl`, blended additively) adds that texture, scaled
+  up. Bloom and haze are baked apart, so with
+  `LightEffects::Fog` the haze can be stirred by two layers of a small
+  tiling noise texture drifting over the map (two more reads a pixel). The
+  haze's alpha holds how open the floor around each cell is (baked with it,
+  from the map's walls), so fog keeps to open floor, and a ring of recent
+  points along movers' paths (`FogTrail`) clears and swirls it in their
+  wake: each frame the CPU sends only the wakes still stirring, with their
+  width and strength, as a uniform array, and the shader loops over those
+  alone. The fog drifts by the shader's own clock (`globals.time`), so
+  nothing is sent while the view, the light and the wakes stay still. The textures are filtered linearly, so
   one read blends them between cells; the shaders share the view's
   screen-to-map functions (`view.wgsl`).
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns

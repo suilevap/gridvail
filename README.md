@@ -190,7 +190,7 @@ next to this file.
   behaves through portals that turn (turn with the player or keep north
   up), when the compass shows (when the view is turned, always or off),
   the motion style, how walls stand (flat, stacked or leaning: see
-  `--walls`) and how light is drawn (flat, smooth or glow: see `--light`).
+  `--walls`) and how light is drawn (flat, smooth, glow or fog: see `--light`).
   The compass in the bottom-right corner shows where the
   map's north, east, south and west lie on screen. While the menu is open,
   movement and camera keys wait.
@@ -204,7 +204,12 @@ next to this file.
   colour a cell, and fades from one turn's light to the next over about a
   step's move instead of jumping; with `glow` (the default) the brightest light also blooms,
   and the air glows with the light it passes through, a haze rising toward
-  the viewer like the walls do. `flat` draws every cell in its own light.
+  the viewer like the walls do; with `fog` that haze is a drifting fog,
+  thicker and thinner as it moves over the map, keeping to the open floor
+  (thin against walls and in narrow passages) and parting around the player
+  and enemies as they move, a wake that closes behind them. `flat` draws
+  every cell in its own light. `fog.txt` is a map to see it in: two halls
+  with lamps, electricity, acid and pillars, joined by a doorway.
 - Enemies through portals (an addition, opt-in with `--enemy-portals`):
   enemies plan paths through portals too, with an A* estimate that knows
   the portals, so searches stay narrow.
@@ -306,8 +311,9 @@ cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same ro
 cargo run -- --intro noise   # the map comes together from noise instead of the title
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
-cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 306 tests, including allocation and independent C# comparisons
+cargo run -- --light fog        # light: flat, smooth, glow (default; bloom and haze) or fog (drifting haze)
+cargo run -- --map assets/maps/fog.txt --walls leaning --light fog --reveal  # fog drifting through two lit halls
+cargo test --workspace   # 310 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
