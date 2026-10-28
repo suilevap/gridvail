@@ -73,14 +73,20 @@ fn fragment(in: VertexOutput) -> Fragment {
             continue;
         }
         var own = wall.rgb / wall.a;
-        // The cell's one colour is its light (or a portal's colour): add how
-        // the light blended between cells differs from it here, so light
-        // changes across a wall pixel by pixel.
+        // With smooth light, a wall drawn black into the wall map takes its
+        // colour wholly from the light map, blended between cells (it
+        // changes across a wall pixel by pixel, and fades from turn to
+        // turn); one of another colour (a portal's) keeps it, and takes on
+        // how the light here differs from its cell's.
         let cell = floor(map + 0.5);
         if lighting.x > 0.5 {
             let blended = light_at(map);
-            let flat = light_texel(vec2<i32>(cell - frame.xy));
-            own = max(own + blended.rgb - flat.rgb, vec3<f32>(0.0));
+            if all(own < vec3<f32>(1.0 / 512.0)) {
+                own = blended.rgb;
+            } else {
+                let flat = light_texel(vec2<i32>(cell - frame.xy));
+                own = max(own + blended.rgb - flat.rgb, vec3<f32>(0.0));
+            }
         }
         // Within a pixel of its height: the object's top, in its own light;
         // its sides darker toward the floor.

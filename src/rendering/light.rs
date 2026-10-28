@@ -11,8 +11,13 @@
 //! makes a second texture (`glow`), and a full-screen quad drawn over
 //! everything, added to it, blooms it around the brightest points and
 //! gathers the light along each pixel's view ray through the air, a haze
-//! that rises toward the viewer like the walls do. The textures are sent to
-//! the GPU only when they change.
+//! that rises toward the viewer like the walls do.
+//!
+//! Light changes a turn at a time, so it would jump at every step: what the
+//! textures show eases toward the frame's light instead (`LIGHT_FADE`),
+//! about as fast as a step's move, so walls, bloom and haze fade from one
+//! turn's light to the next. The textures are sent to the GPU only while
+//! what they show changes.
 
 use bevy::{
     asset::{embedded_asset, RenderAssetUsages},
@@ -48,6 +53,11 @@ const HAZE_HEIGHT: f32 = 2.0;
 const OVERLAY_Z: f32 = 900.0;
 /// Steps of the linear to sRGB table: fine enough at the dark end.
 const SRGB_STEPS: usize = 4096;
+/// How quickly shown light follows the frame's: the seconds it takes to
+/// close all but 1/e (37%) of the gap. A step's move takes 0.12 s.
+const LIGHT_FADE: f32 = 0.06;
+/// Shown light this close to the frame's (in linear light) takes it.
+const SETTLED: f32 = 0.5 / 1024.0;
 
 /// Smooth light for the shaders, and bloom and haze with `Glow`.
 pub struct LightEffectsPlugin;
@@ -79,6 +89,19 @@ pub(super) struct LightTextures {
     /// The brightest light seen now, spread over a few cells: what blooms.
     pub glow: Handle<Image>,
     size: IVec2,
+    /// The frame's light, sRGB, alpha 255 where seen now, as `light` would
+    /// show it at once.
+    target: Vec<u8>,
+    /// What the textures show, in linear light (alpha: how much it is seen
+    /// now), for the map positions from `origin`: it eases toward
+    /// `target`. `shifted` is room to move it when the frame scrolls.
+    shown: Vec<Vec4>,
+    shifted: Vec<Vec4>,
+    origin: IVec2,
+    /// Whether `shown` has reached `target`; until the first target, it
+    /// takes it at once.
+    settled: bool,
+    fresh: bool,
     light_texels: Vec<u8>,
     glow_texels: Vec<u8>,
     /// Bloom before and between the two passes of its blur.
@@ -194,6 +217,12 @@ impl LightTextures {
             light: Handle::default(),
             glow: Handle::default(),
             size: IVec2::ZERO,
+            target: Vec::new(),
+            shown: Vec::new(),
+            shifted: Vec::new(),
+            origin: IVec2::ZERO,
+            settled: false,
+            fresh: true,
             light_texels: Vec::new(),
             glow_texels: Vec::new(),
             bright: Vec::new(),
@@ -213,14 +242,19 @@ impl LightTextures {
         self.light = images.add(light_image(size, TextureFormat::Rgba8UnormSrgb));
         // sRGB keeps the faint edge of the glow from coming in steps.
         self.glow = images.add(light_image(size, TextureFormat::Rgba8UnormSrgb));
+        self.target = vec![0; texels * 4];
+        self.shown = vec![Vec4::ZERO; texels];
+        self.shifted = vec![Vec4::ZERO; texels];
+        self.settled = false;
+        self.fresh = true;
         self.light_texels = vec![0; texels * 4];
         self.glow_texels = vec![0; texels * 4];
         self.bright = vec![Vec3::ZERO; texels];
         self.spread = vec![Vec3::ZERO; texels];
     }
 
-    /// Fills the light texels from the frame; whether they changed.
-    fn build_light(&mut self, buffers: &RenderBuffers) -> bool {
+    /// Fills the target from the frame; whether it changed.
+    fn build_target(&mut self, buffers: &RenderBuffers) -> bool {
         let mut changed = false;
         for y in 0..self.size.y {
             for x in 0..self.size.x {
@@ -235,7 +269,7 @@ impl LightTextures {
                     0
                 };
                 let rgba = [light.r, light.g, light.b, seen];
-                let out = &mut self.light_texels[texel * 4..texel * 4 + 4];
+                let out = &mut self.target[texel * 4..texel * 4 + 4];
                 if out != rgba {
                     out.copy_from_slice(&rgba);
                     changed = true;
@@ -245,23 +279,92 @@ impl LightTextures {
         changed
     }
 
-    /// The light seen now that is bright enough to bloom, blurred.
+    /// The target of texel `texel` in linear light.
+    fn target_at(&self, texel: usize) -> Vec4 {
+        let rgba = &self.target[texel * 4..texel * 4 + 4];
+        Vec4::new(
+            self.linear[rgba[0] as usize],
+            self.linear[rgba[1] as usize],
+            self.linear[rgba[2] as usize],
+            rgba[3] as f32 / 255.0,
+        )
+    }
+
+    /// Keeps what is shown on its map positions when the frame scrolls to
+    /// `origin`: what scrolls in shows its target at once.
+    fn follow(&mut self, origin: IVec2) {
+        let delta = origin - self.origin;
+        self.origin = origin;
+        if delta == IVec2::ZERO || self.fresh {
+            return;
+        }
+        self.settled = false;
+        for y in 0..self.size.y {
+            for x in 0..self.size.x {
+                let texel = (y * self.size.x + x) as usize;
+                let from = IVec2::new(x, y) + delta;
+                let inside = from.cmpge(IVec2::ZERO).all() && from.cmplt(self.size).all();
+                self.shifted[texel] = if inside {
+                    self.shown[(from.y * self.size.x + from.x) as usize]
+                } else {
+                    self.target_at(texel)
+                };
+            }
+        }
+        std::mem::swap(&mut self.shown, &mut self.shifted);
+    }
+
+    /// Eases what is shown toward the target over `seconds`; whether it
+    /// is still on its way.
+    fn fade(&mut self, seconds: f32) -> bool {
+        let fresh = std::mem::take(&mut self.fresh);
+        let step = if fresh {
+            1.0
+        } else {
+            1.0 - (-seconds / LIGHT_FADE).exp()
+        };
+        let mut moving = false;
+        for texel in 0..self.shown.len() {
+            let target = self.target_at(texel);
+            let shown = &mut self.shown[texel];
+            *shown += (target - *shown) * step;
+            if (target - *shown).abs().max_element() < SETTLED {
+                *shown = target;
+            } else {
+                moving = true;
+            }
+        }
+        moving
+    }
+
+    /// Fills the light texels from what is shown; whether they changed.
+    fn write_light(&mut self) -> bool {
+        let mut changed = false;
+        for (texel, shown) in self.shown.iter().enumerate() {
+            let rgba = [
+                self.srgb[srgb_step(shown.x)],
+                self.srgb[srgb_step(shown.y)],
+                self.srgb[srgb_step(shown.z)],
+                (shown.w * 255.0).round() as u8,
+            ];
+            let out = &mut self.light_texels[texel * 4..texel * 4 + 4];
+            if out != rgba {
+                out.copy_from_slice(&rgba);
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// The light shown and seen now that is bright enough to bloom,
+    /// blurred.
     fn build_glow(&mut self) {
         let (width, height) = (self.size.x as usize, self.size.y as usize);
-        for (texel, bright) in self.bright.iter_mut().enumerate() {
-            let rgba = &self.light_texels[texel * 4..texel * 4 + 4];
-            if rgba[3] == 0 {
-                *bright = Vec3::ZERO;
-                continue;
-            }
-            let color = Vec3::new(
-                self.linear[rgba[0] as usize],
-                self.linear[rgba[1] as usize],
-                self.linear[rgba[2] as usize],
-            );
+        for (shown, bright) in self.shown.iter().zip(self.bright.iter_mut()) {
+            let color = shown.truncate();
             let luminance = color.dot(Vec3::new(0.2126, 0.7152, 0.0722));
             let over = ((luminance - BLOOM_THRESHOLD) / (1.0 - BLOOM_THRESHOLD)).max(0.0);
-            *bright = color * over * over;
+            *bright = color * over * over * shown.w;
         }
         // Across, then down.
         blur(
@@ -281,18 +384,19 @@ impl LightTextures {
             &self.weights,
         );
         for (texel, glow) in self.bright.iter().enumerate() {
-            let to_byte = |value: f32| {
-                let step = (value.clamp(0.0, 1.0) * (SRGB_STEPS - 1) as f32).round();
-                self.srgb[step as usize]
-            };
             self.glow_texels[texel * 4..texel * 4 + 4].copy_from_slice(&[
-                to_byte(glow.x),
-                to_byte(glow.y),
-                to_byte(glow.z),
+                self.srgb[srgb_step(glow.x)],
+                self.srgb[srgb_step(glow.y)],
+                self.srgb[srgb_step(glow.z)],
                 255,
             ]);
         }
     }
+}
+
+/// The step of the linear to sRGB table for linear light `value`.
+fn srgb_step(value: f32) -> usize {
+    (value.clamp(0.0, 1.0) * (SRGB_STEPS - 1) as f32).round() as usize
 }
 
 /// One pass of a separable blur over a `width` x `height` grid, along
@@ -364,8 +468,10 @@ fn setup(
     commands.insert_resource(textures);
 }
 
-/// Builds the light textures from the frame and sends the changed ones.
+/// Eases the light textures toward the frame's light and sends them while
+/// they change.
 fn update_light_textures(
+    time: Res<Time>,
     effects: Res<LightEffects>,
     buffers: Res<RenderBuffers>,
     mut textures: ResMut<LightTextures>,
@@ -385,10 +491,21 @@ fn update_light_textures(
             material.glow = textures.glow.clone();
         }
     }
-    if !textures.build_light(&buffers) && !effects.is_changed() {
+    // Light shown while the effects were off is stale: start from now.
+    if effects.is_changed() {
+        textures.fresh = true;
+    }
+    if textures.build_target(&buffers) {
+        textures.settled = false;
+    }
+    textures.follow(buffers.origin);
+    if textures.settled && !textures.fresh {
         return;
     }
-    upload(&mut images, &textures.light, &textures.light_texels);
+    textures.settled = !textures.fade(time.delta_secs());
+    if textures.write_light() {
+        upload(&mut images, &textures.light, &textures.light_texels);
+    }
     if *effects == LightEffects::Glow {
         textures.build_glow();
         upload(&mut images, &textures.glow, &textures.glow_texels);
@@ -496,8 +613,11 @@ mod tests {
         buffers.light[at(6, 1)] = Rgb::new(255, 240, 170);
         buffers.light[at(1, 6)] = Rgb::new(60, 60, 64);
         buffers.seen[at(1, 6)] = seen;
-        assert!(textures.build_light(&buffers));
-        assert!(!textures.build_light(&buffers), "unchanged");
+        assert!(textures.build_target(&buffers));
+        assert!(!textures.build_target(&buffers), "unchanged");
+        // The first light is shown at once.
+        assert!(!textures.fade(0.0));
+        assert!(textures.write_light());
         let texel = |texels: &[u8], x: usize, y: usize| {
             let i = (y * 8 + x) * 4;
             [texels[i], texels[i + 1], texels[i + 2], texels[i + 3]]
@@ -509,6 +629,54 @@ mod tests {
         assert!(glow(1, 1) > glow(2, 1) && glow(2, 1) > glow(3, 1) && glow(3, 1) > 0);
         assert_eq!(glow(6, 1), 0, "remembered light does not glow");
         assert_eq!(glow(1, 6), 0, "dim light does not glow");
+    }
+
+    #[test]
+    fn shown_light_fades_to_the_next_turns_over_about_a_step() {
+        let mut textures = LightTextures::new(IVec2::new(8, 8), &mut Assets::default());
+        let mut buffers = RenderBuffers::new(8, 8);
+        buffers.light[buffers_index(2, 2)] = Rgb::new(200, 150, 30);
+        textures.build_target(&buffers);
+        textures.fade(0.0);
+        let shown = |textures: &LightTextures| textures.shown[2 * 8 + 2].x;
+        let before = shown(&textures);
+        // The next turn the cell is dark: one frame later it has only begun
+        // to fade, a step's move later it is mostly dark, then it settles.
+        buffers.light[buffers_index(2, 2)] = Rgb::BLACK;
+        assert!(textures.build_target(&buffers));
+        assert!(textures.fade(1.0 / 60.0));
+        let frame = shown(&textures);
+        assert!(frame < before && frame > before * 0.7, "{before} {frame}");
+        for _ in 0..7 {
+            textures.fade(1.0 / 60.0);
+        }
+        assert!(shown(&textures) < before * 0.15);
+        let mut frames = 0;
+        while textures.fade(1.0 / 60.0) {
+            frames += 1;
+            assert!(frames < 60, "settles within a second");
+        }
+        assert_eq!(shown(&textures), 0.0);
+    }
+
+    #[test]
+    fn shown_light_stays_on_its_map_cell_when_the_frame_scrolls() {
+        let mut textures = LightTextures::new(IVec2::new(8, 8), &mut Assets::default());
+        let mut buffers = RenderBuffers::new(8, 8);
+        buffers.light[buffers_index(3, 3)] = Rgb::new(200, 150, 30);
+        textures.build_target(&buffers);
+        textures.follow(buffers.origin);
+        textures.fade(0.0);
+        let lit = textures.shown[3 * 8 + 3];
+        // Mid-fade, the frame scrolls one cell right: map cell (3, 3) is
+        // texel (2, 3) now, still showing what it showed.
+        buffers.light[buffers_index(3, 3)] = Rgb::BLACK;
+        textures.build_target(&buffers);
+        textures.fade(1.0 / 60.0);
+        let fading = textures.shown[3 * 8 + 3];
+        assert!(fading != lit && fading.x > 0.0);
+        textures.follow(IVec2::new(1, 0));
+        assert_eq!(textures.shown[3 * 8 + 2], fading);
     }
 
     /// The frame slot of cell (x, y) of an 8x8 frame at the origin.

@@ -201,11 +201,15 @@ and renderers must not import it.
   cell, height as alpha), and one full-screen shader (`wall_volume.wgsl`)
   extrudes it up the screen, writing the depth the text sprites are sorted
   by, so what stands hides actors behind it. With smooth light it colours
-  each pixel from the light map below, blended between cells.
+  each pixel from the light map below, blended between cells: a wall in
+  its cell's own light is drawn black into the wall map, and takes its
+  colour wholly from the light map, so it fades with it.
 - `rendering/light.rs` (`LightEffectsPlugin`) turns the light each frame
   cell shows (`RenderBuffers::light`, filled by `compose_frame`) into
-  textures with a texel per cell for the text renderer's shaders, sent to
-  the GPU only when they change: the light map, and with `LightEffects::Glow`
+  textures with a texel per cell for the text renderer's shaders: the
+  light they show eases toward the frame's (kept on its map cells as the
+  frame scrolls), so it fades from turn to turn, and they are sent to the
+  GPU only while it changes. They are the light map, and with `LightEffects::Glow`
   a glow map, the brightest light blurred on the CPU. A full-screen quad
   over everything (`light_glow.wgsl`, blended additively) blooms the glow
   and gathers the light along each pixel's view ray as haze. The shaders

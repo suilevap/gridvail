@@ -293,6 +293,11 @@ fn draw_wall_map(
     (light, effects): (Option<Res<LightTextures>>, Option<Res<LightEffects>>),
 ) {
     let shown = *volume != WallVolume::Flat;
+    // Smooth light needs the light map, which `LightEffectsPlugin` keeps.
+    let light = light
+        .filter(|_| effects.is_some_and(|effects| *effects != LightEffects::Flat))
+        .map(|light| light.light.clone());
+    let smooth = light.is_some();
     let size = IVec2::new(buffers.width, buffers.height);
     let quad = &mut *quad;
     if let Ok(mut visibility) = quads.get_mut(quad.entity) {
@@ -350,7 +355,18 @@ fn draw_wall_map(
                 (slot % ATLAS_SLOTS * GLYPH_PX) as f32,
                 (slot / ATLAS_SLOTS * GLYPH_PX) as f32,
             );
-            let lit = Color::from(object.cell.color).to_linear();
+            // With smooth light, a wall in its cell's own light is drawn
+            // black into the wall map: the shader then lights it wholly from
+            // the light map, which fades from turn to turn. Any other colour
+            // (a portal's) is kept, and only varies with the light.
+            let in_light = buffers
+                .idx(object.pos)
+                .is_some_and(|index| buffers.light[index] == object.cell.color);
+            let lit = if smooth && in_light {
+                LinearRgba::BLACK
+            } else {
+                Color::from(object.cell.color).to_linear()
+            };
             let risen = stature * object.height.clamp(0.0, 1.0);
             let color = Color::LinearRgba(lit.with_alpha(risen / MAX_STATURE));
             let at = (object.position - buffers.origin.as_vec2() + 0.5) * texels;
@@ -411,11 +427,7 @@ fn draw_wall_map(
             tallest * CELL_SIZE.y,
         ),
     ];
-    // Smooth light needs the light map, which `LightEffectsPlugin` keeps.
-    let light = light
-        .filter(|_| effects.is_some_and(|effects| *effects != LightEffects::Flat))
-        .map(|light| light.light.clone());
-    let lighting = Vec4::new(if light.is_some() { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0);
+    let lighting = Vec4::new(if smooth { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0);
     let light_map = light.unwrap_or_default();
     let unchanged = materials.get(&quad.material).is_some_and(|material| {
         [

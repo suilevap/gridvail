@@ -188,7 +188,8 @@ next to this file.
   gives one object its own height.
 - Light effects (an addition, `--light`): with `smooth`, light blends
   between cells across standing walls, pixel by pixel, instead of one
-  colour a cell; with `glow` (the default) the brightest light also blooms,
+  colour a cell, and fades from one turn's light to the next over about a
+  step's move instead of jumping; with `glow` (the default) the brightest light also blooms,
   and the air glows with the light it passes through, a haze rising toward
   the viewer like the walls do. `flat` draws every cell in its own light.
 - Enemies through portals (an addition, opt-in with `--enemy-portals`):
