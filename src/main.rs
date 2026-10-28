@@ -297,9 +297,10 @@ impl Options {
                 );
             },
             "--light": value if light.is_none() => {
-                let name = args.next().expect("--light requires flat, smooth or glow");
+                let name = args.next().expect("--light requires flat, smooth, glow or fog");
                 light = Some(
-                    LightEffects::from_name(&name).expect("--light must be flat, smooth or glow"),
+                    LightEffects::from_name(&name)
+                        .expect("--light must be flat, smooth, glow or fog"),
                 );
             },
             "--enemy-portals": flag => {

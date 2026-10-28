@@ -20,14 +20,16 @@
 //! now spread over a few cells (bloom), and the light along the view ray
 //! (haze), which rises a fixed way in map space whatever the zoom. A
 //! full-screen quad over everything, added to it, draws that with one
-//! filtered read a pixel; it does not fade.
+//! filtered read a pixel; it does not fade. With `Fog`, the haze (baked
+//! apart from the bloom) thickens and thins with two layers of tiling noise
+//! (`fog_noise`) drifting over the map, so lit air moves like fog.
 //!
 //! The CPU only works, and the GPU only receives textures, when the light
 //! changes or (for the haze) the view turns.
 
 use bevy::{
     asset::{embedded_asset, RenderAssetUsages},
-    image::ImageSampler,
+    image::{ImageAddressMode, ImageSampler, ImageSamplerDescriptor},
     mesh::MeshVertexBufferLayoutRef,
     prelude::*,
     reflect::TypePath,
@@ -108,11 +110,12 @@ pub(super) struct LightTextures {
     /// How far the shaders have faded from `previous` to `current`, from 0
     /// to 1.
     pub blend: f32,
-    /// The light in the air above each cell of the current light: the
-    /// brightest light spread over a few cells (bloom) and the light along
-    /// the view ray (haze), baked per cell. It does not fade: it is drawn
-    /// with one filtered texture read a pixel.
+    /// The light in the air above each cell of the current light, baked per
+    /// cell: the brightest light spread over a few cells (bloom), and the
+    /// light along the view ray (haze, in `air`, apart so fog can stir it).
+    /// They do not fade: each is drawn with one filtered read a pixel.
     pub glow: Handle<Image>,
+    pub air: Handle<Image>,
     /// The haze direction `glow` was baked for (`haze_direction`).
     haze: Vec2,
     size: IVec2,
@@ -132,7 +135,8 @@ struct AirBaker {
     /// What lights the air: light seen now, squared (bright light far more
     /// than dim).
     lit: Vec<Vec3>,
-    /// The baked texels.
+    /// The baked texels: bloom, and haze.
+    bloom: Vec<u8>,
     air: Vec<u8>,
     /// sRGB byte to linear, and linear (in `SRGB_STEPS` steps) to sRGB.
     linear: [f32; 256],
@@ -151,10 +155,20 @@ struct GlowMaterial {
     /// xy: the glow texture's frame origin, zw: its size in cells.
     #[uniform(2)]
     frame: Vec4,
-    /// Filtered linearly: the GPU blends it between cells.
+    /// Filtered linearly: the GPU blends them between cells.
     #[texture(3)]
     #[sampler(4)]
     glow: Handle<Image>,
+    #[texture(5)]
+    #[sampler(6)]
+    air: Handle<Image>,
+    /// Tiling noise the fog drifts by, repeated over the map.
+    #[texture(7)]
+    #[sampler(8)]
+    noise: Handle<Image>,
+    /// x: 1 for fog (0: the haze as it is), y: seconds, the fog's drift.
+    #[uniform(9)]
+    fog: Vec4,
 }
 
 impl Material2d for GlowMaterial {
@@ -226,6 +240,71 @@ fn light_frame(size: IVec2, images: &mut Assets<Image>) -> LightFrame {
     }
 }
 
+/// Texels a side of the fog's noise texture.
+const NOISE_SIZE: usize = 128;
+
+/// Tiling noise for fog, grey from 0 to 1: smooth value noise in three
+/// octaves (4, 8 and 16 lattice cells a side), each wrapping at the edge,
+/// so the texture repeats without seams. Filtered linearly and repeated.
+fn fog_noise() -> Image {
+    // A random value from 0 to 1 for lattice point (x, y) of an octave.
+    let lattice = |x: usize, y: usize, octave: u32| {
+        let mut h = (x as u32).wrapping_mul(0x27d4_eb2d)
+            ^ (y as u32).wrapping_mul(0x1656_67b1)
+            ^ octave.wrapping_mul(0x9e37_79b9);
+        h = (h ^ (h >> 15)).wrapping_mul(0x85eb_ca6b);
+        h = (h ^ (h >> 13)).wrapping_mul(0xc2b2_ae35);
+        (h ^ (h >> 16)) as f32 / u32::MAX as f32
+    };
+    let octaves = [(4, 0.55), (8, 0.3), (16, 0.15)];
+    let mut values = vec![0.0f32; NOISE_SIZE * NOISE_SIZE];
+    for (y, row) in values.chunks_mut(NOISE_SIZE).enumerate() {
+        for (x, value) in row.iter_mut().enumerate() {
+            for (octave, &(cells, weight)) in octaves.iter().enumerate() {
+                let at = Vec2::new(x as f32, y as f32) * cells as f32 / NOISE_SIZE as f32;
+                let corner = at.floor();
+                let t = at - corner;
+                let t = t * t * (Vec2::splat(3.0) - 2.0 * t);
+                let (x0, y0) = (corner.x as usize, corner.y as usize);
+                let point = |dx: usize, dy: usize| {
+                    lattice((x0 + dx) % cells, (y0 + dy) % cells, octave as u32)
+                };
+                let top = point(0, 0) + (point(1, 0) - point(0, 0)) * t.x;
+                let bottom = point(0, 1) + (point(1, 1) - point(0, 1)) * t.x;
+                *value += (top + (bottom - top) * t.y) * weight;
+            }
+        }
+    }
+    // Stretched to the full range.
+    let (low, high) = values.iter().fold((f32::MAX, f32::MIN), |(low, high), &v| {
+        (low.min(v), high.max(v))
+    });
+    let texels = values
+        .iter()
+        .flat_map(|&v| {
+            let grey = ((v - low) / (high - low) * 255.0).round() as u8;
+            [grey, grey, grey, 255]
+        })
+        .collect();
+    let mut image = Image::new(
+        Extent3d {
+            width: NOISE_SIZE as u32,
+            height: NOISE_SIZE as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        texels,
+        TextureFormat::Rgba8Unorm,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        address_mode_u: ImageAddressMode::Repeat,
+        address_mode_v: ImageAddressMode::Repeat,
+        ..ImageSamplerDescriptor::linear()
+    });
+    image
+}
+
 /// `image`, filtered linearly: one read blends it between cells.
 fn filtered(mut image: Image) -> Image {
     image.sampler = ImageSampler::linear();
@@ -275,6 +354,7 @@ impl AirBaker {
             bright: Vec::new(),
             spread: Vec::new(),
             lit: Vec::new(),
+            bloom: Vec::new(),
             air: Vec::new(),
             linear,
             srgb,
@@ -286,13 +366,14 @@ impl AirBaker {
         self.bright = vec![Vec3::ZERO; texels];
         self.spread = vec![Vec3::ZERO; texels];
         self.lit = vec![Vec3::ZERO; texels];
+        self.bloom = vec![0; texels * 4];
         self.air = vec![0; texels * 4];
     }
 
     /// Bakes the light in the air above each texel of `texels` (a `size`
-    /// grid) into `air`: the light seen now that is bright enough to bloom,
-    /// blurred, and the haze, the light the air holds along `haze` from
-    /// each cell, averaged.
+    /// grid): into `bloom` the light seen now that is bright enough to
+    /// bloom, blurred, and into `air` the haze, the light the air holds
+    /// along `haze` from each cell, averaged.
     fn bake(&mut self, texels: &[u8], size: IVec2, haze: Vec2) {
         let (width, height) = (size.x as usize, size.y as usize);
         for (texel, (bright, lit)) in self.bright.iter_mut().zip(&mut self.lit).enumerate() {
@@ -356,14 +437,16 @@ impl AirBaker {
                     let along = (step as f32 + 0.5) / HAZE_STEPS as f32;
                     gathered += lit_at(cell - haze * along);
                 }
-                let air = self.bright[texel] * BLOOM_STRENGTH
-                    + gathered / HAZE_STEPS as f32 * HAZE_STRENGTH;
-                self.air[texel * 4..texel * 4 + 4].copy_from_slice(&[
-                    self.srgb[srgb_step(air.x)],
-                    self.srgb[srgb_step(air.y)],
-                    self.srgb[srgb_step(air.z)],
-                    255,
-                ]);
+                let bloom = self.bright[texel] * BLOOM_STRENGTH;
+                let air = gathered / HAZE_STEPS as f32 * HAZE_STRENGTH;
+                for (out, light) in [(&mut self.bloom, bloom), (&mut self.air, air)] {
+                    out[texel * 4..texel * 4 + 4].copy_from_slice(&[
+                        self.srgb[srgb_step(light.x)],
+                        self.srgb[srgb_step(light.y)],
+                        self.srgb[srgb_step(light.z)],
+                        255,
+                    ]);
+                }
             }
         }
     }
@@ -376,6 +459,7 @@ impl LightTextures {
             current: light_frame(IVec2::ONE, images),
             blend: 1.0,
             glow: Handle::default(),
+            air: Handle::default(),
             haze: Vec2::NAN,
             size: IVec2::ZERO,
             since_change: None,
@@ -394,6 +478,7 @@ impl LightTextures {
         self.current = light_frame(size, images);
         // sRGB keeps the glow's faint edge from coming in steps.
         self.glow = images.add(filtered(light_image(size, TextureFormat::Rgba8UnormSrgb)));
+        self.air = images.add(filtered(light_image(size, TextureFormat::Rgba8UnormSrgb)));
         self.haze = Vec2::NAN;
         self.since_change = None;
         self.blend = 1.0;
@@ -456,7 +541,8 @@ impl LightTextures {
     fn bake_glow(&mut self, haze: Vec2, images: &mut Assets<Image>) {
         self.baker.bake(&self.current.texels, self.size, haze);
         self.haze = haze;
-        upload(images, &self.glow, &self.baker.air);
+        upload(images, &self.glow, &self.baker.bloom);
+        upload(images, &self.air, &self.baker.air);
     }
 
     /// Bakes the air again if it was baked for another haze direction (the
@@ -544,6 +630,9 @@ fn setup(
         offset: Vec4::ZERO,
         frame: Vec4::ZERO,
         glow: textures.glow.clone(),
+        air: textures.air.clone(),
+        noise: images.add(fog_noise()),
+        fog: Vec4::ZERO,
     });
     // The main 2D camera never moves; the quad covers any window.
     let entity = commands
@@ -580,7 +669,8 @@ pub(super) fn update_light_textures(
     }
     textures.advance(time.delta_secs());
     let volume = volume.map_or(WallVolume::Flat, |volume| *volume);
-    let haze = (*effects == LightEffects::Glow)
+    let haze = effects
+        .glows()
         .then(|| haze_direction(camera.rotation, super::volume::lean(volume)));
     // Light shown while the effects were off is stale: show the light now.
     if textures.build_light(&buffers) || effects.is_changed() {
@@ -590,8 +680,11 @@ pub(super) fn update_light_textures(
     }
 }
 
-/// Shows the glow quad with `Glow` and passes it the view and the light.
+/// Shows the glow quad with `Glow` or `Fog` and passes it the view, the
+/// light and, for fog, the time it drifts by.
+#[allow(clippy::too_many_arguments)]
 fn draw_glow(
+    time: Res<Time>,
     effects: Res<LightEffects>,
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
@@ -600,7 +693,7 @@ fn draw_glow(
     mut materials: ResMut<Assets<GlowMaterial>>,
     mut visibility: Query<&mut Visibility>,
 ) {
-    let shown = *effects == LightEffects::Glow;
+    let shown = effects.glows();
     if let Ok(mut visibility) = visibility.get_mut(quad.entity) {
         visibility.set_if_neq(if shown {
             Visibility::Visible
@@ -611,6 +704,11 @@ fn draw_glow(
     if !shown {
         return;
     }
+    let fog = if *effects == LightEffects::Fog {
+        Vec4::new(1.0, time.elapsed_secs_wrapped(), 0.0, 0.0)
+    } else {
+        Vec4::ZERO
+    };
     let uniforms = [
         camera.position.extend(camera.rotation).extend(camera.zoom),
         camera.offset.extend(CELL_SIZE.y).extend(0.0),
@@ -620,15 +718,28 @@ fn draw_glow(
             .as_vec2()
             .extend(buffers.width as f32)
             .extend(buffers.height as f32),
+        fog,
     ];
     let unchanged = materials.get(&quad.material).is_some_and(|material| {
-        [material.camera, material.offset, material.frame] == uniforms
+        [
+            material.camera,
+            material.offset,
+            material.frame,
+            material.fog,
+        ] == uniforms
             && material.glow == textures.glow
+            && material.air == textures.air
     });
     if !unchanged {
         if let Some(mut material) = materials.get_mut(&quad.material) {
-            [material.camera, material.offset, material.frame] = uniforms;
+            [
+                material.camera,
+                material.offset,
+                material.frame,
+                material.fog,
+            ] = uniforms;
             material.glow = textures.glow.clone();
+            material.air = textures.air.clone();
         }
     }
 }
@@ -689,7 +800,7 @@ mod tests {
         textures
             .baker
             .bake(&textures.texels, size, Vec2::new(100.0, 0.0));
-        let glow = |x, y| texel(&textures.baker.air, x, y)[0];
+        let glow = |x, y| texel(&textures.baker.bloom, x, y)[0];
         assert!(glow(1, 1) > glow(2, 1) && glow(2, 1) > glow(3, 1) && glow(3, 1) > 0);
         assert_eq!(glow(6, 1), 0, "remembered light does not glow");
         assert_eq!(glow(1, 6), 0, "dim light does not glow");
@@ -772,6 +883,28 @@ mod tests {
         textures.change(IVec2::new(5, 4), None, true, &mut images);
         assert_eq!(textures.origins(), Vec4::new(5.0, 4.0, 5.0, 4.0));
         assert_eq!(textures.blend, 1.0);
+    }
+
+    #[test]
+    fn fog_noise_fills_its_range_and_tiles_without_seams() {
+        let image = fog_noise();
+        let data = image.data.unwrap();
+        let at = |x: usize, y: usize| data[(y * NOISE_SIZE + x) * 4] as i32;
+        let values = (0..NOISE_SIZE * NOISE_SIZE).map(|i| data[i * 4]);
+        assert_eq!(values.clone().min(), Some(0));
+        assert_eq!(values.max(), Some(255));
+        // Across the edge it changes no more than between neighbours inside.
+        let mut inside = 0;
+        let mut across = 0;
+        for i in 0..NOISE_SIZE {
+            for j in 0..NOISE_SIZE - 1 {
+                inside = inside.max((at(j, i) - at(j + 1, i)).abs());
+                inside = inside.max((at(i, j) - at(i, j + 1)).abs());
+            }
+            across = across.max((at(NOISE_SIZE - 1, i) - at(0, i)).abs());
+            across = across.max((at(i, NOISE_SIZE - 1) - at(i, 0)).abs());
+        }
+        assert!(across <= inside, "{across} > {inside}");
     }
 
     /// The frame slot of cell (x, y) of an 8x8 frame at the origin.

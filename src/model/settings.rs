@@ -101,16 +101,20 @@ pub enum LightEffects {
     /// through, a haze above the floor.
     #[default]
     Glow,
+    /// Glow, with the haze a drifting fog: thicker and thinner as it moves
+    /// over the map.
+    Fog,
 }
 
 impl LightEffects {
-    pub const ALL: [Self; 3] = [Self::Flat, Self::Smooth, Self::Glow];
+    pub const ALL: [Self; 4] = [Self::Flat, Self::Smooth, Self::Glow, Self::Fog];
 
     pub fn name(self) -> &'static str {
         match self {
             Self::Flat => "flat",
             Self::Smooth => "smooth",
             Self::Glow => "glow",
+            Self::Fog => "fog",
         }
     }
 
@@ -123,6 +127,11 @@ impl LightEffects {
         let index = Self::ALL.iter().position(|mode| *mode == self).unwrap_or(0) as i32;
         let len = Self::ALL.len() as i32;
         Self::ALL[(index + step).rem_euclid(len) as usize]
+    }
+
+    /// Whether light blooms and hazes (`Glow` or `Fog`).
+    pub fn glows(self) -> bool {
+        matches!(self, Self::Glow | Self::Fog)
     }
 }
 
@@ -153,8 +162,9 @@ mod tests {
             assert_eq!(LightEffects::from_name(mode.name()), Some(mode));
         }
         assert_eq!(LightEffects::default(), LightEffects::Glow);
-        assert_eq!(LightEffects::Glow.step(1), LightEffects::Flat);
-        assert_eq!(LightEffects::Flat.step(-1), LightEffects::Glow);
+        assert_eq!(LightEffects::Fog.step(1), LightEffects::Flat);
+        assert_eq!(LightEffects::Flat.step(-1), LightEffects::Fog);
+        assert!(LightEffects::Fog.glows() && !LightEffects::Smooth.glows());
     }
 
     #[test]
