@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use bevy::prelude::*;
 
-use super::{RoomPlanner, SwitchContext, SwitchPlan, WallMove};
+use super::{Candidate, RoomPlanner, SwitchContext, SwitchPlan};
 
 /// Walls slide along rows and columns. A cell the new layout loses and one
 /// it gains, in the same row or column, become a slide when every cell
@@ -20,86 +20,50 @@ pub struct LineSlides;
 
 impl RoomPlanner for LineSlides {
     fn plan(&self, switch: &SwitchContext) -> SwitchPlan {
-        // Sets: a room may be the whole map (the intro).
-        let from: HashSet<IVec2> = switch.from.iter().copied().collect();
-        let to: HashSet<IVec2> = switch.to.iter().copied().collect();
-        let removed: Vec<IVec2> = switch
-            .from
-            .iter()
-            .copied()
-            .filter(|p| !to.contains(p))
-            .collect();
-        let added: Vec<IVec2> = switch
-            .to
-            .iter()
-            .copied()
-            .filter(|p| !from.contains(p))
-            .collect();
-        let both = |p: IVec2| from.contains(&p) && to.contains(&p);
-        let floor = |p: IVec2| !from.contains(&p) && !to.contains(&p) && switch.is_free(p);
+        SwitchPlan::from_candidates(switch, line_slides(switch))
+    }
+}
 
-        // Each candidate: its length and the walls it moves.
-        let mut candidates: Vec<(i32, Vec<(IVec2, IVec2)>)> = Vec::new();
-        for &start in &removed {
-            for &end in &added {
-                let delta = end - start;
-                if delta.x != 0 && delta.y != 0 {
-                    continue;
-                }
-                let step = delta.signum();
-                let length = delta.x.abs() + delta.y.abs();
-                let between: Vec<IVec2> = (1..length).map(|i| start + step * i).collect();
-                let moves = if between.iter().all(|&p| floor(p)) {
-                    vec![(start, end)]
-                } else if between.iter().all(|&p| both(p)) {
-                    std::iter::once(start)
-                        .chain(between)
-                        .map(|p| (p, p + step))
-                        .collect()
-                } else {
-                    continue;
-                };
-                if moves.iter().all(|&(p, _)| switch.holds_wall(p)) {
-                    candidates.push((length, moves));
-                }
-            }
-        }
-        candidates.sort_by_key(|(length, _)| *length);
+/// Every slide along a row or column the switch allows (see [`LineSlides`]).
+pub(super) fn line_slides(switch: &SwitchContext) -> Vec<Candidate> {
+    // Sets: a room may be the whole map (the intro).
+    let from: HashSet<IVec2> = switch.from.iter().copied().collect();
+    let to: HashSet<IVec2> = switch.to.iter().copied().collect();
+    let removed: Vec<IVec2> = switch.removed_in(&to).collect();
+    let added: Vec<IVec2> = switch.added_in(&from).collect();
+    let both = |p: IVec2| from.contains(&p) && to.contains(&p);
+    let floor = |p: IVec2| !from.contains(&p) && !to.contains(&p) && switch.is_free(p);
 
-        let mut plan = SwitchPlan::default();
-        let mut used: HashSet<IVec2> = HashSet::new();
-        for (_, moves) in candidates {
-            let start = moves[0].0;
-            let end = moves[moves.len() - 1].1;
-            let cells = || {
-                let delta = end - start;
-                let step = delta.signum();
-                (0..=delta.x.abs() + delta.y.abs()).map(move |i| start + step * i)
-            };
-            if cells().any(|p| used.contains(&p)) {
+    let mut candidates = Vec::new();
+    for &start in &removed {
+        for &end in &added {
+            let delta = end - start;
+            if delta.x != 0 && delta.y != 0 {
                 continue;
             }
-            used.extend(cells());
-            plan.moves.extend(
-                moves
-                    .into_iter()
-                    .map(|(from, to)| WallMove::slide(from, to)),
-            );
+            let step = delta.signum();
+            let length = delta.x.abs() + delta.y.abs();
+            let between: Vec<IVec2> = (1..length).map(|i| start + step * i).collect();
+            let moves = if between.iter().all(|&p| floor(p)) {
+                vec![(start, end)]
+            } else if between.iter().all(|&p| both(p)) {
+                std::iter::once(start)
+                    .chain(between)
+                    .map(|p| (p, p + step))
+                    .collect()
+            } else {
+                continue;
+            };
+            if moves.iter().all(|&(p, _)| switch.holds_wall(p)) {
+                candidates.push(Candidate {
+                    rank: (0, length),
+                    cells: (0..=length).map(|i| start + step * i).collect(),
+                    moves,
+                });
+            }
         }
-        plan.moves.extend(
-            removed
-                .into_iter()
-                .filter(|p| !used.contains(p))
-                .map(WallMove::sink_at),
-        );
-        plan.moves.extend(
-            added
-                .into_iter()
-                .filter(|p| !used.contains(p))
-                .map(WallMove::rise_at),
-        );
-        plan
     }
+    candidates
 }
 
 #[cfg(test)]

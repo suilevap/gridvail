@@ -8,15 +8,18 @@
 //! or the default one, so several strategies can run side by side in one
 //! map. Each strategy lives in its own file here.
 
+mod along_walls;
 mod lines;
 mod rise_sink;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use bevy::prelude::*;
 
 use crate::model::*;
 
+pub use along_walls::AlongWalls;
 pub use lines::LineSlides;
 pub use rise_sink::RiseAndSink;
 
@@ -123,6 +126,42 @@ impl SwitchPlan {
         }
     }
 
+    /// Takes `candidates` best first (lowest rank: tier, then length), each
+    /// only if none of its cells is part of one already taken. What is left
+    /// rises or sinks in place.
+    pub(crate) fn from_candidates(switch: &SwitchContext, mut candidates: Vec<Candidate>) -> Self {
+        candidates.sort_by_key(|candidate| candidate.rank);
+        let mut plan = Self::default();
+        let mut used: HashSet<IVec2> = HashSet::new();
+        for candidate in candidates {
+            if candidate.cells.iter().any(|p| used.contains(p)) {
+                continue;
+            }
+            used.extend(&candidate.cells);
+            plan.moves.extend(
+                candidate
+                    .moves
+                    .into_iter()
+                    .map(|(from, to)| WallMove::slide(from, to)),
+            );
+        }
+        let to: HashSet<IVec2> = switch.to.iter().copied().collect();
+        let from: HashSet<IVec2> = switch.from.iter().copied().collect();
+        plan.moves.extend(
+            switch
+                .removed_in(&to)
+                .filter(|p| !used.contains(p))
+                .map(WallMove::sink_at),
+        );
+        plan.moves.extend(
+            switch
+                .added_in(&from)
+                .filter(|p| !used.contains(p))
+                .map(WallMove::rise_at),
+        );
+        plan
+    }
+
     /// Map cells walls leave: where walls on the map slide or sink from.
     pub fn sources(&self) -> impl Iterator<Item = IVec2> + '_ {
         self.moves.iter().filter_map(WallMove::source)
@@ -171,6 +210,17 @@ impl SwitchPlan {
     }
 }
 
+/// One way some walls could slide, for [`SwitchPlan::from_candidates`]:
+/// the cells it takes up (no other candidate taken may touch them), the
+/// slides, and its rank (lower is taken first).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Candidate {
+    /// A tier (a planner's order of preference), then a length.
+    pub rank: (u8, i32),
+    pub cells: Vec<IVec2>,
+    pub moves: Vec<(IVec2, IVec2)>,
+}
+
 /// What a planner sees of a switch.
 pub struct SwitchContext<'a> {
     pub room: &'a Room,
@@ -209,6 +259,16 @@ impl<'a> SwitchContext<'a> {
         self.to.iter().copied().filter(|p| !self.from.contains(p))
     }
 
+    /// [`Self::removed`], with the new layout as a set (for big rooms).
+    pub fn removed_in<'s>(&'s self, to: &'s HashSet<IVec2>) -> impl Iterator<Item = IVec2> + 's {
+        self.from.iter().copied().filter(|p| !to.contains(p))
+    }
+
+    /// [`Self::added`], with the old layout as a set (for big rooms).
+    pub fn added_in<'s>(&'s self, from: &'s HashSet<IVec2>) -> impl Iterator<Item = IVec2> + 's {
+        self.to.iter().copied().filter(|p| !from.contains(p))
+    }
+
     /// Whether nothing stands at `p`.
     pub fn is_free(&self, p: IVec2) -> bool {
         (self.free)(p)
@@ -238,6 +298,8 @@ pub struct RoomPlanners {
 impl RoomPlanners {
     /// The name of [`LineSlides`].
     pub const LINES: &'static str = "lines";
+    /// The name of [`AlongWalls`].
+    pub const ALONG_WALLS: &'static str = "along-walls";
     /// The name of [`RiseAndSink`].
     pub const RISE_SINK: &'static str = "rise-sink";
 
@@ -285,11 +347,12 @@ impl RoomPlanners {
 }
 
 impl Default for RoomPlanners {
-    /// [`LineSlides`] (the default) and [`RiseAndSink`].
+    /// [`LineSlides`] (the default), [`AlongWalls`] and [`RiseAndSink`].
     fn default() -> Self {
         let mut planners = Self::empty(Self::LINES);
         planners
             .add(Self::LINES, LineSlides)
+            .add(Self::ALONG_WALLS, AlongWalls)
             .add(Self::RISE_SINK, RiseAndSink);
         planners
     }

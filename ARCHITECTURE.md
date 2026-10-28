@@ -63,7 +63,9 @@ and renderers must not import it.
   updates are separate files.
   `rooms.rs` switches `Room`s to the layout asked for (`Room::advance`).
   It asks the room's planner how (`room_plans/`: the `RoomPlanner` trait,
-  one strategy per file, chosen by name from the `RoomPlanners` resource)
+  one strategy per file, chosen by name from the `RoomPlanners` resource;
+  strategies that weigh possible slides share `SwitchPlan::from_candidates`,
+  which takes the best ones that do not overlap)
   for a `SwitchPlan` of `WallMove`s (every wall slides, `from` to `to`;
   its `MoveKind` says whether it is a new wall that rises first or one
   that goes and sinks after), checks that the plan gives the new layout

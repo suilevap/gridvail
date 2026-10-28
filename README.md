@@ -127,7 +127,12 @@ next to this file.
   slides a wall when a cell the layout loses and one it gains are in the
   same row or column with empty floor between them (it glides across), or
   with wall in both layouts between them (the stretch shifts one cell, as
-  a gap moving along a wall), and raises and sinks the rest; `rise-sink`
+  a gap moving along a wall), and raises and sinks the rest;
+  `along-walls` keeps walls to the walls they are part of: a lost cell and
+  a gained one joined through cells that are wall in both layouts, around
+  corners too, become a shift where each wall on the way moves one cell,
+  so in a room inside a room the inner walls stay inner and the outer ones
+  outer, and only what no wall joins slides as `lines` would; `rise-sink`
   only raises and sinks. `@room <x> <y> <planner>` picks a room's planner,
   so strategies can be compared side by side in one map, and
   `--room-planner NAME` picks the one for rooms that name none. Code adds
@@ -266,6 +271,7 @@ cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk through portals too
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
+cargo run -- --map assets/maps/rooms.txt --room-planner along-walls  # the same room, walls moving only along their own walls
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --intro noise   # the map comes together from noise instead of the title
 cargo run -- --compass always   # compass: when-turned (default), always or off
