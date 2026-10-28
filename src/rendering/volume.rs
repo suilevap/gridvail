@@ -6,9 +6,12 @@
 //!
 //! Two passes on the GPU. First a camera of its own draws every wall into
 //! the wall map, a texture of the frame at one texel per font pixel (8 per
-//! cell): each wall is a sprite of its glyph at its animated position (so
-//! sliding walls slide), coloured with its lit colour, with its height (how
-//! far it has risen) as alpha. Then one full-screen quad draws the walls
+//! cell): one mesh with a quad of its glyph per wall at its animated
+//! position (so sliding walls slide), coloured with its lit colour, with
+//! its height (how far it has risen) as alpha. A wall standing on its cell
+//! takes the height at each corner from the walls meeting there, and the
+//! quad's vertex colours interpolate it across the cell, so neighbouring
+//! walls of different heights ramp into each other rather than step. Then one full-screen quad draws the walls
 //! standing: for each pixel the shader walks down from the tallest top
 //! toward the floor, and at each height looks at the map point under it
 //! (one pixel lower, along the lean) for wall ink that tall. The first found
@@ -20,6 +23,7 @@
 use bevy::{
     asset::{embedded_asset, RenderAssetUsages},
     camera::{visibility::RenderLayers, ClearColorConfig, RenderTarget},
+    mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
     platform::collections::HashMap,
     prelude::*,
     reflect::TypePath,
@@ -35,7 +39,7 @@ use swash::{
     FontRef,
 };
 
-use crate::model::{GlyphStatures, RenderBuffers, Stature, ViewCamera, WallVolume};
+use crate::model::{GlyphStatures, ObjectCell, RenderBuffers, Stature, ViewCamera, WallVolume};
 use crate::schedule::{GamePhase, StartupPhase};
 
 use super::text::{ObjectSprite, TurnedGlyphs, CELL_FONT_BYTES, CELL_SIZE};
@@ -111,8 +115,12 @@ struct WallVolumeQuad {
     /// The camera drawing the wall map, and the map's size in cells.
     map_camera: Entity,
     map_size: IVec2,
-    /// Sprites drawing walls into the wall map, reused frame to frame.
-    sprites: Vec<Entity>,
+    /// The mesh drawing every wall into the wall map, rebuilt each frame,
+    /// and the entity drawing it.
+    walls: Handle<Mesh>,
+    walls_entity: Entity,
+    /// Each corner's summed height and wall count, reused frame to frame.
+    corners: Vec<(f32, u32)>,
 }
 
 /// The cell font's glyphs, white with their ink as alpha, rasterized as
@@ -147,6 +155,7 @@ fn setup(
     mut images: ResMut<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<WallVolumeMaterial>>,
+    mut colors: ResMut<Assets<ColorMaterial>>,
 ) {
     let map_size = IVec2::new(buffers.width, buffers.height);
     let wall_map = images.add(wall_map_image(map_size));
@@ -179,27 +188,46 @@ fn setup(
             Visibility::Hidden,
         ))
         .id();
+    let atlas_side = (GLYPH_PX * ATLAS_SLOTS) as u32;
+    let atlas = images.add(Image::new_fill(
+        Extent3d {
+            width: atlas_side,
+            height: atlas_side,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        &[255, 255, 255, 0],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+    ));
+    let walls = meshes.add(Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+    ));
+    let walls_entity = commands
+        .spawn((
+            Mesh2d(walls.clone()),
+            MeshMaterial2d(colors.add(ColorMaterial {
+                texture: Some(atlas.clone()),
+                ..default()
+            })),
+            Transform::default(),
+            Visibility::Hidden,
+            RenderLayers::layer(WALL_MAP_LAYER),
+        ))
+        .id();
     commands.insert_resource(WallVolumeQuad {
         entity,
         material,
         map_camera,
         map_size,
-        sprites: Vec::new(),
+        walls,
+        walls_entity,
+        corners: Vec::new(),
     });
-    let atlas_side = (GLYPH_PX * ATLAS_SLOTS) as u32;
     commands.insert_resource(GlyphAtlas {
         slots: HashMap::default(),
-        handle: images.add(Image::new_fill(
-            Extent3d {
-                width: atlas_side,
-                height: atlas_side,
-                depth_or_array_layers: 1,
-            },
-            TextureDimension::D2,
-            &[255, 255, 255, 0],
-            TextureFormat::Rgba8UnormSrgb,
-            RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
-        )),
+        handle: atlas,
     });
 }
 
@@ -258,11 +286,10 @@ pub(super) fn depth_order(sprite: &ObjectSprite, camera: &ViewCamera, volume: Wa
     1.5 - base.truncate().dot(lean(volume)) / 16384.0 + sprite.depth as f32 * 1e-5
 }
 
-/// Places a sprite for each wall in the frame for the wall map camera, and
-/// passes the view to the shader.
+/// Builds the wall map mesh from the walls in the frame, and passes the
+/// view to the shader.
 #[allow(clippy::too_many_arguments)]
 fn draw_wall_map(
-    mut commands: Commands,
     volume: Res<WallVolume>,
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
@@ -270,23 +297,16 @@ fn draw_wall_map(
     mut quad: ResMut<WallVolumeQuad>,
     mut atlas: ResMut<GlyphAtlas>,
     mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<WallVolumeMaterial>>,
     statures: Res<GlyphStatures>,
     own_statures: Query<&Stature>,
-    mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility)>,
-    mut quads: Query<&mut Visibility, (With<Mesh2d>, Without<Sprite>)>,
-    mut cameras: Query<(&mut RenderTarget, &mut Transform), Without<Sprite>>,
+    mut visibilities: Query<&mut Visibility>,
+    mut cameras: Query<(&mut RenderTarget, &mut Transform)>,
 ) {
     let shown = *volume != WallVolume::Flat;
     let size = IVec2::new(buffers.width, buffers.height);
     let quad = &mut *quad;
-    if let Ok(mut visibility) = quads.get_mut(quad.entity) {
-        visibility.set_if_neq(if shown {
-            Visibility::Visible
-        } else {
-            Visibility::Hidden
-        });
-    }
     // The map camera looks at the frame, one world unit per texel: cell
     // (x, y) is the square from (x, -y) to (x + 1, -(y + 1)) times 8, from
     // the frame's origin.
@@ -306,77 +326,124 @@ fn draw_wall_map(
         }
     }
 
-    let mut used = 0;
-    let mut tallest: f32 = 0.0;
-    if shown {
-        for object in &buffers.objects {
-            let stature = statures
-                .of(object.cell.ch, own_statures.get(object.entity).ok())
-                .min(MAX_STATURE);
-            if stature <= 0.0 {
-                continue;
-            }
-            tallest = tallest.max(stature);
-            // In map space: only a portal's turn, not the view's.
-            let ch = turned.turned(object.cell.ch, object.quarters as i32);
-            let next = atlas.slots.len();
-            let slot = match atlas.slots.get(&ch) {
-                Some(&slot) => slot,
-                None if next < ATLAS_SLOTS * ATLAS_SLOTS => {
-                    if let Some(mut image) = images.get_mut(&atlas.handle) {
-                        rasterize(ch, next, &mut image);
-                    }
-                    atlas.slots.insert(ch, next);
-                    next
-                }
-                None => continue,
-            };
-            let corner = Vec2::new(
-                (slot % ATLAS_SLOTS * GLYPH_PX) as f32,
-                (slot / ATLAS_SLOTS * GLYPH_PX) as f32,
-            );
-            let lit = Color::from(object.cell.color).to_linear();
-            let risen = stature * object.height.clamp(0.0, 1.0);
-            let color = Color::LinearRgba(lit.with_alpha(risen / MAX_STATURE));
-            let at = (object.position - buffers.origin.as_vec2() + 0.5) * texels;
-            let translation = Vec3::new(at.x, -at.y, 0.0);
-            let sprite = Sprite {
-                image: atlas.handle.clone(),
-                rect: Some(Rect::from_corners(corner, corner + texels)),
-                custom_size: Some(Vec2::splat(texels)),
-                color,
-                ..default()
-            };
-            match quad.sprites.get(used) {
-                Some(&entity) => {
-                    if let Ok((mut drawn, mut transform, mut visibility)) = sprites.get_mut(entity)
-                    {
-                        if drawn.rect != sprite.rect || drawn.color != sprite.color {
-                            *drawn = sprite;
-                        }
-                        if transform.translation != translation {
-                            transform.translation = translation;
-                        }
-                        visibility.set_if_neq(Visibility::Visible);
-                    }
-                }
-                None => quad.sprites.push(
-                    commands
-                        .spawn((
-                            sprite,
-                            Transform::from_translation(translation),
-                            RenderLayers::layer(WALL_MAP_LAYER),
-                        ))
-                        .id(),
-                ),
-            }
-            used += 1;
+    // Each wall's height now, and whether it stands still on its cell.
+    let walls: Vec<(&ObjectCell, f32, bool)> = if shown {
+        buffers
+            .objects
+            .iter()
+            .filter_map(|object| {
+                let stature = statures
+                    .of(object.cell.ch, own_statures.get(object.entity).ok())
+                    .min(MAX_STATURE);
+                let risen = stature * object.height.clamp(0.0, 1.0);
+                let still = object.position == object.pos.as_vec2();
+                (stature > 0.0).then_some((object, risen, still))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let tallest = walls
+        .iter()
+        .fold(0.0_f32, |tallest, wall| tallest.max(wall.1));
+
+    // The height at each corner of the frame's cells: the walls standing
+    // still around it, averaged.
+    let corner_width = size.x + 1;
+    let corners = &mut quad.corners;
+    corners.clear();
+    corners.resize(((size.x + 1) * (size.y + 1)) as usize, (0.0, 0));
+    let corner_index = |corner: IVec2| (corner.y * corner_width + corner.x) as usize;
+    const CORNERS: [IVec2; 4] = [IVec2::ZERO, IVec2::X, IVec2::ONE, IVec2::Y];
+    for &(object, risen, still) in &walls {
+        if !still {
+            continue;
+        }
+        let cell = object.pos - buffers.origin;
+        for offset in CORNERS {
+            let corner = &mut corners[corner_index(cell + offset)];
+            corner.0 += risen;
+            corner.1 += 1;
         }
     }
-    for &entity in &quad.sprites[used.min(quad.sprites.len())..] {
-        if let Ok((.., mut visibility)) = sprites.get_mut(entity) {
-            visibility.set_if_neq(Visibility::Hidden);
+
+    let mut positions = Vec::with_capacity(walls.len() * 4);
+    let mut uvs = Vec::with_capacity(walls.len() * 4);
+    let mut colors = Vec::with_capacity(walls.len() * 4);
+    let mut indices = Vec::with_capacity(walls.len() * 6);
+    let atlas_side = (GLYPH_PX * ATLAS_SLOTS) as f32;
+    for &(object, risen, still) in &walls {
+        // In map space: only a portal's turn, not the view's.
+        let ch = turned.turned(object.cell.ch, object.quarters as i32);
+        let next = atlas.slots.len();
+        let slot = match atlas.slots.get(&ch) {
+            Some(&slot) => slot,
+            None if next < ATLAS_SLOTS * ATLAS_SLOTS => {
+                if let Some(mut image) = images.get_mut(&atlas.handle) {
+                    rasterize(ch, next, &mut image);
+                }
+                atlas.slots.insert(ch, next);
+                next
+            }
+            None => continue,
+        };
+        let uv_corner = Vec2::new(
+            (slot % ATLAS_SLOTS * GLYPH_PX) as f32,
+            (slot / ATLAS_SLOTS * GLYPH_PX) as f32,
+        ) / atlas_side;
+        let lit = LinearRgba::from(Color::from(object.cell.color));
+        let cell = object.pos - buffers.origin;
+        let top_left = (object.position - buffers.origin.as_vec2()) * texels;
+        let first = positions.len() as u32;
+        for offset in CORNERS {
+            let at = top_left + offset.as_vec2() * texels;
+            positions.push([at.x, -at.y, 0.0]);
+            uvs.push((uv_corner + offset.as_vec2() * texels / atlas_side).to_array());
+            // A moving wall has its own height all over.
+            let height = match corners[corner_index(cell + offset)] {
+                (sum, count) if still && count > 0 => sum / count as f32,
+                _ => risen,
+            };
+            colors.push(lit.with_alpha(height / MAX_STATURE).to_f32_array());
         }
+        indices.extend([0, 1, 2, 0, 2, 3].map(|i| first + i));
+    }
+    if let Ok(mut visibility) = visibilities.get_mut(quad.walls_entity) {
+        visibility.set_if_neq(if positions.is_empty() {
+            Visibility::Hidden
+        } else {
+            Visibility::Visible
+        });
+    }
+    // Most frames nothing moves: the mesh is uploaded again only when it
+    // changed.
+    let unchanged = meshes.get(&quad.walls).is_some_and(|mesh| {
+        mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+            .and_then(|a| a.as_float3())
+            == Some(positions.as_slice())
+            && matches!(
+                mesh.attribute(Mesh::ATTRIBUTE_COLOR),
+                Some(VertexAttributeValues::Float32x4(old)) if *old == colors
+            )
+            && matches!(
+                mesh.attribute(Mesh::ATTRIBUTE_UV_0),
+                Some(VertexAttributeValues::Float32x2(old)) if *old == uvs
+            )
+    });
+    if !unchanged {
+        if let Some(mut mesh) = meshes.get_mut(&quad.walls) {
+            mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+            mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+            mesh.insert_indices(Indices::U32(indices));
+        }
+    }
+    if let Ok(mut visibility) = visibilities.get_mut(quad.entity) {
+        visibility.set_if_neq(if shown {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        });
     }
 
     let lean = lean(*volume);

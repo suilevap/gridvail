@@ -189,11 +189,14 @@ and renderers must not import it.
   tall an object stands is renderer-neutral model data: its own `Stature`
   component, else its glyph's height in `GlyphStatures` (loaded from
   `assets/rules/statures.txt` by `content::statures`; walls and closed
-  doors by default), else flat. A second camera draws each standing
+  doors by default), else flat. A second camera draws every standing
   object's glyph at its animated position into a wall map (8 texels per
-  cell, height as alpha), and one full-screen shader (`wall_volume.wgsl`)
-  extrudes it up the screen, writing the depth the text sprites are sorted
-  by, so what stands hides actors behind it.
+  cell, height as alpha) as one mesh, a quad per object. An object standing
+  still takes the height at each corner from those meeting there,
+  averaged, as vertex colours, so heights ramp between neighbours instead
+  of stepping. One full-screen shader (`wall_volume.wgsl`) extrudes the
+  map up the screen, writing the depth the text sprites are sorted by, so
+  what stands hides actors behind it.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
   the font, `Text2d` ground cells, HUD, and one `Text2d` sprite per object
   at its animated position, each placed where the view camera shows it. Its
