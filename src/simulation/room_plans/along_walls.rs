@@ -17,10 +17,11 @@ use crate::navigation::path::{Lex, PathSearch, Rules};
 ///   travels along a wall;
 /// - across empty floor (floor in both layouts, nothing standing on it)
 ///   from wall to wall: the wall at the start glides to the end. Over bare
-///   floor it glides straight; on rails it follows them, turning where a
-///   rail runs both ways (a corner or a crossing).
+///   floor it glides straight; on rails it follows them, turning at a rail
+///   onto any rail beside it (round a corner, at a T-junction or a
+///   crossing).
 ///
-/// Floor with a rail (`Rail`) running the way a wall glides counts apart:
+/// Floor with a rail (`Rail`), reached along rails, counts apart:
 /// of paths crossing the same bare floor, the one crossing the least floor
 /// on rails wins, so where no path keeps off the floor, walls glide along
 /// rails rather than off them. A path through walls always wins; with none,
@@ -123,7 +124,7 @@ impl WallMoves<'_> {
     }
 
     /// Whether a wall gliding `heading` over `p` may go on `step`: straight
-    /// on, or turning where a rail at `p` runs both ways.
+    /// on, or turning from a rail at `p` onto a rail beside it.
     fn may_go(&self, p: IVec2, heading: Heading, step: IVec2) -> bool {
         let Some(&was) = STEPS.get(heading as usize) else {
             return true;
@@ -131,8 +132,14 @@ impl WallMoves<'_> {
         step == was
             || (step != -was
                 && self.floor(p)
-                && self.switch.has_rail(p, was)
-                && self.switch.has_rail(p, step))
+                && self.switch.has_rail(p)
+                && self.switch.has_rail(p + step))
+    }
+
+    /// Whether a step from `from` onto the floor at `to` keeps to rails:
+    /// onto a rail, from a rail or from a wall (which may stand on one).
+    fn on_rails(&self, from: IVec2, to: IVec2) -> bool {
+        self.switch.has_rail(to) && (self.switch.has_rail(from) || !self.floor(from))
     }
 
     /// A found path as moves: the walls on it (where it starts, and the
@@ -177,8 +184,7 @@ impl Rules for WallMoves<'_> {
     }
 
     /// A step onto a wall or a gained cell costs one, and stops the glide;
-    /// one over floor costs one, and a floor cell (on a rail running that
-    /// way, or bare).
+    /// one over floor costs one, and a floor cell (on rails, or bare).
     fn step(&self, from: Cell, to: Cell, heading: &Heading) -> Option<(Cost, Heading)> {
         let (from, to) = (self.pos(from), self.pos(to));
         let step = to - from;
@@ -192,7 +198,7 @@ impl Rules for WallMoves<'_> {
             return None;
         }
         let heading = STEPS.iter().position(|&s| s == step)? as Heading;
-        let cost = if self.switch.has_rail(to, step) {
+        let cost = if self.on_rails(from, to) {
             Lex(0, Lex(1, 1))
         } else {
             Lex(1, Lex(0, 1))
@@ -298,9 +304,8 @@ mod tests {
         plan.check(&plain).unwrap();
         assert_eq!(slides(&plan), vec![(IVec2::new(1, 1), IVec2::new(4, 1))]);
 
-        // A rail down the column: the longer glide along it wins. (Crossing
-        // a rail does not count: one across row 1 would change nothing.)
-        let rail = |p: IVec2, step: IVec2| p.x == 1 && (2..5).contains(&p.y) && step.x == 0;
+        // A rail down the column: the longer glide along it wins.
+        let rail = |p: IVec2| p.x == 1 && (2..5).contains(&p.y);
         let railed = SwitchContext::new(&room, &from, &to, &|_| true, &wall).with_rails(&rail);
         let plan = AlongWalls.plan(&railed);
         plan.check(&railed).unwrap();
@@ -319,12 +324,7 @@ mod tests {
         let plain = SwitchContext::new(&room, &from, &to, &|_| true, &wall);
         assert!(slides(&AlongWalls.plan(&plain)).is_empty(), "rise and sink");
 
-        let rail = |p: IVec2, step: IVec2| match (p.x, p.y) {
-            (2..=4, 1) => step.y == 0,
-            (5, 1) => true,
-            (5, 2..=3) => step.x == 0,
-            _ => false,
-        };
+        let rail = |p: IVec2| matches!((p.x, p.y), (2..=5, 1) | (5, 2..=3));
         let railed = SwitchContext::new(&room, &from, &to, &|_| true, &wall).with_rails(&rail);
         let plan = AlongWalls.plan(&railed);
         plan.check(&railed).unwrap();
@@ -335,19 +335,27 @@ mod tests {
     }
 
     #[test]
-    fn a_wall_does_not_turn_on_bare_floor_or_a_rail_running_one_way() {
+    fn a_wall_does_not_turn_on_bare_floor_and_takes_any_branch_of_rails() {
         let from = cells(&[(1, 1)]);
         let to = cells(&[(5, 4)]);
         let room = Room::new(IVec2::ZERO, IVec2::splat(8), vec![]);
         let wall = |p: IVec2| from.contains(&p);
-        // The corner cell runs only across: no turn there.
-        let rail = |p: IVec2, step: IVec2| match (p.x, p.y) {
-            (2..=5, 1) => step.y == 0,
-            (5, 2..=3) => step.x == 0,
-            _ => false,
-        };
-        let railed = SwitchContext::new(&room, &from, &to, &|_| true, &wall).with_rails(&rail);
-        assert!(slides(&AlongWalls.plan(&railed)).is_empty());
+        // A rail along row 1 that stops short of column 5's: no turn on the
+        // bare floor between.
+        let gap = |p: IVec2| matches!((p.x, p.y), (2..=4, 1) | (5, 2..=3));
+        let gapped = SwitchContext::new(&room, &from, &to, &|_| true, &wall).with_rails(&gap);
+        assert!(slides(&AlongWalls.plan(&gapped)).is_empty());
+
+        // A T: row 1 runs on past column 3, which branches down to row 4
+        // and along to (5, 4). The wall takes the branch.
+        let tee = |p: IVec2| matches!((p.x, p.y), (2..=6, 1) | (3, 2..=4) | (4, 4));
+        let railed = SwitchContext::new(&room, &from, &to, &|_| true, &wall).with_rails(&tee);
+        let plan = AlongWalls.plan(&railed);
+        plan.check(&railed).unwrap();
+        assert_eq!(
+            plan.moves[0].via.as_slice(),
+            [IVec2::new(3, 1), IVec2::new(3, 4)]
+        );
     }
 
     #[test]

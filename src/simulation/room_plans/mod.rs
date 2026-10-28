@@ -231,7 +231,7 @@ pub struct SwitchContext<'a> {
     pub to: &'a [IVec2],
     free: &'a dyn Fn(IVec2) -> bool,
     wall: &'a dyn Fn(IVec2) -> bool,
-    rail: &'a dyn Fn(IVec2, IVec2) -> bool,
+    rail: &'a dyn Fn(IVec2) -> bool,
 }
 
 impl<'a> SwitchContext<'a> {
@@ -248,13 +248,12 @@ impl<'a> SwitchContext<'a> {
             to,
             free,
             wall,
-            rail: &|_, _| false,
+            rail: &|_| false,
         }
     }
 
-    /// Where the floor has rails (`Rail`): whether a cell has one running
-    /// along a step. None without this.
-    pub fn with_rails(mut self, rail: &'a dyn Fn(IVec2, IVec2) -> bool) -> Self {
+    /// Where the floor has rails (`Rail`); none without this.
+    pub fn with_rails(mut self, rail: &'a dyn Fn(IVec2) -> bool) -> Self {
         self.rail = rail;
         self
     }
@@ -284,9 +283,9 @@ impl<'a> SwitchContext<'a> {
         (self.free)(p)
     }
 
-    /// Whether the floor at `p` has a rail running along `step`.
-    pub fn has_rail(&self, p: IVec2, step: IVec2) -> bool {
-        (self.rail)(p, step)
+    /// Whether the floor at `p` has a rail.
+    pub fn has_rail(&self, p: IVec2) -> bool {
+        (self.rail)(p)
     }
 
     /// Whether a wall entity stands at `p` (only those can slide or sink).

@@ -23,10 +23,10 @@ pub fn wall_bundle(pos: IVec2) -> impl Bundle {
 }
 
 /// A rail as the map spawns it: flat, and `tile_system` gives it its glyph.
-pub fn rail_bundle(pos: IVec2, rail: Rail) -> impl Bundle {
+pub fn rail_bundle(pos: IVec2) -> impl Bundle {
     (
         Active,
-        rail,
+        Rail,
         Pos(pos),
         Glyph::new('=', 0, RAIL_COLOR),
         Stature(0.0),
@@ -49,30 +49,20 @@ pub fn tile_system(
     tiles: Query<(Entity, &Pos, &Tile)>,
     walls: Query<&Pos, With<Wall>>,
     doors: Query<&Pos, With<Door>>,
-    rails: Query<(&Pos, &Rail)>,
+    rails: Query<&Pos, With<Rail>>,
 ) {
-    // Walls connect to doors set into them.
+    // Walls connect to doors set into them; rails to rails.
     let walls: std::collections::HashSet<IVec2> =
         walls.iter().chain(doors.iter()).map(|pos| pos.0).collect();
-    // Rails connect to rails they run on into.
-    let rails: std::collections::HashMap<IVec2, Rail> =
-        rails.iter().map(|(pos, rail)| (pos.0, *rail)).collect();
+    let rails: std::collections::HashSet<IVec2> = rails.iter().map(|pos| pos.0).collect();
     let mut masks = Vec::new();
     for (entity, pos, tile) in tiles.iter() {
-        let (depth, color) = match tile.rule.as_str() {
-            "wall_rule" => (1, crate::lighting::GRAY),
-            "rail_rule" => (0, RAIL_COLOR),
+        let (present, depth, color) = match tile.rule.as_str() {
+            "wall_rule" => (&walls, 1, crate::lighting::GRAY),
+            "rail_rule" => (&rails, 0, RAIL_COLOR),
             _ => continue,
         };
-        let at = |delta: IVec2| {
-            let next = grid.safe_pos(pos.0 + delta);
-            match rails.get(&pos.0).filter(|_| tile.rule == "rail_rule") {
-                Some(rail) => {
-                    rail.along(delta) && rails.get(&next).is_some_and(|next| next.along(delta))
-                }
-                None => walls.contains(&next),
-            }
-        };
+        let at = |delta| present.contains(&grid.safe_pos(pos.0 + delta));
         let mut mask = 0;
         for (bit, delta) in [IVec2::X, IVec2::Y, IVec2::NEG_X, IVec2::NEG_Y]
             .into_iter()
