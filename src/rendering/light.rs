@@ -19,8 +19,11 @@
 //! into a glow texture (`LightTextures::glow`): the brightest light seen
 //! now spread over a few cells (bloom), and the light along the view ray
 //! (haze), which rises a fixed way in map space whatever the zoom. A
-//! full-screen quad over everything, added to it, draws that with one
-//! filtered read a pixel; it does not fade. With `Fog`, the haze (baked
+//! full-screen quad draws that, with one filtered read a pixel; it does not
+//! fade. It is smooth, so it is drawn at a fraction of the window's
+//! resolution (`GLOW_DOWNSCALE`), by a camera of its own into a texture,
+//! and a second quad over everything adds that texture to what is drawn,
+//! scaled up. With `Fog`, the haze (baked
 //! apart from the bloom) thickens and thins with two layers of tiling noise
 //! (`fog_noise`) drifting over the map, so lit air moves like fog.
 //!
@@ -29,6 +32,7 @@
 
 use bevy::{
     asset::{embedded_asset, RenderAssetUsages},
+    camera::{visibility::RenderLayers, ClearColorConfig, RenderTarget},
     image::{ImageAddressMode, ImageSampler, ImageSamplerDescriptor},
     mesh::MeshVertexBufferLayoutRef,
     platform::collections::HashMap,
@@ -63,6 +67,12 @@ const HAZE_STRENGTH: f32 = 0.12;
 const HAZE_HEIGHT: f32 = 2.0;
 /// Over walls, sprites and the ground, under the HUD.
 const OVERLAY_Z: f32 = 900.0;
+/// The glow is drawn this many window pixels to a texel (each way), then
+/// scaled up: 1/16 of the pixels at 4.
+const GLOW_DOWNSCALE: f32 = 4.0;
+/// The render layer only the glow camera sees.
+const GLOW_LAYER: usize = 2;
+const COMPOSITE_SHADER: &str = "embedded://pav_ecs_game_bevy_port/rendering/light_composite.wgsl";
 /// Points along the view ray the haze is gathered from.
 const HAZE_STEPS: usize = 8;
 /// Steps of the linear to sRGB table: fine enough at the dark end.
@@ -78,13 +88,20 @@ impl Plugin for LightEffectsPlugin {
     fn build(&self, app: &mut App) {
         super::load_view_shader(app);
         embedded_asset!(app, "light_glow.wgsl");
+        embedded_asset!(app, "light_composite.wgsl");
         app.init_resource::<LightEffects>()
             .add_plugins(Material2dPlugin::<GlowMaterial>::default())
+            .add_plugins(Material2dPlugin::<CompositeMaterial>::default())
             .init_resource::<FogTrail>()
             .add_systems(Startup, setup.in_set(StartupPhase::Renderer))
             .add_systems(
                 Update,
-                (update_light_textures, stir_fog, draw_glow)
+                (
+                    update_light_textures,
+                    stir_fog,
+                    draw_glow,
+                    fit_glow_to_window,
+                )
                     .chain()
                     .in_set(GamePhase::Output)
                     .after(super::text::place_object_sprites),
@@ -273,31 +290,90 @@ impl Material2d for GlowMaterial {
         _layout: &MeshVertexBufferLayoutRef,
         _key: Material2dKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
-        let additive = BlendState {
-            color: BlendComponent {
-                src_factor: BlendFactor::One,
-                dst_factor: BlendFactor::One,
-                operation: BlendOperation::Add,
-            },
-            alpha: BlendComponent {
-                src_factor: BlendFactor::Zero,
-                dst_factor: BlendFactor::One,
-                operation: BlendOperation::Add,
-            },
-        };
-        if let Some(fragment) = descriptor.fragment.as_mut() {
-            for target in fragment.targets.iter_mut().flatten() {
-                target.blend = Some(additive);
-            }
-        }
+        additive(descriptor);
         Ok(())
     }
 }
 
+/// The glow drawn small (`GlowQuad::target`), added to what is drawn.
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+struct CompositeMaterial {
+    #[texture(0)]
+    #[sampler(1)]
+    glow: Handle<Image>,
+}
+
+impl Material2d for CompositeMaterial {
+    fn fragment_shader() -> ShaderRef {
+        COMPOSITE_SHADER.into()
+    }
+
+    fn alpha_mode(&self) -> AlphaMode2d {
+        AlphaMode2d::Blend
+    }
+
+    fn specialize(
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayoutRef,
+        _key: Material2dKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        additive(descriptor);
+        Ok(())
+    }
+}
+
+/// Makes a pipeline add its colour to what is drawn.
+fn additive(descriptor: &mut RenderPipelineDescriptor) {
+    let additive = BlendState {
+        color: BlendComponent {
+            src_factor: BlendFactor::One,
+            dst_factor: BlendFactor::One,
+            operation: BlendOperation::Add,
+        },
+        alpha: BlendComponent {
+            src_factor: BlendFactor::Zero,
+            dst_factor: BlendFactor::One,
+            operation: BlendOperation::Add,
+        },
+    };
+    if let Some(fragment) = descriptor.fragment.as_mut() {
+        for target in fragment.targets.iter_mut().flatten() {
+            target.blend = Some(additive);
+        }
+    }
+}
+
+/// The glow quad, the camera drawing it small into `target`, and the quad
+/// adding `target` over everything.
 #[derive(Resource)]
 struct GlowQuad {
     entity: Entity,
     material: Handle<GlowMaterial>,
+    camera: Entity,
+    composite: Entity,
+    composite_material: Handle<CompositeMaterial>,
+    /// The texture's size in texels; it covers that times `GLOW_DOWNSCALE`
+    /// window pixels.
+    target: UVec2,
+}
+
+/// A texture the glow camera draws into, `size` texels, filtered linearly.
+fn glow_target(size: UVec2) -> Image {
+    let mut image = Image::new_fill(
+        Extent3d {
+            width: size.x.max(1),
+            height: size.y.max(1),
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        &[0, 0, 0, 255],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    image.texture_descriptor.usage =
+        TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT;
+    image.sampler = ImageSampler::linear();
+    image
 }
 
 /// A texture of `size` texels, a texel per frame cell.
@@ -744,6 +820,7 @@ fn setup(
     mut images: ResMut<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<GlowMaterial>>,
+    mut composites: ResMut<Assets<CompositeMaterial>>,
 ) {
     let textures = LightTextures::new(IVec2::new(buffers.width, buffers.height), &mut images);
     let material = materials.add(GlowMaterial {
@@ -756,17 +833,110 @@ fn setup(
         fog: Vec4::ZERO,
         trail: [Vec4::ZERO; TRAIL_POINTS],
     });
-    // The main 2D camera never moves; the quad covers any window.
+    // The main 2D camera never moves, nor does the glow camera; the quad
+    // covers any window. Only the glow camera sees it.
+    let quad = meshes.add(Rectangle::new(1.0, 1.0));
     let entity = commands
         .spawn((
-            Mesh2d(meshes.add(Rectangle::new(1.0, 1.0))),
+            Mesh2d(quad.clone()),
             MeshMaterial2d(material.clone()),
-            Transform::from_xyz(0.0, 0.0, OVERLAY_Z).with_scale(Vec3::new(16384.0, 16384.0, 1.0)),
+            Transform::from_scale(Vec3::new(16384.0, 16384.0, 1.0)),
+            Visibility::Hidden,
+            RenderLayers::layer(GLOW_LAYER),
+        ))
+        .id();
+    let target = images.add(glow_target(UVec2::ONE));
+    let camera = commands
+        .spawn((
+            Camera2d,
+            Camera {
+                // Before the main camera, which adds what it draws.
+                order: -2,
+                clear_color: ClearColorConfig::Custom(Color::BLACK),
+                is_active: false,
+                ..default()
+            },
+            // A texel is `GLOW_DOWNSCALE` window pixels each way.
+            Projection::Orthographic(OrthographicProjection {
+                scaling_mode: bevy::camera::ScalingMode::WindowSize,
+                scale: GLOW_DOWNSCALE,
+                ..OrthographicProjection::default_2d()
+            }),
+            RenderTarget::Image(target.clone().into()),
+            RenderLayers::layer(GLOW_LAYER),
+            // The glow is smooth: no edges to smooth.
+            Msaa::Off,
+        ))
+        .id();
+    let composite_material = composites.add(CompositeMaterial { glow: target });
+    let composite = commands
+        .spawn((
+            Mesh2d(quad),
+            MeshMaterial2d(composite_material.clone()),
+            Transform::from_xyz(0.0, 0.0, OVERLAY_Z),
             Visibility::Hidden,
         ))
         .id();
-    commands.insert_resource(GlowQuad { entity, material });
+    commands.insert_resource(GlowQuad {
+        entity,
+        material,
+        camera,
+        composite,
+        composite_material,
+        target: UVec2::ONE,
+    });
     commands.insert_resource(textures);
+}
+
+/// Sizes the glow's texture to the window (a texel per `GLOW_DOWNSCALE`
+/// pixels each way) and the quad adding it to cover it, and runs the glow
+/// camera only while light glows.
+fn fit_glow_to_window(
+    effects: Res<LightEffects>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    mut quad: ResMut<GlowQuad>,
+    mut images: ResMut<Assets<Image>>,
+    mut composites: ResMut<Assets<CompositeMaterial>>,
+    mut cameras: Query<(&mut Camera, &mut RenderTarget)>,
+    mut composite: Query<(&mut Transform, &mut Visibility)>,
+) {
+    let shown = effects.glows();
+    if let Ok((mut camera, _)) = cameras.get_mut(quad.camera) {
+        if camera.is_active != shown {
+            camera.is_active = shown;
+        }
+    }
+    if let Ok((_, mut visibility)) = composite.get_mut(quad.composite) {
+        visibility.set_if_neq(if shown {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        });
+    }
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    let size = (window.size() / GLOW_DOWNSCALE)
+        .ceil()
+        .as_uvec2()
+        .max(UVec2::ONE);
+    if !shown || size == quad.target {
+        return;
+    }
+    quad.target = size;
+    let image = images.add(glow_target(size));
+    if let Ok((_, mut target)) = cameras.get_mut(quad.camera) {
+        *target = RenderTarget::Image(image.clone().into());
+    }
+    if let Some(mut material) = composites.get_mut(&quad.composite_material) {
+        material.glow = image;
+    }
+    // The texture covers its texels times the downscale, a little past the
+    // window's edge when the window does not divide evenly.
+    if let Ok((mut transform, _)) = composite.get_mut(quad.composite) {
+        let covers = size.as_vec2() * GLOW_DOWNSCALE;
+        transform.scale = covers.extend(1.0);
+    }
 }
 
 /// Sends the frame's light to the GPU when it changes (with `Glow`, baking
