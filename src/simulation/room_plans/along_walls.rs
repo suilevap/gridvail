@@ -18,8 +18,12 @@ use crate::navigation::path::{Lex, PathSearch, Rules};
 ///   straight runs from wall to wall: the wall at the run's start glides
 ///   to its end.
 ///
-/// So a path through walls always wins; with none, walls shift as far as
-/// they can along their wall, then glide across the floor. In a room inside
+/// Floor with a rail (`Rail`) counts apart: of paths crossing the same bare
+/// floor, the one crossing the least floor on rails wins, so where no path
+/// keeps off the floor, walls glide along rails rather than off them. A
+/// path through walls always wins; with none, walls shift as far as they
+/// can along their wall, then glide across the floor, along rails where
+/// they can. In a room inside
 /// a room the inner walls stay inner walls and the outer ones outer.
 /// [`LineSlides`](super::LineSlides)' slides are the straight paths.
 ///
@@ -35,8 +39,9 @@ pub struct AlongWalls;
 /// that a switch across a whole map stays quick.
 const NEAREST: usize = 8;
 
-/// A path's cost: floor cells crossed, then steps.
-type Cost = Lex<u32, u32>;
+/// A path's cost: bare floor cells crossed, then floor cells on rails, then
+/// steps.
+type Cost = Lex<u32, Lex<u32, u32>>;
 
 impl RoomPlanner for AlongWalls {
     fn plan(&self, switch: &SwitchContext) -> SwitchPlan {
@@ -126,7 +131,7 @@ impl WallMoves<'_> {
             }
         }
         Candidate {
-            rank: (cost.0 as i32, cost.1 as i32),
+            rank: (cost.0 as i32, cost.1 .0 as i32, cost.1 .1 as i32),
             cells,
             moves: nodes.windows(2).map(|pair| (pair[0], pair[1])).collect(),
         }
@@ -148,14 +153,19 @@ impl Rules for WallMoves<'_> {
 
     fn start_state(&self, _start: Cell) {}
 
-    /// A step costs one; a jump costs the floor it crosses, and its length.
+    /// A step costs one; a jump costs the floor it crosses (bare, then on
+    /// rails), and its length.
     fn step(&self, from: Cell, to: Cell, _state: &()) -> Option<(Cost, ())> {
         let (from, to) = (self.pos(from), self.pos(to));
         if !self.landing(to) {
             return None;
         }
         let length = (to - from).abs().element_sum() as u32;
-        Some((Lex(length - 1, length), ()))
+        let step = (to - from).signum();
+        let on_rails = (1..length as i32)
+            .filter(|&i| self.switch.has_rail(from + step * i))
+            .count() as u32;
+        Some((Lex(length - 1 - on_rails, Lex(on_rails, length)), ()))
     }
 
     fn for_each_jump(&self, from: Cell, _state: &(), visit: &mut dyn FnMut(Cell)) {
@@ -181,9 +191,10 @@ impl Rules for WallMoves<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::plan_with;
+    use super::super::tests::{cells, plan_with};
     use super::super::MoveKind;
     use super::*;
+    use crate::model::Room;
 
     fn switch(from: &[(i32, i32)], to: &[(i32, i32)]) -> SwitchPlan {
         plan_with(&AlongWalls, from, to)
@@ -263,9 +274,29 @@ mod tests {
     }
 
     #[test]
+    fn walls_glide_along_rails_rather_than_across_bare_floor() {
+        // One wall goes and two come: it can glide 3 cells right, or 4 down.
+        // The other new wall rises.
+        let from = cells(&[(1, 1)]);
+        let to = cells(&[(4, 1), (1, 5)]);
+        let room = Room::new(IVec2::ZERO, IVec2::splat(8), vec![]);
+        let wall = |p: IVec2| from.contains(&p);
+        let plain = SwitchContext::new(&room, &from, &to, &|_| true, &wall);
+        let plan = AlongWalls.plan(&plain);
+        plan.check(&plain).unwrap();
+        assert_eq!(slides(&plan), vec![(IVec2::new(1, 1), IVec2::new(4, 1))]);
+
+        // A rail down the column: the longer glide along it wins.
+        let rail = |p: IVec2| p.x == 1 && (2..5).contains(&p.y);
+        let railed = SwitchContext::new(&room, &from, &to, &|_| true, &wall).with_rails(&rail);
+        let plan = AlongWalls.plan(&railed);
+        plan.check(&railed).unwrap();
+        assert_eq!(slides(&plan), vec![(IVec2::new(1, 1), IVec2::new(1, 5))]);
+    }
+
+    #[test]
     fn the_test_rooms_rings_reshape_along_themselves() {
         use crate::content::map::{parse_map, parse_rooms};
-        use crate::model::Room;
         let text = include_str!("../../../assets/maps/rooms.txt");
         let spec = parse_rooms(text, &parse_map(text).2).unwrap().remove(0);
         let room = Room::new(spec.origin, spec.size, spec.layouts.clone());

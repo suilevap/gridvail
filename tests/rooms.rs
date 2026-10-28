@@ -44,13 +44,17 @@ fn boot_animated() -> App {
 }
 
 fn boot_with(extra: impl FnOnce(&mut App)) -> App {
+    boot_map(MAP, extra)
+}
+
+fn boot_map(map: &'static str, extra: impl FnOnce(&mut App)) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .init_resource::<ButtonInput<KeyCode>>()
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
             16,
         )))
-        .insert_resource(MapText(MAP))
+        .insert_resource(MapText(map))
         .add_plugins(GamePlugin);
     extra(&mut app);
     app.update();
@@ -390,5 +394,57 @@ fn walls_can_rise_elsewhere_and_sink_elsewhere() {
     assert!(
         app.world().get_entity(below).is_err(),
         "the old one sank and went"
+    );
+}
+
+#[test]
+fn walls_ride_rails_where_the_floor_has_them() {
+    // Two rooms alike, switched by one plate: each has a pillar top left
+    // and bottom right, going to top right and bottom left. Straight down
+    // or up is shorter, and the bare room takes it; the top room has rails
+    // along its top and bottom rows, and its pillars ride them.
+    let mut app = boot_map(include_str!("../assets/maps/rails.txt"), |_| {});
+    let (top, bottom) = (IVec2::new(2, 2), IVec2::new(2, 10));
+    let (top_pillar, bottom_pillar) = (
+        entity_at(&mut app, top).unwrap(),
+        entity_at(&mut app, bottom).unwrap(),
+    );
+
+    // Rails lie flat and dim, joined like walls: under the pillar too.
+    let world = app.world_mut();
+    let rails: Vec<(IVec2, Glyph, Option<&Stature>)> = world
+        .query_filtered::<(&Pos, &Glyph, Option<&Stature>), With<Rail>>()
+        .iter(world)
+        .map(|(pos, glyph, stature)| (pos.0, *glyph, stature))
+        .collect();
+    assert_eq!(rails.len(), 30);
+    assert!(
+        rails.iter().any(|(pos, _, _)| *pos == top),
+        "under the pillar"
+    );
+    for (pos, glyph, stature) in &rails {
+        assert_eq!(glyph.depth, 0, "{pos}: on the floor");
+        assert_eq!(stature.map(|s| s.0), Some(0.0), "{pos}: flat");
+        assert_ne!(glyph.ch, '=', "{pos}: autotiled");
+        if (3..16).contains(&pos.x) {
+            assert_eq!(glyph.ch, '═', "{pos}: a straight run");
+        }
+    }
+
+    step(&mut app, KeyCode::ArrowRight);
+    step(&mut app, KeyCode::ArrowRight);
+    for _ in 0..5 {
+        app.update();
+    }
+    let at = |app: &mut App, entity| app.world().get::<Pos>(entity).unwrap().0;
+    assert_eq!(
+        at(&mut app, top_pillar),
+        IVec2::new(16, 2),
+        "along the rail"
+    );
+    assert_eq!(
+        at(&mut app, bottom_pillar),
+        IVec2::new(2, 14),
+        "straight down"
     );
 }

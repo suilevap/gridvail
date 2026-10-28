@@ -21,7 +21,7 @@ use crate::lighting::{CYAN, GRAY, RED, WHITE, YELLOW};
 use crate::model::*;
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::room_plans::RoomPlanners;
-use crate::simulation::{wall_bundle, Rules};
+use crate::simulation::{rail_bundle, wall_bundle, Rules};
 
 const MAP_TEXT: &str = include_str!("../../assets/maps/map1.txt");
 const WALL_RULE_TEXT: &str = include_str!("../../assets/rules/wall_rule.txt");
@@ -377,6 +377,7 @@ fn spawn_cell(commands: &mut Commands, kind: SpawnKind, at: IVec2, cell_count: u
             marker(PressurePlate::GLYPH, YELLOW),
         )),
         SpawnKind::Exit => commands.spawn((Exit, marker(Exit::GLYPH, CYAN))),
+        SpawnKind::Rail => commands.spawn(rail_bundle(at)),
         SpawnKind::Door => commands.spawn((
             Active,
             Collider,

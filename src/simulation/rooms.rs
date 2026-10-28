@@ -26,6 +26,7 @@ pub fn transform_rooms(
     planners: Res<RoomPlanners>,
     mut rooms: Query<&mut Room>,
     walls: Query<Has<AnimatedPos>, With<Wall>>,
+    rails: Query<&Pos, With<Rail>>,
 ) {
     let wall_at = |grid: &MapGrid, p: IVec2| grid.get(p).filter(|&e| walls.contains(e));
     for mut room in &mut rooms {
@@ -43,7 +44,9 @@ pub fn transform_rooms(
             }
             let free = |p: IVec2| grid.get(p).is_none();
             let wall = |p: IVec2| wall_at(&grid, p).is_some();
-            let switch = SwitchContext::new(room, from, to, &free, &wall);
+            let rails: std::collections::HashSet<IVec2> = rails.iter().map(|pos| pos.0).collect();
+            let rail = |p: IVec2| rails.contains(&p);
+            let switch = SwitchContext::new(room, from, to, &free, &wall).with_rails(&rail);
             let plan = planners.for_room(room).plan(&switch);
             match plan.check(&switch) {
                 Ok(()) => plan,

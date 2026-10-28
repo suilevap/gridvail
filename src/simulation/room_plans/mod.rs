@@ -215,9 +215,9 @@ impl SwitchPlan {
 /// slides, and its rank (lower is taken first).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Candidate {
-    /// Compared as a pair: a planner's own measure (a tier, a cost), then
-    /// a length.
-    pub rank: (i32, i32),
+    /// Lower is better, compared in order: a planner's own measures (a
+    /// tier, a cost), then a length.
+    pub rank: (i32, i32, i32),
     pub cells: Vec<IVec2>,
     pub moves: Vec<(IVec2, IVec2)>,
 }
@@ -231,6 +231,7 @@ pub struct SwitchContext<'a> {
     pub to: &'a [IVec2],
     free: &'a dyn Fn(IVec2) -> bool,
     wall: &'a dyn Fn(IVec2) -> bool,
+    rail: &'a dyn Fn(IVec2) -> bool,
 }
 
 impl<'a> SwitchContext<'a> {
@@ -247,7 +248,14 @@ impl<'a> SwitchContext<'a> {
             to,
             free,
             wall,
+            rail: &|_| false,
         }
+    }
+
+    /// Where the floor has rails (`Rail`); none without this.
+    pub fn with_rails(mut self, rail: &'a dyn Fn(IVec2) -> bool) -> Self {
+        self.rail = rail;
+        self
     }
 
     /// Wall cells the new layout loses.
@@ -273,6 +281,11 @@ impl<'a> SwitchContext<'a> {
     /// Whether nothing stands at `p`.
     pub fn is_free(&self, p: IVec2) -> bool {
         (self.free)(p)
+    }
+
+    /// Whether the floor at `p` has a rail.
+    pub fn has_rail(&self, p: IVec2) -> bool {
+        (self.rail)(p)
     }
 
     /// Whether a wall entity stands at `p` (only those can slide or sink).

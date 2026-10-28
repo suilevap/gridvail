@@ -36,6 +36,9 @@ pub enum SpawnKind {
     /// A wall whose open face is a portal to the other cell with the same
     /// digit.
     Portal(u8),
+    /// A rail in the floor (`=`), which room planners prefer walls to
+    /// glide along. `#` is a wall standing on a rail: both, at one cell.
+    Rail,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,6 +61,7 @@ pub fn spawn_kind_of(c: char) -> Option<SpawnKind> {
         '_' => Some(SpawnKind::Plate),
         '>' => Some(SpawnKind::Exit),
         '1'..='9' => Some(SpawnKind::Portal(c as u8 - b'0')),
+        '=' => Some(SpawnKind::Rail),
         _ => None,
     }
 }
@@ -70,7 +74,8 @@ fn lines_of(text: &str) -> impl Iterator<Item = &str> {
     text.lines().map(|l| l.strip_suffix('\r').unwrap_or(l))
 }
 
-/// Parses the map, up to its first `@` block.
+/// Parses the map, up to its first `@` block. A `#` (a wall on a rail) is a
+/// wall and a rail at the same cell, in that order.
 pub fn parse_map(text: &str) -> (i32, i32, Vec<SpawnCell>) {
     let lines: Vec<&str> = lines_of(text)
         .take_while(|line| !line.starts_with('@'))
@@ -80,11 +85,18 @@ pub fn parse_map(text: &str) -> (i32, i32, Vec<SpawnCell>) {
     let mut cells = Vec::new();
     for (y, line) in lines.iter().enumerate() {
         for (x, c) in line.chars().enumerate() {
-            if let Some(kind) = spawn_kind_of(c) {
+            let pos = IVec2::new(x as i32, y as i32);
+            if c == '#' {
                 cells.push(SpawnCell {
-                    pos: IVec2::new(x as i32, y as i32),
-                    kind,
+                    pos,
+                    kind: SpawnKind::Wall,
                 });
+                cells.push(SpawnCell {
+                    pos,
+                    kind: SpawnKind::Rail,
+                });
+            } else if let Some(kind) = spawn_kind_of(c) {
+                cells.push(SpawnCell { pos, kind });
             }
         }
     }
@@ -151,7 +163,7 @@ pub fn parse_rooms(text: &str, cells: &[SpawnCell]) -> Result<Vec<RoomSpec>, Str
             .enumerate()
             .flat_map(|(y, row)| {
                 row.chars().enumerate().filter_map(move |(x, c)| {
-                    matches!(c, 'X' | 'x').then_some(origin + IVec2::new(x as i32, y as i32))
+                    matches!(c, 'X' | 'x' | '#').then_some(origin + IVec2::new(x as i32, y as i32))
                 })
             })
             .collect();

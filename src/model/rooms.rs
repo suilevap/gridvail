@@ -1,5 +1,11 @@
 use bevy::prelude::*;
 
+/// A rail in the floor: room planners prefer walls to glide along rails
+/// over bare floor. It lies flat, drawn with the wall shapes joined to the
+/// rails next to it (`Tile::rail`), dimmed.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Rail;
+
 /// A floor cell that presses when an actor steps onto it and springs back
 /// when it leaves. Each press switches every [`Room`] to its next layout.
 /// It is a stand-in for trying rooms out until a trigger/action system,

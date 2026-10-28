@@ -117,6 +117,14 @@ impl Tile {
             rule: "wall_rule".to_string(),
         }
     }
+
+    /// Marks a rail to be autotiled by the wall rule, joined to rails.
+    pub fn rail() -> Self {
+        Self {
+            mask: 0,
+            rule: "rail_rule".to_string(),
+        }
+    }
 }
 
 #[cfg(test)]

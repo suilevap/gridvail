@@ -145,7 +145,13 @@ next to this file.
   `--room-planner NAME` picks the one for rooms that name none. Code adds
   its own with `RoomPlanners::add` (see `simulation/room_plans/`). In
   `rooms.txt` the room's walls slide to move its gaps, and pillars rise in
-  its corners.
+  its corners. `=` in a map is a rail in the floor and `#` a wall standing
+  on one: rails lie flat, drawn dimmed with the wall shapes joined to the
+  rails beside them, and `along-walls` counts floor on rails apart, so
+  where walls must cross the floor they glide along rails rather than off
+  them, even the longer way. In `rails.txt` one plate switches two rooms
+  alike, but for the rails in the top one: its pillars ride them, while
+  the bare room's go the short way across.
 - Exits and loading another map while playing (an addition): `>` in a map
   is an exit, and `@next <map>` after the map names the bundled map its
   exits lead to (a map with exits must have one). Stepping onto an exit
@@ -278,6 +284,7 @@ cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk through portals too
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
+cargo run -- --map assets/maps/rails.txt --reveal  # walls riding rails, beside a room without
 cargo run -- --map assets/maps/rooms.txt --room-planner lines  # the same room, walls sliding along rows and columns, across the floor too
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --intro noise   # the map comes together from noise instead of the title
