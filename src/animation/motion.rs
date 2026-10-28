@@ -19,6 +19,7 @@
 use bevy::prelude::*;
 
 use crate::foundation::portal::CellTransform;
+use crate::model::{Corners, MAX_CORNERS};
 
 /// Upper bound on one spring integration step, for stability at low FPS.
 const MAX_SPRING_STEP: f32 = 1.0 / 240.0;
@@ -191,9 +192,44 @@ pub enum Path {
     /// goes through the positive angle, clockwise on screen (map y grows
     /// downward). Moves that start or end on the center go straight.
     Orbit { center: Vec2 },
+    /// Straight from corner to corner, through the first `len` of
+    /// `corners` in order, at an even pace: a wall riding rails that bend.
+    Route {
+        corners: [Vec2; MAX_CORNERS],
+        len: u8,
+    },
 }
 
 impl Path {
+    /// A route turning at `corners`.
+    pub fn route(corners: &Corners) -> Self {
+        let mut points = [Vec2::ZERO; MAX_CORNERS];
+        for (point, cell) in points.iter_mut().zip(corners.as_slice()) {
+            *point = cell.as_vec2();
+        }
+        Self::Route {
+            corners: points,
+            len: corners.as_slice().len() as u8,
+        }
+    }
+
+    /// How far a move from `from` to `to` goes along this path, in cells
+    /// (as the crow flies for curves, which bow out only a little).
+    pub fn length(self, from: Vec2, to: Vec2) -> f32 {
+        match self {
+            Self::Route { corners, len } => {
+                let mut length = 0.0;
+                let mut at = from;
+                for &next in corners[..len as usize].iter().chain([&to]) {
+                    length += at.distance(next);
+                    at = next;
+                }
+                length
+            }
+            _ => from.distance(to),
+        }
+    }
+
     /// Point at progress `s` (0 to 1) of a move from `from` to `to`.
     pub fn sample(self, from: Vec2, to: Vec2, s: f32) -> Vec2 {
         let base = from.lerp(to, s);
@@ -220,6 +256,19 @@ impl Path {
                 }
                 let radius = start.length().lerp(end.length(), s);
                 center + Vec2::from_angle(start.to_angle() + sweep * s) * radius
+            }
+            Self::Route { corners, len } => {
+                let mut left = self.length(from, to) * s.clamp(0.0, 1.0);
+                let mut at = from;
+                for &next in corners[..len as usize].iter().chain([&to]) {
+                    let leg = at.distance(next);
+                    if left <= leg && leg > 0.0 {
+                        return at.lerp(next, left / leg);
+                    }
+                    left -= leg;
+                    at = next;
+                }
+                to
             }
         }
     }
@@ -345,6 +394,10 @@ impl MotionState {
             Path::Orbit { center } => Path::Orbit {
                 center: point(center),
             },
+            Path::Route { corners, len } => Path::Route {
+                corners: corners.map(point),
+                len,
+            },
         };
         self.gait.direction = turn(self.gait.direction);
     }
@@ -381,7 +434,12 @@ impl MotionState {
 
     /// Moves to `cell` along `path`, or the style's default path if `None`.
     pub fn move_along(&mut self, cell: Vec2, path: Option<Path>, style: MotionStyle) {
-        let cells = (cell - self.target()).length().max(1.0);
+        let cells = path
+            .map_or_else(
+                || (cell - self.target()).length(),
+                |path| path.length(self.target(), cell),
+            )
+            .max(1.0);
         let (step, easing) = style.timing();
         let duration = step * cells;
         let mut next = Move {
@@ -979,5 +1037,17 @@ mod tests {
             .name(),
             "custom"
         );
+    }
+
+    #[test]
+    fn a_route_turns_at_its_corners_at_an_even_pace() {
+        let corners = Corners::new(&[IVec2::new(4, 0)]).unwrap();
+        let route = Path::route(&corners);
+        let (from, to) = (Vec2::ZERO, Vec2::new(4.0, 4.0));
+        assert_eq!(route.length(from, to), 8.0);
+        assert_eq!(route.sample(from, to, 0.25), Vec2::new(2.0, 0.0));
+        assert_eq!(route.sample(from, to, 0.5), Vec2::new(4.0, 0.0));
+        assert_eq!(route.sample(from, to, 0.75), Vec2::new(4.0, 2.0));
+        assert_eq!(route.sample(from, to, 1.0), to);
     }
 }
