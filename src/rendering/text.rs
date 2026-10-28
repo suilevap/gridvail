@@ -26,6 +26,8 @@ const MAX_FRAME_SIDE: i32 = 192;
 /// Cells of slack around the screen on each side: the frame follows the
 /// player, while the camera may trail them or show them off centre.
 const FRAME_MARGIN: i32 = 4;
+/// The cell font, Unscii-8.
+pub(super) const CELL_FONT_BYTES: &[u8] = include_bytes!("../../assets/fonts/unscii-8.ttf");
 /// Unscii-8 is an 8 px pixel font, drawn at twice its size.
 const CELL_FONT_SIZE: f32 = 16.0;
 
@@ -42,7 +44,7 @@ pub(super) struct MapCell(pub(super) usize);
 pub(super) struct ObjectSprite {
     position: Vec2,
     lift: f32,
-    depth: u8,
+    pub(super) depth: u8,
     pub(super) shown: bool,
 }
 
@@ -68,7 +70,7 @@ impl ObjectSprite {
 pub(super) struct ObjectSprites(HashMap<(Entity, u16), Entity>);
 
 #[derive(Resource, Clone)]
-pub(super) struct CellFont(Handle<Font>);
+struct CellFont(Handle<Font>);
 
 /// Glyphs that depend on direction (wall shapes, facing markers), each as
 /// drawn in a view turned 0 to 3 quarter turns counter-clockwise, so they
@@ -101,10 +103,14 @@ impl TurnedGlyphs {
     /// `quarters` more (through a portal that turns the view); glyphs
     /// without a direction stay.
     pub(super) fn get(&self, symbol: char, quarters: u8, camera: &ViewCamera) -> char {
-        let turns = (camera.quarter_turns() + quarters as i32).rem_euclid(4);
+        self.turned(symbol, camera.quarter_turns() + quarters as i32)
+    }
+
+    /// `symbol` turned `turns` quarter turns counter-clockwise.
+    pub(super) fn turned(&self, symbol: char, turns: i32) -> char {
         self.0
             .get(&symbol)
-            .map_or(symbol, |glyphs| glyphs[turns as usize])
+            .map_or(symbol, |glyphs| glyphs[turns.rem_euclid(4) as usize])
     }
 }
 
@@ -123,6 +129,7 @@ impl Plugin for TextRendererPlugin {
             .init_resource::<ObjectSprites>()
             .init_resource::<SettingsMenu>()
             .init_resource::<CompassMode>()
+            .init_resource::<WallVolume>()
             .add_systems(Startup, setup.in_set(StartupPhase::Renderer))
             .add_systems(
                 Update,
@@ -255,11 +262,7 @@ pub(super) fn setup(
     // The default Bevy font omits the box-drawing and marker glyphs. Headless
     // tests do not install font assets, so they use the default handle.
     let font = fonts
-        .map(|mut fonts| {
-            fonts.add(Font::from_bytes(
-                include_bytes!("../../assets/fonts/unscii-8.ttf").to_vec(),
-            ))
-        })
+        .map(|mut fonts| fonts.add(Font::from_bytes(CELL_FONT_BYTES.to_vec())))
         .unwrap_or_default();
 
     // One text entity per frame slot; `place_cells` puts each where the
@@ -398,11 +401,15 @@ fn spawn_object_sprites(world: &mut World) {
 }
 
 /// Draws one text sprite per visible object at its animated position.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn place_object_sprites(
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
     index: Res<ObjectSprites>,
     turned: Res<TurnedGlyphs>,
+    volume: Option<Res<WallVolume>>,
+    statures: Option<Res<GlyphStatures>>,
+    own_statures: Query<&Stature>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
     mut drawn: Local<String>,
     mut sprites: Query<(
@@ -414,6 +421,7 @@ pub(super) fn place_object_sprites(
     )>,
 ) {
     let billboards = extruded_walls.is_some();
+    let volume = volume.map_or(WallVolume::Flat, |volume| *volume);
     for (mut sprite, ..) in &mut sprites {
         sprite.shown = false;
     }
@@ -432,6 +440,13 @@ pub(super) fn place_object_sprites(
         let Ok((mut sprite, mut text, mut color, ..)) = sprites.get_mut(entity) else {
             continue;
         };
+        // The volume shader draws whatever stands up instead.
+        let stands = statures.as_ref().is_some_and(|statures| {
+            statures.of(object.cell.ch, own_statures.get(object.entity).ok()) > 0.0
+        });
+        if volume != WallVolume::Flat && stands {
+            continue;
+        }
         drawn.clear();
         push_glyph(
             &mut drawn,
@@ -467,8 +482,13 @@ pub(super) fn place_object_sprites(
             continue;
         }
         // Top-down, a hop shows as a small shift up the screen.
-        let translation = object_translation(&sprite, &camera)
+        let mut translation = object_translation(&sprite, &camera)
             + Vec3::Y * sprite.lift * CELL_SIZE.y * camera.zoom;
+        if volume != WallVolume::Flat {
+            // Seen at a slant, nearer rows (lower on screen) cover the ones
+            // behind them, walls included.
+            translation.z = super::volume::depth_order(&sprite, &camera, volume);
+        }
         if transform.translation != translation {
             transform.translation = translation;
         }
@@ -526,7 +546,7 @@ fn cycle_motion(
 }
 
 /// Objects draw above the ground cells, deeper glyphs on top.
-fn object_translation(sprite: &ObjectSprite, camera: &ViewCamera) -> Vec3 {
+pub(super) fn object_translation(sprite: &ObjectSprite, camera: &ViewCamera) -> Vec3 {
     view_translation(camera, sprite.position) + Vec3::Z * (1.0 + sprite.depth as f32 * 0.1)
 }
 

@@ -3,11 +3,13 @@
 mod extruded;
 mod settings;
 mod text;
+mod volume;
 // Desktop only: the web build leaves 3D rendering out to keep its download
 // small.
 #[cfg(not(target_family = "wasm"))]
 mod walls_3d;
 
 pub use text::{TextRenderStats, TextRendererPlugin};
+pub use volume::WallVolumePlugin;
 #[cfg(not(target_family = "wasm"))]
 pub use walls_3d::ExtrudedWallRendererPlugin;

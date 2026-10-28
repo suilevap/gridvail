@@ -15,7 +15,7 @@ use crate::camera::{CameraOperator, PortalTurn};
 use crate::model::*;
 
 /// The menu's lines, in order.
-const LINES: usize = 3;
+const LINES: usize = 4;
 /// The compass's size and how far its letters sit from its centre, in px.
 const COMPASS_SIZE: f32 = 72.0;
 const COMPASS_RADIUS: f32 = 26.0;
@@ -102,6 +102,7 @@ pub(super) fn settings_input(
     keys: Option<Res<ButtonInput<KeyCode>>>,
     mut menu: ResMut<SettingsMenu>,
     mut compass: ResMut<CompassMode>,
+    mut walls: ResMut<WallVolume>,
     operator: Option<ResMut<CameraOperator>>,
     motion: Option<ResMut<MotionStyle>>,
 ) {
@@ -137,6 +138,7 @@ pub(super) fn settings_input(
             }
         }
         1 => *compass = compass.step(step),
+        3 => *walls = walls.step(step),
         _ => {
             if let Some(mut motion) = motion {
                 let presets = MotionStyle::PRESETS.len() as i32;
@@ -168,6 +170,7 @@ fn compass_label(mode: CompassMode) -> &'static str {
 pub(super) fn draw_settings(
     menu: Res<SettingsMenu>,
     compass: Res<CompassMode>,
+    walls: Res<WallVolume>,
     operator: Option<Res<CameraOperator>>,
     motion: Option<Res<MotionStyle>>,
     mut panels: Query<(&mut Text, &mut Visibility), With<SettingsText>>,
@@ -194,6 +197,7 @@ pub(super) fn draw_settings(
                 "Motion",
                 motion.as_ref().map_or("-", |motion| motion.name()),
             ),
+            ("Walls", walls.name()),
         ];
         let mut drawn = String::from("Settings (Esc closes)\n");
         for (index, (name, value)) in lines.iter().enumerate() {

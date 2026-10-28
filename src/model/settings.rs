@@ -49,6 +49,46 @@ impl CompassMode {
     }
 }
 
+/// How walls stand out of the floor in the text renderer. The view looks
+/// down at a slant, so a wall's height shows straight up the screen,
+/// whichever way the map is turned.
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WallVolume {
+    /// One glyph on the floor, seen from straight above.
+    #[default]
+    Flat,
+    /// The wall's glyph extruded up the screen, darker toward the floor, so
+    /// its outline stands as a wall of that shape.
+    Stacked,
+    /// Stacked, with height leaning to the right as well as up (a cavalier
+    /// oblique view from the south-west), so walls running up the screen
+    /// show a side too.
+    Leaning,
+}
+
+impl WallVolume {
+    pub const ALL: [Self; 3] = [Self::Flat, Self::Stacked, Self::Leaning];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Flat => "flat",
+            Self::Stacked => "stacked",
+            Self::Leaning => "leaning",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|mode| mode.name() == name)
+    }
+
+    /// The next mode, or the previous one with `step` -1.
+    pub fn step(self, step: i32) -> Self {
+        let index = Self::ALL.iter().position(|mode| *mode == self).unwrap_or(0) as i32;
+        let len = Self::ALL.len() as i32;
+        Self::ALL[(index + step).rem_euclid(len) as usize]
+    }
+}
+
 /// The settings menu. While it is open it takes the arrow keys, so the
 /// player and the camera wait.
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
