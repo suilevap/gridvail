@@ -35,7 +35,6 @@ use swash::{
     FontRef,
 };
 
-use crate::lighting::palette_color;
 use crate::model::{GlyphStatures, RenderBuffers, Stature, ViewCamera, WallVolume};
 use crate::schedule::{GamePhase, StartupPhase};
 
@@ -336,7 +335,7 @@ fn draw_wall_map(
                 (slot % ATLAS_SLOTS * GLYPH_PX) as f32,
                 (slot / ATLAS_SLOTS * GLYPH_PX) as f32,
             );
-            let lit = palette_color(object.cell.color).to_linear();
+            let lit = Color::from(object.cell.color).to_linear();
             let risen = stature * object.height.clamp(0.0, 1.0);
             let color = Color::LinearRgba(lit.with_alpha(risen / MAX_STATURE));
             let at = (object.position - buffers.origin.as_vec2() + 0.5) * texels;
