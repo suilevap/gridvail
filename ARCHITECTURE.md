@@ -82,7 +82,9 @@ and renderers must not import it.
   system, where a room switch is one kind of action. Rails (`Rail`, floor
   that planners prefer walls to glide along) reach planners through
   `SwitchContext::has_rail`, and `tile_system` autotiles them with the wall
-  rule, flat and dimmed.
+  rule, flat and dimmed. A `WallMove` may turn at a few cells on its way
+  (`via`, along rails that bend); `carry_out` marks such a wall with a
+  `SlideRoute`, which the animation step follows (`Path::Route`).
 - `vision/` converts sensors and blocker state into cached FOV and visibility
   components. Every field of view sees through portals: lights' and
   sensors' `FovResult` (its samples for lights, which fade by the way the

@@ -240,6 +240,7 @@ pub fn animate_objects(
             &Pos,
             Option<&ObjectMotion>,
             Option<&MovePath>,
+            Option<&SlideRoute>,
             Has<NonBlockingAnimation>,
             (Has<Sliding>, Has<Rising>, Has<Sinking>),
             &mut ObjectAnimation,
@@ -255,6 +256,7 @@ pub fn animate_objects(
         pos,
         own_style,
         path,
+        route,
         non_blocking,
         (sliding, rising, sinking),
         mut animation,
@@ -269,8 +271,16 @@ pub fn animate_objects(
         {
             animation.state.carry(&through);
         }
+        // A slide along rails that bend follows them, and takes as long as
+        // the way round.
+        let path = match route.filter(|_| sliding) {
+            Some(route) => Some(Path::route(&route.0)),
+            None => path.map(|path| path.0),
+        };
+        let cells = path
+            .unwrap_or(Path::Straight)
+            .length(animation.state.target(), pos.0.as_vec2());
         let motion = if sliding {
-            let cells = (pos.0.as_vec2() - animation.state.target()).length();
             slide_style(own_style, *style, cells)
         } else {
             style_of(own_style, *style)
@@ -281,13 +291,12 @@ pub fn animate_objects(
         let still_rising = rising && !animation.height.done();
         let mut to_come = 0.0;
         if still_rising {
-            let cells = (pos.0.as_vec2() - animation.state.target()).length();
             to_come = cells * motion.timing().0;
         } else {
             follow(
                 &mut animation.state,
                 pos.0.as_vec2(),
-                path.map(|path| path.0),
+                path,
                 motion,
                 // A sliding wall stays in its room, so however far it goes
                 // it never crossed the map's edge.

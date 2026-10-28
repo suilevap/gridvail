@@ -377,16 +377,7 @@ fn spawn_cell(commands: &mut Commands, kind: SpawnKind, at: IVec2, cell_count: u
             marker(PressurePlate::GLYPH, YELLOW),
         )),
         SpawnKind::Exit => commands.spawn((Exit, marker(Exit::GLYPH, CYAN))),
-        SpawnKind::Rail {
-            horizontal,
-            vertical,
-        } => commands.spawn(rail_bundle(
-            at,
-            Rail {
-                horizontal,
-                vertical,
-            },
-        )),
+        SpawnKind::Rail => commands.spawn(rail_bundle(at)),
         SpawnKind::Door => commands.spawn((
             Active,
             Collider,

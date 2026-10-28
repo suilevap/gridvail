@@ -145,16 +145,18 @@ next to this file.
   `--room-planner NAME` picks the one for rooms that name none. Code adds
   its own with `RoomPlanners::add` (see `simulation/room_plans/`). In
   `rooms.txt` the room's walls slide to move its gaps, and pillars rise in
-  its corners. `=` in a map is a rail in the floor running across, `|` one
-  running up and down and `+` a crossing; `#` is a wall standing on a
-  rail, which runs on into the rails beside it. Rails lie flat, drawn
-  dimmed with the wall shapes joined to the rails they run into, and
-  `along-walls` counts floor with a rail running the way a wall glides
-  apart, so where walls must cross the floor they glide along rails rather
-  than off them, even the longer way. In `rails.txt` one plate switches two rooms
+  its corners. `=` in a map is a rail in the floor and `#` a wall standing
+  on one. Rails lie flat, drawn dimmed with the same wall rule, joined to
+  the rails beside them, so they make corners, T-junctions and crossings
+  the way walls do. `along-walls` counts floor reached along rails apart,
+  so where walls must cross the floor they glide along rails rather than
+  off them, even the longer way. Over bare floor a wall glides straight;
+  on rails it follows them, turning at a rail onto any rail beside it.
+  In `bends.txt` pillars ride a rail loop round its corners and
+  one winds down an S of rail. In `rails.txt` one plate switches two rooms
   alike, but for the rails in the top one: its pillars ride them, while
   the bare room's go the short way across. In `rebuild.txt` a whole hall rebuilds
-  itself: its partitions ride rails along every row through three
+  itself: its partitions ride rails along every other row through three
   layouts (three rooms, one wide hall, two halves back to back), each
   wall sliding all the way.
 - Exits and loading another map while playing (an addition): `>` in a map
@@ -298,13 +300,14 @@ cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up 
 cargo run -- --map assets/maps/rooms.txt  # a pressure plate switches a room's layout
 cargo run -- --map assets/maps/rails.txt --reveal  # walls riding rails, beside a room without
 cargo run -- --map assets/maps/rebuild.txt --walls leaning  # a hall rebuilding itself on rails
+cargo run -- --map assets/maps/bends.txt --walls leaning  # walls riding rails round corners
 cargo run -- --map assets/maps/rooms.txt --room-planner lines  # the same room, walls sliding along rows and columns, across the floor too
 cargo run -- --map assets/maps/rooms.txt --room-planner rise-sink  # the same room, walls only rising and sinking
 cargo run -- --intro noise   # the map comes together from noise instead of the title
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 302 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 306 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
