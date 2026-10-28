@@ -190,6 +190,8 @@ fn a_walking_player_carries_over_to_every_bundled_map() {
         include_str!("../assets/maps/chasers.txt"),
         include_str!("../assets/maps/portals.txt"),
         include_str!("../assets/maps/rooms.txt"),
+        include_str!("../assets/maps/rails.txt"),
+        include_str!("../assets/maps/rebuild.txt"),
         include_str!("../assets/maps/hunter_keys.txt"),
         include_str!("../assets/maps/map1.txt"),
     ];

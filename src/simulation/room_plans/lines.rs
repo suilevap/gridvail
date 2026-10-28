@@ -56,7 +56,7 @@ fn line_slides(switch: &SwitchContext) -> Vec<Candidate> {
             };
             if moves.iter().all(|&(p, _)| switch.holds_wall(p)) {
                 candidates.push(Candidate {
-                    rank: (0, length),
+                    rank: (0, 0, length),
                     cells: (0..=length).map(|i| start + step * i).collect(),
                     moves,
                 });
