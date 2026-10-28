@@ -205,8 +205,11 @@ next to this file.
   step's move instead of jumping; with `glow` (the default) the brightest light also blooms,
   and the air glows with the light it passes through, a haze rising toward
   the viewer like the walls do; with `fog` that haze is a drifting fog,
-  thicker and thinner as it moves over the map. `flat` draws every cell in
-  its own light.
+  thicker and thinner as it moves over the map, keeping to the open floor
+  (thin against walls and in narrow passages) and parting around the player
+  and enemies as they move, a wake that closes behind them. `flat` draws
+  every cell in its own light. `fog.txt` is a map to see it in: two halls
+  with lamps, electricity, acid and pillars, joined by a doorway.
 - Enemies through portals (an addition, opt-in with `--enemy-portals`):
   enemies plan paths through portals too, with an A* estimate that knows
   the portals, so searches stay narrow.
@@ -309,7 +312,8 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light fog        # light: flat, smooth, glow (default; bloom and haze) or fog (drifting haze)
-cargo test --workspace   # 307 tests, including allocation and independent C# comparisons
+cargo run -- --map assets/maps/fog.txt --walls leaning --light fog --reveal  # fog drifting through two lit halls
+cargo test --workspace   # 309 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

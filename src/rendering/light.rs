@@ -31,6 +31,7 @@ use bevy::{
     asset::{embedded_asset, RenderAssetUsages},
     image::{ImageAddressMode, ImageSampler, ImageSamplerDescriptor},
     mesh::MeshVertexBufferLayoutRef,
+    platform::collections::HashMap,
     prelude::*,
     reflect::TypePath,
     render::render_resource::{
@@ -42,7 +43,9 @@ use bevy::{
     sprite_render::{AlphaMode2d, Material2d, Material2dKey, Material2dPlugin},
 };
 
-use crate::model::{LightEffects, RenderBuffers, ViewCamera, WallVolume};
+use crate::model::{
+    AnimatedPos, LightEffects, MapGrid, RenderBuffers, Speed, ViewCamera, WallVolume,
+};
 use crate::schedule::{GamePhase, StartupPhase};
 
 use super::text::CELL_SIZE;
@@ -77,10 +80,11 @@ impl Plugin for LightEffectsPlugin {
         embedded_asset!(app, "light_glow.wgsl");
         app.init_resource::<LightEffects>()
             .add_plugins(Material2dPlugin::<GlowMaterial>::default())
+            .init_resource::<FogTrail>()
             .add_systems(Startup, setup.in_set(StartupPhase::Renderer))
             .add_systems(
                 Update,
-                (update_light_textures, draw_glow)
+                (update_light_textures, stir_fog, draw_glow)
                     .chain()
                     .in_set(GamePhase::Output)
                     .after(super::text::place_object_sprites),
@@ -123,6 +127,11 @@ pub(super) struct LightTextures {
     since_change: Option<f32>,
     /// The frame's light this frame, to compare with `current`'s.
     texels: Vec<u8>,
+    /// Which frame cells are walls (anything that blocks sight, and off the
+    /// map) this frame, and when the glow was last baked: fog keeps to the
+    /// open floor between them.
+    walls: Vec<bool>,
+    baked_walls: Vec<bool>,
     baker: AirBaker,
 }
 
@@ -169,6 +178,51 @@ struct GlowMaterial {
     /// x: 1 for fog (0: the haze as it is), y: seconds, the fog's drift.
     #[uniform(9)]
     fog: Vec4,
+    /// Where things moving through the fog have just been (`FogTrail`).
+    #[uniform(10)]
+    trail: [Vec4; TRAIL_POINTS],
+}
+
+/// Points along the paths of things moving through fog, which stir it.
+const TRAIL_POINTS: usize = 32;
+/// How far (in cells) a mover goes between its trail points.
+const TRAIL_SPACING: f32 = 0.35;
+
+/// Where things moving through fog (anything with a `Speed`) have just
+/// been: a ring of points, xy the map point, z the time it was left there
+/// (`Time::elapsed_secs_wrapped`), w 1 (0: no point yet). The fog shader
+/// clears and swirls the fog around each, less as it ages, so movers leave
+/// a wake that closes behind them.
+#[derive(Resource)]
+struct FogTrail {
+    points: [Vec4; TRAIL_POINTS],
+    next: usize,
+    /// Where each mover left its latest point.
+    last: HashMap<Entity, Vec2>,
+}
+
+impl Default for FogTrail {
+    fn default() -> Self {
+        Self {
+            points: [Vec4::ZERO; TRAIL_POINTS],
+            next: 0,
+            last: HashMap::default(),
+        }
+    }
+}
+
+impl FogTrail {
+    /// Notes that a mover is at `at` at `time`: a new point once it has
+    /// gone `TRAIL_SPACING` from its last.
+    fn track(&mut self, mover: Entity, at: Vec2, time: f32) {
+        let last = self.last.entry(mover).or_insert(at);
+        if last.distance(at) < TRAIL_SPACING {
+            return;
+        }
+        *last = at;
+        self.points[self.next] = Vec4::new(at.x, at.y, time, 1.0);
+        self.next = (self.next + 1) % TRAIL_POINTS;
+    }
 }
 
 impl Material2d for GlowMaterial {
@@ -328,6 +382,9 @@ pub(super) fn haze_direction(rotation: f32, lean: Vec2) -> Vec2 {
     Vec2::new(c * v.x - s * v.y, s * v.x + c * v.y) * HAZE_HEIGHT
 }
 
+/// How far around a cell (in cells, a square) fog looks for open floor.
+const OPEN_RADIUS: i32 = 2;
+
 /// Haze baked this much apart (in cells) is the same.
 const HAZE_TURN: f32 = 0.01;
 
@@ -373,8 +430,10 @@ impl AirBaker {
     /// Bakes the light in the air above each texel of `texels` (a `size`
     /// grid): into `bloom` the light seen now that is bright enough to
     /// bloom, blurred, and into `air` the haze, the light the air holds
-    /// along `haze` from each cell, averaged.
-    fn bake(&mut self, texels: &[u8], size: IVec2, haze: Vec2) {
+    /// along `haze` from each cell, averaged, with as alpha how open the
+    /// floor around the cell is (the share of cells within `OPEN_RADIUS`
+    /// that are not `walls`), which fog keeps to.
+    fn bake(&mut self, texels: &[u8], walls: &[bool], size: IVec2, haze: Vec2) {
         let (width, height) = (size.x as usize, size.y as usize);
         for (texel, (bright, lit)) in self.bright.iter_mut().zip(&mut self.lit).enumerate() {
             let rgba = &texels[texel * 4..texel * 4 + 4];
@@ -439,12 +498,27 @@ impl AirBaker {
                 }
                 let bloom = self.bright[texel] * BLOOM_STRENGTH;
                 let air = gathered / HAZE_STEPS as f32 * HAZE_STRENGTH;
-                for (out, light) in [(&mut self.bloom, bloom), (&mut self.air, air)] {
+                let mut open = 0;
+                for dy in -OPEN_RADIUS..=OPEN_RADIUS {
+                    for dx in -OPEN_RADIUS..=OPEN_RADIUS {
+                        let (nx, ny) = (x + dx, y + dy);
+                        let inside = nx >= 0 && ny >= 0 && nx < size.x && ny < size.y;
+                        // Past the frame's edge counts as open.
+                        if !inside || !walls[(ny * size.x + nx) as usize] {
+                            open += 1;
+                        }
+                    }
+                }
+                let around = (2 * OPEN_RADIUS + 1).pow(2);
+                let open = (open * 255 / around) as u8;
+                for (out, light, alpha) in
+                    [(&mut self.bloom, bloom, 255), (&mut self.air, air, open)]
+                {
                     out[texel * 4..texel * 4 + 4].copy_from_slice(&[
                         self.srgb[srgb_step(light.x)],
                         self.srgb[srgb_step(light.y)],
                         self.srgb[srgb_step(light.z)],
-                        255,
+                        alpha,
                     ]);
                 }
             }
@@ -464,6 +538,8 @@ impl LightTextures {
             size: IVec2::ZERO,
             since_change: None,
             texels: Vec::new(),
+            walls: Vec::new(),
+            baked_walls: Vec::new(),
             baker: AirBaker::new(),
         };
         textures.resize(size, images);
@@ -483,6 +559,8 @@ impl LightTextures {
         self.since_change = None;
         self.blend = 1.0;
         self.texels = vec![0; texels * 4];
+        self.walls = vec![false; texels];
+        self.baked_walls = vec![false; texels];
         self.baker.resize(texels);
     }
 
@@ -506,6 +584,19 @@ impl LightTextures {
             }
         }
         self.texels != self.current.texels
+    }
+
+    /// Fills `walls` from the map, for the frame at `origin`; whether they
+    /// differ from those the glow was baked with.
+    fn build_walls(&mut self, grid: &MapGrid, origin: IVec2) -> bool {
+        for y in 0..self.size.y {
+            for x in 0..self.size.x {
+                let p = origin + IVec2::new(x, y);
+                self.walls[(y * self.size.x + x) as usize] =
+                    !grid.is_valid(p) || grid.blocks_vision(p);
+            }
+        }
+        self.walls != self.baked_walls
     }
 
     /// Takes the frame's light, built into the texels, as the current
@@ -539,7 +630,9 @@ impl LightTextures {
 
     /// Bakes the air above the current light, the haze going `haze`.
     fn bake_glow(&mut self, haze: Vec2, images: &mut Assets<Image>) {
-        self.baker.bake(&self.current.texels, self.size, haze);
+        self.baker
+            .bake(&self.current.texels, &self.walls, self.size, haze);
+        self.baked_walls.copy_from_slice(&self.walls);
         self.haze = haze;
         upload(images, &self.glow, &self.baker.bloom);
         upload(images, &self.air, &self.baker.air);
@@ -633,6 +726,7 @@ fn setup(
         air: textures.air.clone(),
         noise: images.add(fog_noise()),
         fog: Vec4::ZERO,
+        trail: [Vec4::ZERO; TRAIL_POINTS],
     });
     // The main 2D camera never moves; the quad covers any window.
     let entity = commands
@@ -655,7 +749,7 @@ pub(super) fn update_light_textures(
     effects: Res<LightEffects>,
     camera: Res<ViewCamera>,
     volume: Option<Res<WallVolume>>,
-    buffers: Res<RenderBuffers>,
+    (buffers, grid): (Res<RenderBuffers>, Res<MapGrid>),
     mut textures: ResMut<LightTextures>,
     mut images: ResMut<Assets<Image>>,
 ) {
@@ -673,22 +767,43 @@ pub(super) fn update_light_textures(
         .glows()
         .then(|| haze_direction(camera.rotation, super::volume::lean(volume)));
     // Light shown while the effects were off is stale: show the light now.
+    let walls_moved = textures.build_walls(&grid, buffers.origin);
     if textures.build_light(&buffers) || effects.is_changed() {
         textures.change(buffers.origin, haze, effects.is_changed(), &mut images);
     } else if let Some(haze) = haze {
-        textures.turn_haze(haze, &mut images);
+        if walls_moved {
+            textures.bake_glow(haze, &mut images);
+        } else {
+            textures.turn_haze(haze, &mut images);
+        }
+    }
+}
+
+/// With `Fog`, leaves a trail point behind each mover as it goes.
+fn stir_fog(
+    time: Res<Time>,
+    effects: Res<LightEffects>,
+    movers: Query<(Entity, &AnimatedPos), With<Speed>>,
+    mut trail: ResMut<FogTrail>,
+) {
+    if *effects != LightEffects::Fog {
+        return;
+    }
+    let now = time.elapsed_secs_wrapped();
+    for (mover, shown) in &movers {
+        trail.track(mover, shown.position, now);
     }
 }
 
 /// Shows the glow quad with `Glow` or `Fog` and passes it the view, the
-/// light and, for fog, the time it drifts by.
+/// light and, for fog, the time it drifts by and the movers' trail.
 #[allow(clippy::too_many_arguments)]
 fn draw_glow(
     time: Res<Time>,
     effects: Res<LightEffects>,
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
-    textures: Res<LightTextures>,
+    (textures, trail): (Res<LightTextures>, Res<FogTrail>),
     quad: Res<GlowQuad>,
     mut materials: ResMut<Assets<GlowMaterial>>,
     mut visibility: Query<&mut Visibility>,
@@ -729,6 +844,7 @@ fn draw_glow(
         ] == uniforms
             && material.glow == textures.glow
             && material.air == textures.air
+            && material.trail == trail.points
     });
     if !unchanged {
         if let Some(mut material) = materials.get_mut(&quad.material) {
@@ -740,6 +856,7 @@ fn draw_glow(
             ] = uniforms;
             material.glow = textures.glow.clone();
             material.air = textures.air.clone();
+            material.trail = trail.points;
         }
     }
 }
@@ -799,7 +916,7 @@ mod tests {
         let size = textures.size;
         textures
             .baker
-            .bake(&textures.texels, size, Vec2::new(100.0, 0.0));
+            .bake(&textures.texels, &[false; 64], size, Vec2::new(100.0, 0.0));
         let glow = |x, y| texel(&textures.baker.bloom, x, y)[0];
         assert!(glow(1, 1) > glow(2, 1) && glow(2, 1) > glow(3, 1) && glow(3, 1) > 0);
         assert_eq!(glow(6, 1), 0, "remembered light does not glow");
@@ -826,7 +943,8 @@ mod tests {
         let haze = haze_direction(0.0, Vec2::Y);
         assert_eq!(haze, Vec2::new(0.0, -HAZE_HEIGHT));
         let size = textures.size;
-        textures.baker.bake(&textures.texels, size, haze);
+        let walls = textures.walls.clone();
+        textures.baker.bake(&textures.texels, &walls, size, haze);
         let air = |x: usize, y: usize| textures.baker.air[(y * 8 + x) * 4];
         assert!(air(3, 4) > 0 && air(3, 3) > 0, "above it");
         assert_eq!(air(3, 6), 0, "not below it");
@@ -905,6 +1023,44 @@ mod tests {
             across = across.max((at(i, NOISE_SIZE - 1) - at(i, 0)).abs());
         }
         assert!(across <= inside, "{across} > {inside}");
+    }
+
+    #[test]
+    fn fog_keeps_to_open_floor() {
+        let mut images = Assets::default();
+        let mut textures = LightTextures::new(IVec2::new(8, 8), &mut images);
+        let buffers = RenderBuffers::new(8, 8);
+        textures.build_light(&buffers);
+        // A wall down the middle, two cells thick.
+        let mut walls = [false; 64];
+        for y in 0..8 {
+            walls[y * 8 + 3] = true;
+            walls[y * 8 + 4] = true;
+        }
+        let size = textures.size;
+        textures
+            .baker
+            .bake(&textures.texels, &walls, size, Vec2::ZERO);
+        let open = |x: usize| textures.baker.air[(4 * 8 + x) * 4 + 3];
+        assert!(open(5) < open(6) && open(6) < open(7), "thinner near walls");
+        assert_eq!(open(7), 255, "open past the wall's reach");
+    }
+
+    #[test]
+    fn movers_leave_a_trail_point_every_little_way() {
+        let mut trail = FogTrail::default();
+        let mover = Entity::from_raw_u32(1).unwrap();
+        trail.track(mover, Vec2::ZERO, 0.0);
+        assert_eq!(trail.points[0].w, 0.0, "standing still leaves none");
+        trail.track(mover, Vec2::new(0.2, 0.0), 0.1);
+        assert_eq!(trail.points[0].w, 0.0, "not yet far enough");
+        trail.track(mover, Vec2::new(0.4, 0.0), 0.2);
+        assert_eq!(trail.points[0], Vec4::new(0.4, 0.0, 0.2, 1.0));
+        // The ring reuses its oldest points.
+        for step in 1..=TRAIL_POINTS {
+            trail.track(mover, Vec2::new(0.4 + step as f32, 0.0), 0.2);
+        }
+        assert_eq!(trail.points[0].x, 0.4 + TRAIL_POINTS as f32);
     }
 
     /// The frame slot of cell (x, y) of an 8x8 frame at the origin.
