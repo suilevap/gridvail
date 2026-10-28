@@ -212,10 +212,14 @@ and renderers must not import it.
   was built for (so light stays on its map cells as the frame scrolls); a
   change is written over the older pair, which becomes the latest, and the
   shaders fade from one to the other (`LightTextures::blend`), so light
-  fades from turn to turn on the GPU. They are the light map, and with `LightEffects::Glow`
-  a glow map, the brightest light blurred on the CPU. A full-screen quad
-  over everything (`light_glow.wgsl`, blended additively) blooms the glow
-  and gathers the light along each pixel's view ray as haze. The shaders
+  fades from turn to turn on the GPU. They are the light map, and with
+  `LightEffects::Glow` a glow map: the light in the air above each cell,
+  baked on the CPU when the light changes or the view turns (the brightest
+  light blurred, for bloom, and the light along the view ray, which rises
+  a fixed way in map space whatever the zoom, for haze). A full-screen quad
+  over everything (`light_glow.wgsl`, blended additively) draws it with one
+  lookup a pixel, so its cost follows the frame's cells, not the
+  window's pixels. The shaders
   share the view's screen-to-map functions (`view.wgsl`) and blend the
   textures between cells themselves, the same on every GPU.
 - `rendering/` contains replaceable output plugins. `TextRendererPlugin` owns
