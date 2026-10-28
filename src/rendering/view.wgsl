@@ -33,23 +33,14 @@ fn to_screen(map: vec2<f32>, camera: vec4<f32>, offset: vec2<f32>, cell_px: f32)
     return vec2<f32>(v.x, -v.y);
 }
 
-// Textures with a texel per frame cell (`frame` xy: the frame's origin,
-// zw: its size) are blended between the four cell centres nearest a map
-// point, so they change smoothly across cells. The shaders blend them
-// themselves rather than through a sampler, the same on every GPU:
-// `blend_corner` is the texel of the nearest centre up and left, and
-// `blend` mixes the four texels from there.
-fn blend_corner(map: vec2<f32>, frame: vec4<f32>) -> vec2<i32> {
-    return vec2<i32>(floor(map - frame.xy));
+// Where map point `map` falls on a texture with a texel per frame cell,
+// for a frame at `origin` of `size` cells: cell centres are texel centres,
+// so a linearly filtered read blends neighbouring cells.
+fn frame_uv(map: vec2<f32>, origin: vec2<f32>, size: vec2<f32>) -> vec2<f32> {
+    return (map - origin + 0.5) / size;
 }
 
-fn blend(map: vec2<f32>, frame: vec4<f32>, texels: array<vec4<f32>, 4>) -> vec4<f32> {
-    let at = map - frame.xy;
-    let t = at - floor(at);
-    return mix(mix(texels[0], texels[1], t.x), mix(texels[2], texels[3], t.x), t.y);
-}
-
-// Whether texel `cell` lies on a frame texture; off it is dark.
-fn on_frame(cell: vec2<i32>, frame: vec4<f32>) -> bool {
-    return all(cell >= vec2<i32>(0)) && all(cell < vec2<i32>(frame.zw));
+// Whether `uv` lies on the texture; off it is dark.
+fn on_texture(uv: vec2<f32>) -> bool {
+    return all(uv >= vec2<f32>(0.0)) && all(uv <= vec2<f32>(1.0));
 }

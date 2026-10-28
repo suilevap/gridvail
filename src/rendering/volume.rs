@@ -101,14 +101,16 @@ struct WallVolumeMaterial {
     /// change and the latest, blended between cells by the shader.
     #[texture(5)]
     light_previous: Handle<Image>,
+    /// Its sampler (linear) serves both.
     #[texture(6)]
+    #[sampler(7)]
     light_current: Handle<Image>,
     /// x: 1 to light walls smoothly from the light maps, y: how far they
     /// have faded from the previous to the current one.
-    #[uniform(7)]
+    #[uniform(8)]
     lighting: Vec4,
     /// xy: the previous light map's frame origin, zw: the current one's.
-    #[uniform(8)]
+    #[uniform(9)]
     light_origins: Vec4,
 }
 

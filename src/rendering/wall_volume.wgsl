@@ -2,7 +2,7 @@
 
 #import bevy_sprite::mesh2d_vertex_output::VertexOutput
 #import bevy_sprite::mesh2d_view_bindings::view
-#import gridvail::view::{blend, blend_corner, on_frame, to_map, to_map_offset, to_screen}
+#import gridvail::view::{frame_uv, on_texture, to_map, to_map_offset, to_screen}
 
 // xy: the map point at the screen centre, z: rotation, w: zoom.
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> camera: vec4<f32>;
@@ -17,40 +17,21 @@
 // Standing objects from above: lit colour times alpha, height as alpha.
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var wall_map: texture_2d<f32>;
 // The light each frame cell shows, a texel per cell (`LightTextures`):
-// before its latest change, and the latest.
+// before its latest change, and the latest, filtered linearly between cells.
 @group(#{MATERIAL_BIND_GROUP}) @binding(5) var light_previous: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(6) var light_current: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(7) var light_sampler: sampler;
 // x: 1 to light walls smoothly from the light maps, 0 for one colour a
 // cell; y: how far the light has faded from the previous map to the current.
-@group(#{MATERIAL_BIND_GROUP}) @binding(7) var<uniform> lighting: vec4<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(8) var<uniform> lighting: vec4<f32>;
 // xy: the previous light map's frame origin, zw: the current one's.
-@group(#{MATERIAL_BIND_GROUP}) @binding(8) var<uniform> light_origins: vec4<f32>;
-
-fn previous_texel(cell: vec2<i32>) -> vec4<f32> {
-    if !on_frame(cell, frame) {
-        return vec4<f32>(0.0);
-    }
-    return textureLoad(light_previous, cell, 0);
-}
-
-fn current_texel(cell: vec2<i32>) -> vec4<f32> {
-    if !on_frame(cell, frame) {
-        return vec4<f32>(0.0);
-    }
-    return textureLoad(light_current, cell, 0);
-}
+@group(#{MATERIAL_BIND_GROUP}) @binding(9) var<uniform> light_origins: vec4<f32>;
 
 // The latest light at map point `map`, blended between cells.
 fn current_at(map: vec2<f32>) -> vec4<f32> {
-    let at = vec4<f32>(light_origins.zw, frame.zw);
-    let c = blend_corner(map, at);
-    let texels = array<vec4<f32>, 4>(
-        current_texel(c),
-        current_texel(c + vec2<i32>(1, 0)),
-        current_texel(c + vec2<i32>(0, 1)),
-        current_texel(c + vec2<i32>(1, 1)),
-    );
-    return blend(map, at, texels);
+    let uv = frame_uv(map, light_origins.zw, frame.zw);
+    let light = textureSampleLevel(light_current, light_sampler, uv, 0.0);
+    return select(vec4<f32>(0.0), light, on_texture(uv));
 }
 
 // The light shown at map point `map`: faded from the previous light to the
@@ -60,15 +41,9 @@ fn light_at(map: vec2<f32>) -> vec4<f32> {
     if lighting.y >= 1.0 {
         return now;
     }
-    let at = vec4<f32>(light_origins.xy, frame.zw);
-    let c = blend_corner(map, at);
-    let texels = array<vec4<f32>, 4>(
-        previous_texel(c),
-        previous_texel(c + vec2<i32>(1, 0)),
-        previous_texel(c + vec2<i32>(0, 1)),
-        previous_texel(c + vec2<i32>(1, 1)),
-    );
-    return mix(blend(map, at, texels), now, lighting.y);
+    let uv = frame_uv(map, light_origins.xy, frame.zw);
+    let before = textureSampleLevel(light_previous, light_sampler, uv, 0.0);
+    return mix(select(vec4<f32>(0.0), before, on_texture(uv)), now, lighting.y);
 }
 
 struct Fragment {

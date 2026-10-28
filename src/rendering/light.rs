@@ -2,28 +2,32 @@
 //! (`LightEffects`).
 //!
 //! The light every frame cell shows (`RenderBuffers::light`) goes into a
-//! texture of a texel per cell, which the shaders blend between cell
-//! centres (`view.wgsl`), so light changes smoothly across a cell instead of
+//! texture of a texel per cell, filtered linearly, so one read blends it
+//! between cell centres and light changes smoothly across a cell instead of
 //! a cell at a time: the wall shader lights standing walls from it pixel by
-//! pixel. With `Glow`, the brightest of that light, spread over a few cells
-//! on the CPU (a small blur, cheaper than one per pixel), makes a glow
-//! texture, and a full-screen quad drawn over everything, added to it,
-//! blooms it around the brightest points and gathers the light along each
-//! pixel's view ray through the air, a haze that rises toward the viewer
-//! like the walls do.
+//! pixel.
 //!
-//! Light changes a turn at a time, so it would jump at every step. Instead
-//! there are two of each texture, the light before the latest change and
-//! the latest (`LightTextures::previous` and `current`), and the shaders
-//! fade from one to the other on the GPU (`LightTextures::blend`, over
-//! `LIGHT_FADE`). When the light changes, the new light is written over the
-//! older pair, which becomes the current one. Each pair keeps the frame
-//! origin it was built for, so light stays on its map cells as the frame
-//! scrolls. The CPU only works, and the GPU only receives textures, when
-//! the light changes.
+//! Light changes a turn at a time, so walls would flicker at every step.
+//! Instead there are two light textures, the light before the latest change
+//! and the latest (`LightTextures::previous` and `current`), and the wall
+//! shader fades from one to the other on the GPU (`LightTextures::blend`,
+//! over `LIGHT_FADE`). When the light changes, the new light is written over
+//! the older one, which becomes current. Each keeps the frame origin it was
+//! built for, so light stays on its map cells as the frame scrolls.
+//!
+//! With `Glow`, the light in the air above each cell is baked on the CPU
+//! into a glow texture (`LightTextures::glow`): the brightest light seen
+//! now spread over a few cells (bloom), and the light along the view ray
+//! (haze), which rises a fixed way in map space whatever the zoom. A
+//! full-screen quad over everything, added to it, draws that with one
+//! filtered read a pixel; it does not fade.
+//!
+//! The CPU only works, and the GPU only receives textures, when the light
+//! changes or (for the haze) the view turns.
 
 use bevy::{
     asset::{embedded_asset, RenderAssetUsages},
+    image::ImageSampler,
     mesh::MeshVertexBufferLayoutRef,
     prelude::*,
     reflect::TypePath,
@@ -82,23 +86,17 @@ impl Plugin for LightEffectsPlugin {
     }
 }
 
-/// One frame's light as textures, a texel per frame cell from `origin`,
-/// with the texels they were made from.
+/// One frame's light as a texture, a texel per frame cell from `origin`,
+/// with the texels it was made from.
 #[derive(Clone, Debug)]
 pub(super) struct LightFrame {
     /// The light each frame cell shows, sRGB; alpha 1 where it is seen now
     /// (remembered cells are lit too, dimmed, but light no air).
     pub light: Handle<Image>,
-    /// The light in the air above each cell: the brightest light spread
-    /// over a few cells (bloom) and the light along the view ray (haze),
-    /// baked per cell, so drawing it is one lookup a pixel.
-    pub glow: Handle<Image>,
     /// The frame's origin (`RenderBuffers::origin`) it was built for.
     pub origin: IVec2,
     /// `light`'s texels.
     texels: Vec<u8>,
-    /// The haze direction `glow` was baked for (`haze_direction`).
-    haze: Vec2,
 }
 
 /// The light before the latest change and the latest, which the shaders
@@ -110,6 +108,13 @@ pub(super) struct LightTextures {
     /// How far the shaders have faded from `previous` to `current`, from 0
     /// to 1.
     pub blend: f32,
+    /// The light in the air above each cell of the current light: the
+    /// brightest light spread over a few cells (bloom) and the light along
+    /// the view ray (haze), baked per cell. It does not fade: it is drawn
+    /// with one filtered texture read a pixel.
+    pub glow: Handle<Image>,
+    /// The haze direction `glow` was baked for (`haze_direction`).
+    haze: Vec2,
     size: IVec2,
     /// Seconds since `current` came; until the first light, none.
     since_change: Option<f32>,
@@ -118,7 +123,7 @@ pub(super) struct LightTextures {
     baker: AirBaker,
 }
 
-/// Bakes the light in the air (`LightFrame::glow`) from light texels, with
+/// Bakes the light in the air (`LightTextures::glow`) from light texels, with
 /// room to work in.
 struct AirBaker {
     /// Bloom before and between the two passes of its blur.
@@ -140,20 +145,16 @@ struct GlowMaterial {
     /// xy: the map point at the screen centre, z: rotation, w: zoom.
     #[uniform(0)]
     camera: Vec4,
-    /// xy: the view's offset in cells.
+    /// xy: the view's offset in cells, z: cell px.
     #[uniform(1)]
     offset: Vec4,
-    /// xy: the frame's size in cells, z: how far the light has faded from
-    /// the previous textures to the current ones, w: cell px.
+    /// xy: the glow texture's frame origin, zw: its size in cells.
     #[uniform(2)]
     frame: Vec4,
-    /// xy: the previous textures' frame origin, zw: the current ones'.
-    #[uniform(3)]
-    origins: Vec4,
-    #[texture(4)]
-    glow_previous: Handle<Image>,
-    #[texture(5)]
-    glow_current: Handle<Image>,
+    /// Filtered linearly: the GPU blends it between cells.
+    #[texture(3)]
+    #[sampler(4)]
+    glow: Handle<Image>,
 }
 
 impl Material2d for GlowMaterial {
@@ -198,7 +199,7 @@ struct GlowQuad {
     material: Handle<GlowMaterial>,
 }
 
-/// A texture of `size` texels, which the shaders blend between.
+/// A texture of `size` texels, a texel per frame cell.
 fn light_image(size: IVec2, format: TextureFormat) -> Image {
     let size = size.max(IVec2::ONE);
     let mut image = Image::new_fill(
@@ -219,13 +220,16 @@ fn light_image(size: IVec2, format: TextureFormat) -> Image {
 /// A frame's pair of textures, dark.
 fn light_frame(size: IVec2, images: &mut Assets<Image>) -> LightFrame {
     LightFrame {
-        light: images.add(light_image(size, TextureFormat::Rgba8UnormSrgb)),
-        // sRGB keeps the faint edge of the glow from coming in steps.
-        glow: images.add(light_image(size, TextureFormat::Rgba8UnormSrgb)),
+        light: images.add(filtered(light_image(size, TextureFormat::Rgba8UnormSrgb))),
         origin: IVec2::ZERO,
         texels: vec![0; (size.x * size.y).max(1) as usize * 4],
-        haze: Vec2::NAN,
     }
+}
+
+/// `image`, filtered linearly: one read blends it between cells.
+fn filtered(mut image: Image) -> Image {
+    image.sampler = ImageSampler::linear();
+    image
 }
 
 /// Eases a fade's start and end.
@@ -371,6 +375,8 @@ impl LightTextures {
             previous: light_frame(IVec2::ONE, images),
             current: light_frame(IVec2::ONE, images),
             blend: 1.0,
+            glow: Handle::default(),
+            haze: Vec2::NAN,
             size: IVec2::ZERO,
             since_change: None,
             texels: Vec::new(),
@@ -386,6 +392,9 @@ impl LightTextures {
         self.size = size;
         self.previous = light_frame(size, images);
         self.current = light_frame(size, images);
+        // sRGB keeps the glow's faint edge from coming in steps.
+        self.glow = images.add(filtered(light_image(size, TextureFormat::Rgba8UnormSrgb)));
+        self.haze = Vec2::NAN;
         self.since_change = None;
         self.blend = 1.0;
         self.texels = vec![0; texels * 4];
@@ -418,7 +427,7 @@ impl LightTextures {
     /// light, built for `origin`: written over the older pair, which
     /// becomes current, and faded to from the one shown so far. The first
     /// light, or with `at_once`, is shown at once. With `haze` its air is
-    /// baked too, the haze going that way.
+    /// baked too, the haze going that way, and shown at once.
     fn change(
         &mut self,
         origin: IVec2,
@@ -432,35 +441,29 @@ impl LightTextures {
         self.current.texels.copy_from_slice(&self.texels);
         upload(images, &self.current.light, &self.current.texels);
         if let Some(haze) = haze {
-            self.baker.bake(&self.current.texels, self.size, haze);
-            self.current.haze = haze;
-            upload(images, &self.current.glow, &self.baker.air);
+            self.bake_glow(haze, images);
         }
         if at_once {
             self.previous.origin = origin;
             self.previous.texels.copy_from_slice(&self.texels);
             upload(images, &self.previous.light, &self.previous.texels);
-            if let Some(haze) = haze {
-                self.previous.haze = haze;
-                upload(images, &self.previous.glow, &self.baker.air);
-            }
         }
         self.since_change = Some(if at_once { LIGHT_FADE } else { 0.0 });
         self.blend = if at_once { 1.0 } else { 0.0 };
     }
 
-    /// Bakes the air of each pair again where it was baked for another
-    /// haze direction (the view turned).
+    /// Bakes the air above the current light, the haze going `haze`.
+    fn bake_glow(&mut self, haze: Vec2, images: &mut Assets<Image>) {
+        self.baker.bake(&self.current.texels, self.size, haze);
+        self.haze = haze;
+        upload(images, &self.glow, &self.baker.air);
+    }
+
+    /// Bakes the air again if it was baked for another haze direction (the
+    /// view turned).
     fn turn_haze(&mut self, haze: Vec2, images: &mut Assets<Image>) {
-        if (self.current.haze - haze).length() >= HAZE_TURN || self.current.haze.is_nan() {
-            self.baker.bake(&self.current.texels, self.size, haze);
-            self.current.haze = haze;
-            upload(images, &self.current.glow, &self.baker.air);
-        }
-        if (self.previous.haze - haze).length() >= HAZE_TURN || self.previous.haze.is_nan() {
-            self.baker.bake(&self.previous.texels, self.size, haze);
-            self.previous.haze = haze;
-            upload(images, &self.previous.glow, &self.baker.air);
+        if self.haze.is_nan() || (self.haze - haze).length() >= HAZE_TURN {
+            self.bake_glow(haze, images);
         }
     }
 
@@ -540,9 +543,7 @@ fn setup(
         camera: Vec4::ZERO,
         offset: Vec4::ZERO,
         frame: Vec4::ZERO,
-        origins: Vec4::ZERO,
-        glow_previous: textures.previous.glow.clone(),
-        glow_current: textures.current.glow.clone(),
+        glow: textures.glow.clone(),
     });
     // The main 2D camera never moves; the quad covers any window.
     let entity = commands
@@ -612,35 +613,22 @@ fn draw_glow(
     }
     let uniforms = [
         camera.position.extend(camera.rotation).extend(camera.zoom),
-        camera.offset.extend(0.0).extend(0.0),
-        Vec4::new(
-            buffers.width as f32,
-            buffers.height as f32,
-            textures.blend,
-            CELL_SIZE.y,
-        ),
-        textures.origins(),
+        camera.offset.extend(CELL_SIZE.y).extend(0.0),
+        textures
+            .current
+            .origin
+            .as_vec2()
+            .extend(buffers.width as f32)
+            .extend(buffers.height as f32),
     ];
     let unchanged = materials.get(&quad.material).is_some_and(|material| {
-        [
-            material.camera,
-            material.offset,
-            material.frame,
-            material.origins,
-        ] == uniforms
-            && material.glow_current == textures.current.glow
-            && material.glow_previous == textures.previous.glow
+        [material.camera, material.offset, material.frame] == uniforms
+            && material.glow == textures.glow
     });
     if !unchanged {
         if let Some(mut material) = materials.get_mut(&quad.material) {
-            [
-                material.camera,
-                material.offset,
-                material.frame,
-                material.origins,
-            ] = uniforms;
-            material.glow_previous = textures.previous.glow.clone();
-            material.glow_current = textures.current.glow.clone();
+            [material.camera, material.offset, material.frame] = uniforms;
+            material.glow = textures.glow.clone();
         }
     }
 }
