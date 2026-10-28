@@ -3812,10 +3812,12 @@ dependencies = [
  "getrandom 0.3.4",
  "getrandom 0.4.3",
  "gridvail-path",
+ "log",
  "rand",
  "serde",
  "serde_json",
  "swash",
+ "tracing",
  "wasm-bindgen",
 ]
 

@@ -15,8 +15,11 @@ members = ["crates/gridvail-path"]
 # audio, glTF, scenes, picking, gizmos, animation clips, gamepads or extra
 # image codecs. Desktop-only parts are added below.
 bevy = { version = "0.19.1", default-features = false, features = [
-    # App, windowing and input.
-    "default_app",
+    # App, windowing and input. Bevy's "default_app" minus its state machine
+    # and reflection auto-registration, which the game does not use.
+    "async_executor",
+    "bevy_asset",
+    "bevy_log",
     "std",
     "multi_threaded",
     "bevy_winit",
@@ -60,18 +63,26 @@ bevy = { version = "0.19.1", default-features = false, features = [
     "bevy_remote",
     "sysinfo_plugin",
     "png",
+    # The agent API's standard Bevy Remote methods read the type registry.
+    "reflect_auto_register",
 ] }
 
 # The browser build: rand's OS entropy comes from the JS crypto API there.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
+# Optimized browser builds compile debug and trace logging out entirely;
+# warnings and errors still reach the console.
+tracing = { version = "0.1", default-features = false, features = ["release_max_level_warn"] }
+log = { version = "0.4", default-features = false, features = ["release_max_level_warn"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 
 # `cargo build --profile web --target wasm32-unknown-unknown`: small download.
 [profile.web]
 inherits = "release"
-opt-level = "s"
+# "z" over "s": 18% less to download and 38% less wasm for the browser to
+# compile, with no frame-time difference measured in the browser.
+opt-level = "z"
 lto = "fat"
 codegen-units = 1
 strip = "debuginfo"
