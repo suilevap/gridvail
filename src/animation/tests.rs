@@ -5,6 +5,7 @@ use bevy::time::TimeUpdateStrategy;
 
 use super::*;
 use crate::app::GamePlugin;
+use crate::lighting::GRAY;
 use crate::model::*;
 use crate::service::Services;
 
@@ -161,7 +162,7 @@ fn any_object_glides_several_cells_at_once() {
         .world_mut()
         .spawn((
             Pos(IVec2::new(2, 2)),
-            Glyph::new('#', 1, 7),
+            Glyph::new('#', 1, GRAY),
             ObjectMotion(linear),
         ))
         .id();
@@ -189,7 +190,7 @@ fn moves_across_the_map_edge_teleport() {
     let mut app = boot(Some(MotionStyle::default()));
     let block = app
         .world_mut()
-        .spawn((Pos(IVec2::new(0, 2)), Glyph::new('#', 1, 7)))
+        .spawn((Pos(IVec2::new(0, 2)), Glyph::new('#', 1, GRAY)))
         .id();
     app.update();
     let width = app.world().resource::<MapGrid>().width;
@@ -204,7 +205,7 @@ fn push_then_step(non_blocking: bool) -> (u32, f32) {
     let mut app = boot(Some(tween(0.1)));
     let mut block = app.world_mut().spawn((
         Pos(IVec2::new(2, 2)),
-        Glyph::new('■', 1, 7),
+        Glyph::new('■', 1, GRAY),
         // Two cells at 0.1 s per cell: twice as long as the player's step.
         ObjectMotion(MotionStyle::from_name("linear").unwrap()),
     ));
@@ -265,7 +266,7 @@ fn a_blocked_move_bumps_toward_the_blocker() {
     // A crate right of the player, registered in the map like any collider.
     let blocker = app
         .world_mut()
-        .spawn((Pos(start + IVec2::X), Collider, Glyph::new('■', 1, 7)))
+        .spawn((Pos(start + IVec2::X), Collider, Glyph::new('■', 1, GRAY)))
         .id();
     app.world_mut()
         .resource_mut::<MapGrid>()
@@ -302,7 +303,7 @@ fn a_path_override_shapes_cell_moves() {
         .world_mut()
         .spawn((
             Pos(IVec2::new(2, 2)),
-            Glyph::new('■', 1, 7),
+            Glyph::new('■', 1, GRAY),
             ObjectMotion(linear),
             MovePath(Path::Arc { bulge: 0.5 }),
         ))

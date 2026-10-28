@@ -2,7 +2,7 @@ use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 
 use super::*;
-use crate::lighting::GRAY;
+use crate::lighting::{GRAY, RED, WHITE, YELLOW};
 use crate::model::*;
 use crate::simulation::test_app;
 
@@ -126,7 +126,7 @@ fn static_decor_renders_when_known_but_unseen() {
     app.world_mut().spawn((
         Pos(IVec2::new(2, 0)),
         Speed::default(),
-        Glyph::new('e', 1, 12),
+        Glyph::new('e', 1, RED),
     ));
     app.world_mut().run_system_once(compose_frame).unwrap();
     let frame = &app.world().resource::<RenderBuffers>().current;
@@ -193,7 +193,7 @@ fn every_glyph_entity_is_an_object_above_the_ground() {
             Player(0),
             Pos(IVec2::ZERO),
             Speed::default(),
-            Glyph::new('@', 1, 15),
+            Glyph::new('@', 1, WHITE),
             visibility(&[
                 (IVec2::new(0, 0), seen),
                 (IVec2::new(1, 0), seen),
@@ -203,7 +203,7 @@ fn every_glyph_entity_is_an_object_above_the_ground() {
         .id();
     // A marker hidden behind a wall is not drawn; the wall is.
     app.world_mut()
-        .spawn((Pos(IVec2::new(1, 0)), Glyph::new('i', 0, 15)));
+        .spawn((Pos(IVec2::new(1, 0)), Glyph::new('i', 0, WHITE)));
     let wall = app
         .world_mut()
         .spawn((Pos(IVec2::new(1, 0)), Glyph::new('#', 1, GRAY)))
@@ -275,7 +275,7 @@ fn objects_behind_a_portal_are_drawn_where_they_are_seen() {
         .spawn((
             Pos(IVec2::new(4, 5)),
             Speed::default(),
-            Glyph::new('e', 1, 12),
+            Glyph::new('e', 1, RED),
             AnimatedPos {
                 position: Vec2::new(4.0, 4.5),
                 ..AnimatedPos::default()
@@ -355,7 +355,7 @@ fn objects_behind_a_turning_portal_are_drawn_turned() {
         .spawn((
             Pos(IVec2::new(5, 4)),
             Speed::default(),
-            Glyph::new('e', 1, 12),
+            Glyph::new('e', 1, RED),
             AnimatedPos {
                 position: Vec2::new(5.0, 4.5),
                 ..AnimatedPos::default()
@@ -412,7 +412,7 @@ fn an_object_seen_twice_is_drawn_twice() {
         visibility(&[(IVec2::new(2, 1), Vis::VISIBLE | Vis::KNOWN)]),
     ));
     app.world_mut()
-        .spawn((Pos(IVec2::new(2, 1)), Glyph::new('k', 0, 14)));
+        .spawn((Pos(IVec2::new(2, 1)), Glyph::new('k', 0, YELLOW)));
     app.world_mut().run_system_once(compose_frame).unwrap();
     let buffers = app.world().resource::<RenderBuffers>();
     let mut drawn: Vec<(u16, IVec2)> = buffers
@@ -440,7 +440,7 @@ fn reveal_shows_what_the_player_cannot_see() {
     app.world_mut().spawn((
         Pos(IVec2::new(6, 6)),
         Speed::default(),
-        Glyph::new('e', 1, 12),
+        Glyph::new('e', 1, RED),
     ));
     app.world_mut().run_system_once(compose_frame).unwrap();
     let buffers = app.world().resource::<RenderBuffers>();
@@ -491,7 +491,7 @@ fn a_child_goes_with_its_parent_even_into_a_portal_wall() {
             Player(0),
             Pos(IVec2::new(2, 1)),
             Speed::default(),
-            Glyph::new('@', 1, 15),
+            Glyph::new('@', 1, WHITE),
             view,
             visibility(&[(IVec2::new(2, 1), seen), (IVec2::new(5, 5), seen)]),
         ))
@@ -500,7 +500,7 @@ fn a_child_goes_with_its_parent_even_into_a_portal_wall() {
         .world_mut()
         .spawn((
             Pos(IVec2::new(3, 1)),
-            Glyph::new('►', 0, 15),
+            Glyph::new('►', 0, WHITE),
             BoundTo {
                 parent: player,
                 offset: IVec2::X,
@@ -562,7 +562,7 @@ fn what_is_seen_past_the_map_edge_is_drawn() {
     app.world_mut().spawn((
         Pos(IVec2::new(5, 5)),
         Speed::default(),
-        Glyph::new('e', 1, 12),
+        Glyph::new('e', 1, RED),
     ));
     app.world_mut().run_system_once(compose_frame).unwrap();
     let buffers = app.world().resource::<RenderBuffers>();

@@ -7,7 +7,7 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::text::FontAtlasSet;
 
-use crate::lighting::{palette_color, GRAY};
+use crate::lighting::GRAY;
 use crate::model::*;
 use crate::schedule::{GamePhase, StartupPhase};
 use crate::simulation::Rules;
@@ -169,7 +169,7 @@ fn map_cell(index: usize, font: &Handle<Font>) -> impl Bundle {
             font_size: FontSize::Px(CELL_FONT_SIZE),
             ..default()
         },
-        TextColor(palette_color(GRAY)),
+        TextColor(GRAY.into()),
         Transform::default(),
     )
 }
@@ -316,7 +316,7 @@ fn flush_cells(
             } else {
                 text.0.push(cell.ch);
             }
-            color.0 = palette_color(cell.color);
+            color.0 = cell.color.into();
         }
     }
 }
@@ -387,7 +387,7 @@ fn spawn_object_sprites(world: &mut World) {
                     font_size: FontSize::Px(CELL_FONT_SIZE),
                     ..default()
                 },
-                TextColor(palette_color(object.cell.color)),
+                TextColor(object.cell.color.into()),
                 Transform::from_translation(view_translation(&camera, object.position) + Vec3::Z)
                     .with_rotation(glyph_rotation(&camera)),
                 Visibility::Hidden,
@@ -462,7 +462,7 @@ pub(super) fn place_object_sprites(
             text.0.push_str(&drawn);
         }
         // Rising out of the floor or sinking into it, it fades.
-        let desired = palette_color(object.cell.color).with_alpha(object.height);
+        let desired = Color::from(object.cell.color).with_alpha(object.height);
         if color.0 != desired {
             color.0 = desired;
         }

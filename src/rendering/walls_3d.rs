@@ -1,7 +1,8 @@
 //! Optional perspective 3D wall backend layered under the text renderer.
 //!
-//! The 16 autotile masks own one combined mesh each and palette entries own
-//! one material each. Wall entities share those assets for GPU instancing.
+//! The 16 autotile masks own one combined mesh each and each colour walls
+//! are lit in owns one material, made the first time it is needed. Wall
+//! entities share those assets for GPU instancing.
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -10,6 +11,7 @@ use bevy::{
     image::ImageSampler,
     input::mouse::MouseWheel,
     mesh::VertexAttributeValues,
+    platform::collections::HashMap,
     prelude::*,
     reflect::TypePath,
     render::render_resource::{AsBindGroup, Extent3d, TextureDimension, TextureFormat},
@@ -17,9 +19,10 @@ use bevy::{
 };
 
 use crate::camera::CameraOperator;
-use crate::lighting::{light_to_palette, palette_color};
+use crate::lighting::light_color;
 use crate::model::{
-    AnimatedPos, Glyph, MapGrid, Player, Pos, RenderBuffers, ViewCamera, Vis, VisibilityMap, Wall,
+    AnimatedPos, Glyph, MapGrid, Player, Pos, RenderBuffers, Rgb, ViewCamera, Vis, VisibilityMap,
+    Wall,
 };
 use crate::presentation::DynamicLight;
 use crate::schedule::{GamePhase, StartupPhase};
@@ -40,7 +43,6 @@ const CAMERA_YAW: f32 = -45.0_f32.to_radians();
 const CAMERA_DISTANCE: f32 = 280.0;
 /// Zoom change per mouse wheel notch.
 const WHEEL_ZOOM: f32 = 0.065;
-const PALETTE_SIZE: usize = 16;
 const DUNGEON_SHADER: &str = "shaders/dungeon_material.wgsl";
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
@@ -98,8 +100,32 @@ impl Plugin for ExtrudedWallRendererPlugin {
     }
 }
 
-#[derive(Resource)]
-struct WallMaterials(Vec<Handle<DungeonMaterial>>);
+#[derive(Resource, Default)]
+struct WallMaterials(HashMap<Rgb, Handle<DungeonMaterial>>);
+
+impl WallMaterials {
+    /// The material for walls lit in `color`, made the first time.
+    fn get(&mut self, color: Rgb, assets: &mut Assets<DungeonMaterial>) -> Handle<DungeonMaterial> {
+        self.0
+            .entry(color)
+            .or_insert_with(|| {
+                assets.add(DungeonMaterial {
+                    // The composed frame already contains the CPU light result.
+                    color: Color::from(color).to_linear(),
+                    variation: Vec4::new(0.18, 0.08, 0.026, 0.16),
+                    light_map: None,
+                    map: Vec4::ZERO,
+                    alpha_mode: AlphaMode::Opaque,
+                })
+            })
+            .clone()
+    }
+
+    /// The material walls start with until the frame lights them.
+    fn unlit(&self) -> Handle<DungeonMaterial> {
+        self.0[&Rgb::BLACK].clone()
+    }
+}
 
 /// One wall mesh per autotile mask.
 #[derive(Resource)]
@@ -191,18 +217,8 @@ fn setup(
     ));
 
     let wall_meshes: Vec<_> = (0..16).map(|mask| meshes.add(wall_mesh(mask))).collect();
-    let wall_materials: Vec<_> = (0..PALETTE_SIZE)
-        .map(|index| {
-            materials.add(DungeonMaterial {
-                // The composed frame already contains the CPU light result.
-                color: palette_color(index as u8).to_linear(),
-                variation: Vec4::new(0.18, 0.08, 0.026, 0.16),
-                light_map: None,
-                map: Vec4::ZERO,
-                alpha_mode: AlphaMode::Opaque,
-            })
-        })
-        .collect();
+    let mut wall_materials = WallMaterials::default();
+    let unlit = wall_materials.get(Rgb::BLACK, &mut materials);
     let floor = spawn_floor(
         &mut commands,
         &grid,
@@ -224,7 +240,7 @@ fn setup(
                 source,
                 glyph.ch,
                 &wall_meshes[mask],
-                &wall_materials[0],
+                &unlit,
                 grid_to_world(position.0, grid.width, grid.height),
             ))
             .id();
@@ -234,7 +250,7 @@ fn setup(
 
     commands.insert_resource(extruded);
     commands.insert_resource(WallMeshes(wall_meshes));
-    commands.insert_resource(WallMaterials(wall_materials));
+    commands.insert_resource(wall_materials);
     commands.insert_resource(floor);
 }
 
@@ -410,7 +426,7 @@ fn follow_wall_changes(
                         source,
                         glyph.ch,
                         &meshes.0[mask],
-                        &materials.0[0],
+                        &materials.unlit(),
                         grid_to_world(pos.0, grid.width, grid.height),
                     ))
                     .id();
@@ -423,7 +439,8 @@ fn follow_wall_changes(
 fn sync_walls(
     grid: Res<MapGrid>,
     buffers: Res<RenderBuffers>,
-    materials: Res<WallMaterials>,
+    mut materials: ResMut<WallMaterials>,
+    mut assets: ResMut<Assets<DungeonMaterial>>,
     sources: Query<(&Pos, Option<&AnimatedPos>)>,
     mut walls: Query<(
         &ExtrudedWall,
@@ -452,9 +469,9 @@ fn sync_walls(
         let Some((color, animated)) = shown else {
             continue;
         };
-        let desired = &materials.0[color.min((PALETTE_SIZE - 1) as u8) as usize];
-        if material.0 != *desired {
-            material.0 = desired.clone();
+        let desired = materials.get(color, &mut assets);
+        if material.0 != desired {
+            material.0 = desired;
         }
         // A rising or sinking wall stands partly below the floor, which
         // hides that part.
@@ -479,13 +496,8 @@ fn sync_floors(
             .data
             .get(index)
             .is_some_and(|cell| cell.contains(Vis::KNOWN));
-        let palette = light
-            .data
-            .get(index)
-            .map(light_to_palette)
-            .unwrap_or_default()
-            .min((PALETTE_SIZE - 1) as u8);
-        let color = floor_color(palette).to_srgba();
+        let lit = light.data.get(index).map(light_color).unwrap_or_default();
+        let color = floor_color(lit).to_srgba();
         pixel[0] = (color.red * 255.0).round() as u8;
         pixel[1] = (color.green * 255.0).round() as u8;
         pixel[2] = (color.blue * 255.0).round() as u8;
@@ -617,7 +629,7 @@ fn wall_arms() -> [(usize, Vec3, Vec3); 4] {
     ]
 }
 
-/// Bake face shading into vertex colors. The palette material remains the
+/// Bake face shading into vertex colors. The lit material remains the
 /// authoritative CPU-light color; this only reveals the mesh height.
 fn add_face_shading(mesh: &mut Mesh) {
     let colors = match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
@@ -633,8 +645,8 @@ fn add_face_shading(mesh: &mut Mesh) {
     mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
 }
 
-fn floor_color(index: u8) -> Color {
-    let color = palette_color(index).to_linear();
+fn floor_color(lit: Rgb) -> Color {
+    let color = Color::from(lit).to_linear();
     Color::linear_rgba(
         color.red * FLOOR_BRIGHTNESS,
         color.green * FLOOR_BRIGHTNESS,

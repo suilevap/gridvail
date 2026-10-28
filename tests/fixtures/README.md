@@ -13,7 +13,6 @@ Requires .NET 10 only when regenerating; Rust tests read the checked-in TSVs.
   first player (or map center when absent), radius 16, and the original
   out-of-bounds/static-wall obstacle predicate. Tiny C# roundoff is retained.
 - `light_reference.tsv`: 2,880 exact light-merge outputs.
-- `palette_reference.tsv`: all 1,024 kind/intensity-to-console-color outputs.
 
 The generator compiles upstream algorithms, extracts the lighting routines
 from ECS wrappers, and omits the unrelated broken `Float3` type. It does not

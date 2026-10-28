@@ -17,25 +17,6 @@ pub const STATE_METHOD: &str = "gridvail/state";
 pub const MOVE_METHOD: &str = "gridvail/move";
 pub const DEFAULT_AGENT_PORT: u16 = DEFAULT_PORT;
 
-const PALETTE_NAMES: [&str; 16] = [
-    "black",
-    "dark_blue",
-    "dark_green",
-    "dark_cyan",
-    "dark_red",
-    "dark_magenta",
-    "dark_yellow",
-    "gray",
-    "dark_gray",
-    "blue",
-    "green",
-    "cyan",
-    "red",
-    "magenta",
-    "yellow",
-    "white",
-];
-
 /// Loopback HTTP endpoint for agent control. It is installed only when the
 /// executable is launched with `--remote` or `--remote-port`. Desktop only: a
 /// browser page cannot listen on a port.
@@ -130,9 +111,8 @@ struct VisualState {
     origin: Position,
     /// Final composed glyphs, one string per frame row, from `origin`.
     rows: Vec<String>,
-    /// Palette indices corresponding one-for-one with `rows` characters.
-    colors: Vec<Vec<u8>>,
-    palette: &'static [&'static str],
+    /// `#rrggbb` colours corresponding one-for-one with `rows` characters.
+    colors: Vec<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -248,7 +228,7 @@ fn visual_state(buffers: &RenderBuffers) -> VisualState {
                 })
                 .collect(),
         );
-        colors.push(row.iter().map(|cell| cell.color).collect());
+        colors.push(row.iter().map(|cell| cell.color.hex()).collect());
     }
     VisualState {
         width: buffers.width,
@@ -256,7 +236,6 @@ fn visual_state(buffers: &RenderBuffers) -> VisualState {
         origin: buffers.origin.into(),
         rows,
         colors,
-        palette: &PALETTE_NAMES,
     }
 }
 
