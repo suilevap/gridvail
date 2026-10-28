@@ -448,3 +448,26 @@ fn walls_ride_rails_where_the_floor_has_them() {
         "straight down"
     );
 }
+
+#[test]
+fn a_wall_gliding_most_of_the_way_across_the_map_glides_rather_than_jumps() {
+    // `rails.txt` is 19 cells wide and its top pillar rides 14 cells: more
+    // than half the map, which for anything else would be a step across the
+    // map's wrapping edge, shown as a jump.
+    let mut app = boot_map(include_str!("../assets/maps/rails.txt"), |app| {
+        app.add_plugins(ObjectAnimationPlugin);
+    });
+    let pillar = entity_at(&mut app, IVec2::new(2, 2)).unwrap();
+    step(&mut app, KeyCode::ArrowRight);
+    step(&mut app, KeyCode::ArrowRight);
+    let mut shown = Vec::new();
+    for _ in 0..120 {
+        app.update();
+        shown.push(shown_at(&mut app, pillar).x);
+    }
+    assert!(
+        shown.iter().any(|&x| x > 4.0 && x < 14.0),
+        "seen on its way: {shown:?}"
+    );
+    assert_eq!(*shown.last().unwrap(), 16.0);
+}
