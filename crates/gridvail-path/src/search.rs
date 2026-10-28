@@ -14,7 +14,8 @@ const NO_PARENT: u32 = u32::MAX;
 /// and the open list grow to the largest search made, then are reused: after
 /// that, searches allocate nothing.
 ///
-/// [`PathSearch::find`] returns the cheapest path. [`PathSearch::begin`] and
+/// [`PathSearch::find`] returns the cheapest path; [`PathSearch::find_each`]
+/// the cheapest path to each of many goals, nearest first. [`PathSearch::begin`] and
 /// [`PathSearch::next`] go on from there: each `next` returns the cheapest
 /// path reaching the goal in a state not reached before (with doors counted
 /// in the state: the cheapest way with 2 doors, then with 1, then with
@@ -46,7 +47,8 @@ pub struct PathSearch<Node, Cost, State> {
 /// What [`PathSearch::begin`] set up.
 #[derive(Clone, Copy, Debug)]
 struct Query<Node> {
-    goal: Node,
+    /// `None` for [`PathSearch::find_each`], which has many goals.
+    goal: Option<Node>,
     layers: usize,
     jumps: bool,
 }
@@ -147,10 +149,79 @@ where
         SearchSpace: Space<Node = Node>,
         SearchRules: Rules<Node = Node, Cost = Cost, State = State>,
     {
+        if space.index(goal).is_none() {
+            self.query = None;
+            self.open.clear();
+            return false;
+        }
+        self.start(space, rules, start, Some(goal))
+    }
+
+    /// The cheapest path from `start` to every node `is_goal` accepts, in
+    /// order of cost: each is written into `path` and handed to `found`
+    /// with its cost, until `found` returns false or no goal is left.
+    /// Goals end paths (nothing continues past one), and `start` is never
+    /// one. With rule states, a goal may be reached once per state. Having
+    /// no single goal, the search expands by cost alone (Dijkstra).
+    pub fn find_each<SearchSpace, SearchRules>(
+        &mut self,
+        space: &SearchSpace,
+        rules: &SearchRules,
+        start: Node,
+        is_goal: impl Fn(Node) -> bool,
+        path: &mut Vec<Node>,
+        mut found: impl FnMut(Cost, &[Node]) -> bool,
+    ) where
+        SearchSpace: Space<Node = Node>,
+        SearchRules: Rules<Node = Node, Cost = Cost, State = State>,
+    {
+        path.clear();
+        if !self.start(space, rules, start, None) {
+            return;
+        }
+        let query = self.query.take().expect("a search was started");
+        while let Some(Open {
+            cost, slot, state, ..
+        }) = self.open.pop()
+        {
+            let slot = slot as usize;
+            if self.finished[slot] == self.stamp || cost > self.best[slot] {
+                continue;
+            }
+            self.finished[slot] = self.stamp;
+            self.expanded += 1;
+            let node = space.node(slot / query.layers);
+            if node != start && is_goal(node) {
+                self.trace(space, query.layers, slot, path);
+                let more = found(cost, path);
+                path.clear();
+                if !more {
+                    break;
+                }
+                continue;
+            }
+            self.expand(space, rules, &query, node, slot, cost, state);
+        }
+        self.open.clear();
+    }
+
+    /// Sets up a search from `start`, toward `goal` if there is one; false
+    /// if `start` is not in the space.
+    fn start<SearchSpace, SearchRules>(
+        &mut self,
+        space: &SearchSpace,
+        rules: &SearchRules,
+        start: Node,
+        goal: Option<Node>,
+    ) -> bool
+    where
+        SearchSpace: Space<Node = Node>,
+        SearchRules: Rules<Node = Node, Cost = Cost, State = State>,
+    {
         self.expanded = 0;
         self.returned.clear();
         self.query = None;
-        let (Some(start_index), Some(_)) = (space.index(start), space.index(goal)) else {
+        let Some(start_index) = space.index(start) else {
             self.open.clear();
             return false;
         };
@@ -203,7 +274,7 @@ where
             self.finished[slot] = self.stamp;
             self.expanded += 1;
             let node = space.node(slot / query.layers);
-            if node == query.goal {
+            if Some(node) == query.goal {
                 // Goals end paths: nothing continues from them.
                 let layer = slot % query.layers;
                 let dominated = self
@@ -217,23 +288,41 @@ where
                 self.trace(space, query.layers, slot, path);
                 return Some((cost, state));
             }
-            let from = Arrival {
-                node,
-                slot,
-                cost,
-                state,
-            };
-            space.for_each_neighbor(node, &mut |next| {
-                self.relax(space, rules, &query, &from, next);
-            });
-            if query.jumps {
-                rules.for_each_jump(node, &state, &mut |next| {
-                    self.relax(space, rules, &query, &from, next);
-                });
-            }
+            self.expand(space, rules, &query, node, slot, cost, state);
         }
         self.query = None;
         None
+    }
+
+    /// Queues every node one move on from `node`.
+    #[allow(clippy::too_many_arguments)]
+    fn expand<SearchSpace, SearchRules>(
+        &mut self,
+        space: &SearchSpace,
+        rules: &SearchRules,
+        query: &Query<Node>,
+        node: Node,
+        slot: usize,
+        cost: Cost,
+        state: State,
+    ) where
+        SearchSpace: Space<Node = Node>,
+        SearchRules: Rules<Node = Node, Cost = Cost, State = State>,
+    {
+        let from = Arrival {
+            node,
+            slot,
+            cost,
+            state,
+        };
+        space.for_each_neighbor(node, &mut |next| {
+            self.relax(space, rules, query, &from, next);
+        });
+        if query.jumps {
+            rules.for_each_jump(node, &state, &mut |next| {
+                self.relax(space, rules, query, &from, next);
+            });
+        }
     }
 
     /// Queues `next` if moving there from `from` is allowed and improves on
@@ -332,7 +421,7 @@ where
 }
 
 /// Lower bound on the cost from `node` to the goal; zero with jumps, which
-/// can beat any distance based bound.
+/// can beat any distance based bound, or with many goals.
 fn estimate<SearchSpace, SearchRules>(
     space: &SearchSpace,
     rules: &SearchRules,
@@ -343,10 +432,9 @@ where
     SearchSpace: Space,
     SearchRules: Rules<Node = SearchSpace::Node>,
 {
-    if query.jumps {
-        SearchRules::Cost::ZERO
-    } else {
-        rules.heuristic(node, query.goal, space.min_moves(node, query.goal))
+    match query.goal {
+        Some(goal) if !query.jumps => rules.heuristic(node, goal, space.min_moves(node, goal)),
+        _ => SearchRules::Cost::ZERO,
     }
 }
 

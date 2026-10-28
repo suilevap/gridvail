@@ -34,7 +34,9 @@ and renderers must not import it.
   and the nearest free cell to a point (`grid::nearest_cell`). Grid
   pathfinding is one level lower still, in its own workspace crate,
   `crates/gridvail-path`, with no dependencies: its core searches any graph
-  (`Space`), and its `grid` feature adds the grid the game uses.
+  (`Space`), for the cheapest path to one goal (`PathSearch::find`) or to
+  each of many, nearest first (`find_each`, which the `along-walls` room
+  planner uses), and its `grid` feature adds the grid the game uses.
 - `content/` parses external map and tile-rule formats (and the `@room`
   layout blocks and `@next` line after a map). It does not spawn ECS
   entities or decide which map is active.
@@ -64,6 +66,7 @@ and renderers must not import it.
   `rooms.rs` switches `Room`s to the layout asked for (`Room::advance`).
   It asks the room's planner how (`room_plans/`: the `RoomPlanner` trait,
   one strategy per file, chosen by name from the `RoomPlanners` resource;
+  `along-walls`, the default, finds its paths with `gridvail-path`;
   strategies that weigh possible slides share `SwitchPlan::from_candidates`,
   which takes the best ones that do not overlap)
   for a `SwitchPlan` of `WallMove`s (every wall slides, `from` to `to`;

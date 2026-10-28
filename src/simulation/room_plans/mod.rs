@@ -348,9 +348,9 @@ impl RoomPlanners {
 }
 
 impl Default for RoomPlanners {
-    /// [`LineSlides`] (the default), [`AlongWalls`] and [`RiseAndSink`].
+    /// [`AlongWalls`] (the default), [`LineSlides`] and [`RiseAndSink`].
     fn default() -> Self {
-        let mut planners = Self::empty(Self::LINES);
+        let mut planners = Self::empty(Self::ALONG_WALLS);
         planners
             .add(Self::LINES, LineSlides)
             .add(Self::ALONG_WALLS, AlongWalls)

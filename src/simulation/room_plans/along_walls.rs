@@ -1,9 +1,10 @@
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::HashSet;
 
 use bevy::prelude::*;
 
 use super::{Candidate, RoomPlanner, SwitchContext, SwitchPlan};
+use crate::navigation::path::grid::{Cell, Grid};
+use crate::navigation::path::{Lex, PathSearch, Rules};
 
 /// Walls move along the walls they belong to, and across floor only as far
 /// as they must. A cell the new layout loses and one it gains are joined by
@@ -22,97 +23,159 @@ use super::{Candidate, RoomPlanner, SwitchContext, SwitchPlan};
 /// a room the inner walls stay inner walls and the outer ones outer.
 /// [`LineSlides`](super::LineSlides)' slides are the straight paths.
 ///
-/// The best paths are taken first, and no cell is part of two. What is
-/// left rises or sinks in place.
+/// Paths are searched with the game's pathfinding (`gridvail_path`): a
+/// floor run is a jump. Each lost cell looks for its [`NEAREST`] nearest
+/// gained cells; the best paths are taken first, and no cell is part of
+/// two. What is left rises or sinks in place.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AlongWalls;
 
-/// A path's cost: floor cells crossed, then steps.
-type Cost = (i32, i32);
+/// How many gained cells, nearest first, each lost cell finds paths to:
+/// enough for the best to be taken when the nearest is gone, few enough
+/// that a switch across a whole map stays quick.
+const NEAREST: usize = 8;
 
-/// Paths longer than this, in steps, are not worth taking.
-const MAX_STEPS: i32 = 64;
+/// A path's cost: floor cells crossed, then steps.
+type Cost = Lex<u32, u32>;
 
 impl RoomPlanner for AlongWalls {
     fn plan(&self, switch: &SwitchContext) -> SwitchPlan {
-        SwitchPlan::from_candidates(switch, paths(switch))
+        let from: HashSet<IVec2> = switch.from.iter().copied().collect();
+        let to: HashSet<IVec2> = switch.to.iter().copied().collect();
+        let moves = WallMoves {
+            switch,
+            added: switch.added_in(&from).collect(),
+            from: &from,
+            to: &to,
+        };
+        let size = switch.room.size.max(IVec2::ONE).as_uvec2();
+        let grid = Grid::new(size.x, size.y);
+        let mut search = PathSearch::new();
+        let mut path = Vec::new();
+        let mut candidates = Vec::new();
+        for start in switch.removed_in(&to).filter(|&p| switch.holds_wall(p)) {
+            let mut left = NEAREST;
+            search.find_each(
+                &grid,
+                &moves,
+                moves.cell(start),
+                |cell| moves.added.contains(&moves.pos(cell)),
+                &mut path,
+                |cost, cells| {
+                    candidates.push(moves.candidate(cost, cells));
+                    left -= 1;
+                    left > 0
+                },
+            );
+        }
+        SwitchPlan::from_candidates(switch, candidates)
     }
 }
 
-/// From every lost cell, the cheapest path to each gained cell it reaches.
-fn paths(switch: &SwitchContext) -> Vec<Candidate> {
-    let from: HashSet<IVec2> = switch.from.iter().copied().collect();
-    let to: HashSet<IVec2> = switch.to.iter().copied().collect();
-    let added: HashSet<IVec2> = switch.added_in(&from).collect();
-    let (low, high) = (switch.room.origin, switch.room.origin + switch.room.size);
-    let inside = |p: IVec2| p.cmpge(low).all() && p.cmplt(high).all();
-    let wall = |p: IVec2| from.contains(&p) && to.contains(&p) && switch.holds_wall(p);
-    let floor = |p: IVec2| inside(p) && !from.contains(&p) && !to.contains(&p) && switch.is_free(p);
-
-    let mut candidates = Vec::new();
-    for start in switch.removed_in(&to).filter(|&p| switch.holds_wall(p)) {
-        // Where each node was reached from, at what cost.
-        let mut best: HashMap<IVec2, (Cost, IVec2)> = HashMap::new();
-        let mut queue = BinaryHeap::from([Reverse(((0, 0), (start.x, start.y)))]);
-        while let Some(Reverse((cost, (x, y)))) = queue.pop() {
-            let p = IVec2::new(x, y);
-            if p != start && best.get(&p).is_some_and(|&(known, _)| known < cost) {
-                continue;
-            }
-            if added.contains(&p) {
-                candidates.push(path(start, p, &best));
-                continue;
-            }
-            for step in [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y] {
-                // Over a straight run of floor (maybe none) to a wall or a
-                // gained cell.
-                let mut next = p + step;
-                let mut crossed = 0;
-                while floor(next) && crossed < MAX_STEPS {
-                    next += step;
-                    crossed += 1;
-                }
-                if next == start || !(wall(next) || added.contains(&next)) {
-                    continue;
-                }
-                let reached = (cost.0 + crossed, cost.1 + crossed + 1);
-                if reached.1 > MAX_STEPS
-                    || best.get(&next).is_some_and(|&(known, _)| known <= reached)
-                {
-                    continue;
-                }
-                best.insert(next, (reached, p));
-                queue.push(Reverse((reached, (next.x, next.y))));
-            }
-        }
-    }
-    candidates
+/// How walls may move in a switch, as pathfinding rules over the room's
+/// cells (relative to its origin): a step into a wall that stays, or onto
+/// a gained cell, and jumps over straight runs of empty floor.
+struct WallMoves<'a> {
+    switch: &'a SwitchContext<'a>,
+    from: &'a HashSet<IVec2>,
+    to: &'a HashSet<IVec2>,
+    added: HashSet<IVec2>,
 }
 
-/// The path from `start` to `end`: each wall on it moves on to the next
-/// node, and it takes up every cell it passes.
-fn path(start: IVec2, end: IVec2, best: &HashMap<IVec2, (Cost, IVec2)>) -> Candidate {
-    let mut nodes = vec![end];
-    while let Some(&(_, previous)) = nodes.last().and_then(|p| best.get(p)) {
-        nodes.push(previous);
-        if previous == start {
-            break;
+impl WallMoves<'_> {
+    fn cell(&self, p: IVec2) -> Cell {
+        let p = p - self.switch.room.origin;
+        Cell::new(p.x, p.y)
+    }
+
+    fn pos(&self, cell: Cell) -> IVec2 {
+        self.switch.room.origin + IVec2::new(cell.x, cell.y)
+    }
+
+    fn inside(&self, p: IVec2) -> bool {
+        let room = self.switch.room;
+        p.cmpge(room.origin).all() && p.cmplt(room.origin + room.size).all()
+    }
+
+    /// A wall in both layouts, there to shift along.
+    fn wall(&self, p: IVec2) -> bool {
+        self.from.contains(&p) && self.to.contains(&p) && self.switch.holds_wall(p)
+    }
+
+    /// Empty floor in both layouts, there to glide across.
+    fn floor(&self, p: IVec2) -> bool {
+        self.inside(p) && !self.from.contains(&p) && !self.to.contains(&p) && self.switch.is_free(p)
+    }
+
+    /// Where a path may go next: a wall to shift along, or a gained cell.
+    fn landing(&self, p: IVec2) -> bool {
+        self.wall(p) || self.added.contains(&p)
+    }
+
+    /// A found path as slides: each wall on it moves on to the next node,
+    /// and it takes up every cell it passes.
+    fn candidate(&self, cost: Cost, nodes: &[Cell]) -> Candidate {
+        let nodes: Vec<IVec2> = nodes.iter().map(|&cell| self.pos(cell)).collect();
+        let mut cells = vec![nodes[0]];
+        for pair in nodes.windows(2) {
+            let step = (pair[1] - pair[0]).signum();
+            let mut p = pair[0];
+            while p != pair[1] {
+                p += step;
+                cells.push(p);
+            }
+        }
+        Candidate {
+            rank: (cost.0 as i32, cost.1 as i32),
+            cells,
+            moves: nodes.windows(2).map(|pair| (pair[0], pair[1])).collect(),
         }
     }
-    nodes.reverse();
-    let mut cells = vec![start];
-    for pair in nodes.windows(2) {
-        let step = (pair[1] - pair[0]).signum();
-        let mut p = pair[0];
-        while p != pair[1] {
-            p += step;
-            cells.push(p);
+}
+
+impl Rules for WallMoves<'_> {
+    type Node = Cell;
+    type Cost = Cost;
+    type State = ();
+
+    fn state_count(&self) -> usize {
+        1
+    }
+
+    fn state_index(&self, _state: &()) -> usize {
+        0
+    }
+
+    fn start_state(&self, _start: Cell) {}
+
+    /// A step costs one; a jump costs the floor it crosses, and its length.
+    fn step(&self, from: Cell, to: Cell, _state: &()) -> Option<(Cost, ())> {
+        let (from, to) = (self.pos(from), self.pos(to));
+        if !self.landing(to) {
+            return None;
+        }
+        let length = (to - from).abs().element_sum() as u32;
+        Some((Lex(length - 1, length), ()))
+    }
+
+    fn for_each_jump(&self, from: Cell, _state: &(), visit: &mut dyn FnMut(Cell)) {
+        let from = self.pos(from);
+        for step in [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y] {
+            let mut next = from + step;
+            if !self.floor(next) {
+                continue;
+            }
+            while self.floor(next) {
+                next += step;
+            }
+            if self.landing(next) {
+                visit(self.cell(next));
+            }
         }
     }
-    Candidate {
-        rank: best[&end].0,
-        cells,
-        moves: nodes.windows(2).map(|pair| (pair[0], pair[1])).collect(),
+
+    fn has_jumps(&self) -> bool {
+        true
     }
 }
 
