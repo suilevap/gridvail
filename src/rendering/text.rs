@@ -29,7 +29,7 @@ const FRAME_MARGIN: i32 = 4;
 /// The cell font, Unscii-8.
 pub(super) const CELL_FONT_BYTES: &[u8] = include_bytes!("../../assets/fonts/unscii-8.ttf");
 /// Unscii-8 is an 8 px pixel font, drawn at twice its size.
-const CELL_FONT_SIZE: f32 = 16.0;
+pub(super) const CELL_FONT_SIZE: f32 = 16.0;
 
 #[derive(Component)]
 struct HudText;
@@ -70,7 +70,7 @@ impl ObjectSprite {
 pub(super) struct ObjectSprites(HashMap<(Entity, u16), Entity>);
 
 #[derive(Resource, Clone)]
-struct CellFont(Handle<Font>);
+pub(super) struct CellFont(pub(super) Handle<Font>);
 
 /// Glyphs that depend on direction (wall shapes, facing markers), each as
 /// drawn in a view turned 0 to 3 quarter turns counter-clockwise, so they
@@ -125,7 +125,8 @@ pub struct TextRendererPlugin;
 
 impl Plugin for TextRendererPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<TextRenderStats>()
+        app.add_plugins(super::figures::FigurePlugin)
+            .init_resource::<TextRenderStats>()
             .init_resource::<ObjectSprites>()
             .init_resource::<SettingsMenu>()
             .init_resource::<CompassMode>()
@@ -599,7 +600,7 @@ fn smooth_turning_glyphs(
 /// from the cell width to its height as that axis turns from horizontal to
 /// vertical on screen, so every quarter turn is the upright grid
 /// (`ViewCamera::to_view` in cell units) and half way the cells are square.
-fn view_translation(camera: &ViewCamera, map: Vec2) -> Vec3 {
+pub(super) fn view_translation(camera: &ViewCamera, map: Vec2) -> Vec3 {
     let turn = camera.turn();
     // 1 while map x runs across the screen, 0 while it runs up and down.
     let across = turn.cos * turn.cos;

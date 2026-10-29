@@ -12,9 +12,9 @@ use bevy::prelude::*;
 use flatbt_bevy::prelude::Behavior;
 
 use crate::ai::{enemy_tree, hunter_tree};
+use crate::content::figures::parse_figures;
 use crate::content::map::{parse_map, parse_next, parse_rooms, portal_links, SpawnKind};
 use crate::content::map::{PortalLink, RoomSpec, SpawnCell};
-use crate::content::figures::parse_figures;
 use crate::content::statures::parse_statures;
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::foundation::grid::nearest_cell;
@@ -368,14 +368,12 @@ fn spawn_cell(commands: &mut Commands, kind: SpawnKind, at: IVec2, cell_count: u
             marker('Ω', WHITE),
             light(LightKind::Electricity, 3, 32),
         )),
-        SpawnKind::Light => {
-            commands.spawn((
-                Lamp,
-                marker('i', WHITE),
-                Figure::named("lamp"),
-                light(LightKind::Fire, 16, 196),
-            ))
-        }
+        SpawnKind::Light => commands.spawn((
+            Lamp,
+            marker('i', WHITE),
+            Figure::named("lamp"),
+            light(LightKind::Fire, 16, 196),
+        )),
         SpawnKind::Acid => {
             commands.spawn((AcidPool, marker('▒', WHITE), light(LightKind::Acid, 4, 32)))
         }

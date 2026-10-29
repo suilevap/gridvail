@@ -199,11 +199,13 @@ next to this file.
   glyph stands is set in `assets/rules/statures.txt` (walls and closed
   doors by default; any glyph can be listed), and a `Stature` component
   gives one object its own height. People, guards and lamps stand as
-  figures instead: small stacks of glyph parts (feet, torso, hands, a
-  head, a guard's blade), each a glyph slice at its own height, which turn
-  to face the way the actor faces. Figures are defined in
-  `assets/rules/figures.txt`, so other objects (boxes, barrels, doors) can
-  be made of parts the same way.
+  figures instead: a few small upright glyphs placed together (the player
+  is `@` over `/|\` over `/\`), with a front, back and side view picked
+  by the way the actor faces on screen, so a guard's blade held out ahead
+  shows where it looks. Figures are defined in
+  `assets/rules/figures.txt` (each glyph with its own offset, size, turn
+  and tint), so other objects (boxes, barrels, doors) can be made the same
+  way. `assets/maps/figures.txt` is a small room to look at them in.
 - Light effects (an addition, `--light`): with `smooth`, light blends
   between cells across standing walls, pixel by pixel, instead of one
   colour a cell, and fades from one turn's light to the next over about a

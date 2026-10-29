@@ -206,17 +206,19 @@ and renderers must not import it.
   cell, height as alpha), and one full-screen shader (`wall_volume.wgsl`)
   extrudes it up the screen, writing the depth the text sprites are sorted
   by, so what stands hides actors behind it.
-  Objects with a `Figure` (people, lamps) stand as figures instead
+  Objects with a `Figure` (people, lamps) are drawn as figures instead
   (`rendering/figures.rs`): a figure (`FigureShape`, by name from
   `Figures`, loaded from `assets/rules/figures.txt` by `content::figures`)
-  is a stack of glyph parts, each a glyph lying flat and standing from one
-  height to another, like a slice (feet, torso, hands, head), offset in the
-  object's own frame, so the whole figure turns (eased) to its `Facing`. A
-  part can draw the object's own glyph and show only for some glyphs, so
-  state the simulation shows by glyph (a mood, an open door) shows on the
-  figure. Each figure is a quad drawn by `figure.wgsl`, which walks down
-  its pixel's ray as the wall shader does and writes the same depth, so
-  walls and figures hide each other. Flat renderers draw the glyph. With smooth light it colours
+  is a few small upright glyphs placed together so they read as a shape
+  (`@` over `/|\` over `/\`), each with its own offset, size, turn and
+  tint, drawn as text sprites in their object's light and draw order. A
+  figure has parts for each way it is seen facing on screen
+  (`FigureView`: toward the viewer, away, either side, a side not drawn
+  being the other mirrored), picked from its `Facing` turned by the view,
+  so which way an actor looks shows however the view is turned. A part can
+  draw the object's own glyph and show only for some glyphs, so state the
+  simulation shows by glyph (a mood, an open door) shows on the figure.
+  Flat renderers draw the glyph. With smooth light it colours
   each pixel from the light map below, blended between cells: a wall in
   its cell's own light is drawn black into the wall map, and takes its
   colour wholly from the light map, so it fades with it.

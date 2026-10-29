@@ -1,52 +1,87 @@
-# Figures: objects drawn as stacks of glyph parts by renderers that show
-# height (the text renderer's `--walls stacked` and `--walls leaning`), in
-# place of their glyph. Flat renderers draw the glyph as before.
+# Figures: objects drawn as a few small upright glyphs placed together so
+# they read as a shape, by renderers that show height (the text renderer's
+# `--walls stacked` and `--walls leaning`), in place of their one glyph.
+# Flat renderers draw the glyph as before.
 #
-# A figure is drawn as seen from above, facing north (up the screen), one
-# part a line, bottom to top. A part is a glyph lying flat, its ink standing
-# from one height to another (in cells above the floor; walls stand 0.625),
-# like a slice of the figure: what stands higher is seen on top, what stands
-# lower shows below it toward the viewer. The whole figure turns to the way
-# the object faces.
+#   figure NAME
+#   view front|back|left|right
+#   LABEL GLYPH [options]
 #
-#   LABEL GLYPH FROM TO [options]
+# A figure has parts for each way it is seen facing on screen: toward the
+# viewer (front, also for objects that face no way), away (back), or to a
+# side. Parts before any `view` line are the front; a side not drawn is the
+# other side mirrored, and a view not drawn shows the front. Parts are drawn
+# back to front, in the order listed.
 #
 # LABEL names the part for the reader. GLYPH is one character, or `own` for
 # the object's own glyph. Options:
-#   x=X y=Y      where the glyph's cell is centred, in cells from the
-#                object's centre (x to the right, y toward the back: -y is
-#                ahead)
-#   scale=S      the glyph's size, 1 for a whole cell
-#   shade=S      how much of the light it shows, 0 to 1 (default 1)
-#   tint=#rrggbb a colour the light is multiplied by, instead of a shade
-#   upright      the glyph does not turn with the figure (its place does)
-#   only=GLYPHS  drawn only while the object's glyph is one of these
+#   x=X y=Y        where the glyph's centre is, in cells from the centre of
+#                  the object's cell, on screen: x to the right, y up
+#   scale=S        the glyph's size, 1 for a whole cell (default 0.5, the
+#                  font's own size)
+#   turn=DEGREES   turned counter-clockwise
+#   shade=S        how much of the light it shows, 0 to 1 (default 1)
+#   tint=#rrggbb   a colour the light is multiplied by, instead of a shade
+#   only=GLYPHS    drawn only while the object's glyph is one of these
+#   noflip         where its side is drawn mirrored, the glyph keeps its own
+#                  way round (its place still mirrors), for glyphs read as
+#                  themselves, such as @
 
-# Someone standing: feet apart, a torso wider than deep, hands at its
-# sides and a head on top, a little ahead, its nose showing which way it
-# looks.
+# The player: a head with its hat, arms out, legs apart.
 figure person
-  feet   ‥  0.00 0.16 y=-0.25 shade=0.45
-  torso  ▬  0.12 0.36 y=-0.19 tint=#5090d0
-  left   ·  0.18 0.30 x=-0.40 y=0.06 shade=0.85
-  right  ·  0.18 0.30 x=0.40 y=0.06 shade=0.85
-  eyes   ·  0.40 0.52 y=-0.19 shade=0.1
-  head   •  0.34 0.52 y=-0.06 shade=1
+  view front
+    larm   /  x=-0.25
+    body   |
+    rarm   \  x=0.25
+    lleg   /  x=-0.12 y=-0.27
+    rleg   \  x=0.12 y=-0.27
+    head   @  y=0.27
+  view back
+    larm   /  x=-0.25 shade=0.7
+    body   |  shade=0.7
+    rarm   \  x=0.25 shade=0.7
+    lleg   /  x=-0.12 y=-0.27 shade=0.7
+    rleg   \  x=0.12 y=-0.27 shade=0.7
+    head   @  y=0.27 shade=0.6
+  view right
+    body   |  x=-0.04
+    arm    ─  x=0.16 y=0.02 scale=0.4
+    back   /  x=-0.12 y=-0.27
+    front  \  x=0.06 y=-0.27
+    head   @  x=0.04 y=0.27 noflip
 
-# A guard: someone holding a blade out ahead in their right hand, with
-# their mood shown over their head.
+# A guard: a face, and a blade held up in front or out ahead, which shows
+# which way they look. Their mood shows over their head.
 figure guard
-  feet   ‥  0.00 0.16 y=-0.25 shade=0.45
-  torso  ▬  0.12 0.36 y=-0.19 tint=#c05050
-  left   ·  0.18 0.30 x=-0.40 y=0.06 shade=0.85
-  right  ·  0.18 0.30 x=0.40 y=0.06 shade=0.85
-  blade  ╵  0.24 0.28 x=0.40 y=-0.25 shade=1
-  eyes   ·  0.40 0.52 y=-0.19 shade=0.1
-  head   •  0.34 0.52 y=-0.06 shade=1
-  mood   own 0.60 0.66 scale=0.75 upright only=!?
+  view front
+    body   |  tint=#e06060
+    larm   /  x=-0.25
+    rarm   \  x=0.25
+    lleg   /  x=-0.12 y=-0.27
+    rleg   \  x=0.12 y=-0.27
+    head   ☺  y=0.27
+    blade  †  x=-0.4 y=0.1
+    mood   own y=0.6 tint=#ffd040 only=!?
+  view back
+    blade  †  x=0.4 y=0.1 shade=0.6
+    body   |  tint=#a04040
+    larm   /  x=-0.25 shade=0.7
+    rarm   \  x=0.25 shade=0.7
+    lleg   /  x=-0.12 y=-0.27 shade=0.7
+    rleg   \  x=0.12 y=-0.27 shade=0.7
+    head   ●  y=0.27 shade=0.6
+    mood   own y=0.6 tint=#ffd040 only=!?
+  view right
+    body   |  x=-0.04 tint=#e06060
+    arm    ─  x=0.14 y=0.02 scale=0.4
+    blade  †  x=0.36 y=0.04 turn=-90
+    back   /  x=-0.12 y=-0.27
+    front  \  x=0.06 y=-0.27
+    head   ☺  x=0.04 y=0.27 noflip
+    mood   own y=0.6 tint=#ffd040 only=!? noflip
 
-# A standing lamp: a base, a thin post and the lamp on top.
+# A standing lamp: a foot, a post and the lamp on top.
 figure lamp
-  base   ▪  0.00 0.04 x=0.06 y=0.06 shade=0.5
-  post   ·  0.00 0.42 y=0.06 shade=0.6
-  lamp   •  0.42 0.54 shade=1
+    foot   ┴  y=-0.3 shade=0.6
+    post   │  y=-0.05 shade=0.7
+    lamp   o  y=0.3
