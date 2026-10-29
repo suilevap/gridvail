@@ -6,7 +6,7 @@ use bevy::prelude::*;
 
 use crate::model::*;
 
-use super::{ObjectAnimation, Path};
+use super::{MotionStyle, ObjectAnimation, Path};
 
 /// Gestures waiting for their delay, each with the seconds still to wait.
 #[derive(Component, Debug, Default)]
@@ -25,6 +25,32 @@ impl PendingGestures {
 /// Moves to new cells held back for the seconds left.
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
 pub struct HeldMoves(pub f32);
+
+/// The next move to a new cell is flung (see `Fling`): kept until the hold
+/// before it is over and the move has had its time.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct Flinging {
+    secs: f32,
+    left: f32,
+}
+
+impl Flinging {
+    pub fn new(secs: f32) -> Self {
+        Self { secs, left: secs }
+    }
+
+    /// The style the flung move plays in (snapping still snaps).
+    pub fn style(&self, own: MotionStyle) -> MotionStyle {
+        if own == MotionStyle::Snap {
+            own
+        } else {
+            MotionStyle::Tween {
+                duration: self.secs,
+                easing: EaseFunction::CubicOut,
+            }
+        }
+    }
+}
 
 /// A gesture being made: an offset over time on top of the object's
 /// motion, so a body can slide and shake at once, and what follows the body
@@ -89,6 +115,7 @@ pub fn take_gestures(
     mut commands: Commands,
     mut gestures: MessageReader<Gesture>,
     mut holds: MessageReader<HoldMoves>,
+    mut flings: MessageReader<Fling>,
     mut objects: Query<(
         &mut ObjectAnimation,
         Option<&mut PendingGestures>,
@@ -104,6 +131,13 @@ pub fn take_gestures(
             None => {
                 commands.entity(hold.entity).insert(HeldMoves(hold.secs));
             }
+        }
+    }
+    for fling in flings.read() {
+        if objects.contains(fling.entity) {
+            commands
+                .entity(fling.entity)
+                .insert(Flinging::new(fling.secs));
         }
     }
     for gesture in gestures.read() {
@@ -128,12 +162,14 @@ pub fn take_gestures(
 }
 
 /// Counts queued gestures and holds down, playing each gesture when its
-/// delay is up and letting moves go when a hold is over.
+/// delay is up, letting moves go when a hold is over, and ending a fling
+/// once its move has had its time.
 pub fn advance_gestures(
     mut commands: Commands,
     time: Res<Time>,
     mut pending: Query<(Entity, &mut ObjectAnimation, &mut PendingGestures)>,
     mut held: Query<(Entity, &mut HeldMoves)>,
+    mut flinging: Query<(Entity, &mut Flinging), Without<HeldMoves>>,
 ) {
     let dt = time.delta_secs();
     for (entity, mut animation, mut queue) in &mut pending {
@@ -148,6 +184,12 @@ pub fn advance_gestures(
         queue.0.retain(|(wait, _)| *wait > 0.0);
         if queue.0.is_empty() {
             commands.entity(entity).remove::<PendingGestures>();
+        }
+    }
+    for (entity, mut fling) in &mut flinging {
+        fling.left -= dt;
+        if fling.left <= 0.0 {
+            commands.entity(entity).remove::<Flinging>();
         }
     }
     for (entity, mut hold) in &mut held {
@@ -248,6 +290,20 @@ mod tests {
     }
 
     #[test]
+    fn a_swing_winds_up_slowly_strikes_fast_and_eases_to_rest() {
+        let path = gesture_path(GestureShape::Thrust { toward: Vec2::X });
+        let at = |s: f32| path.sample(Vec2::ZERO, Vec2::ZERO, s).x;
+        let speed = |s: f32| (at(s + 0.01) - at(s)).abs() / 0.01;
+        let wind_up = speed(0.2);
+        let strike = speed(0.48);
+        assert!(
+            strike > 4.0 * wind_up,
+            "strike {strike} vs wind-up {wind_up}"
+        );
+        assert!(speed(0.99) < 0.2 * strike, "does not ease in at the end");
+    }
+
+    #[test]
     fn a_sweep_swings_from_one_side_to_the_other_through_the_target() {
         let path = gesture_path(GestureShape::Sweep {
             toward: Vec2::X,
@@ -265,7 +321,7 @@ mod tests {
         let path = gesture_path(GestureShape::Hook { toward: Vec2::X });
         let at = |s: f32| path.sample(Vec2::ZERO, Vec2::ZERO, s).x;
         assert!((at(0.5) - 1.0).abs() < 1e-4, "contact is not at the middle");
-        assert!(at(0.8) < -0.4, "no pull back");
+        assert!(at(0.68) < -0.5, "no pull back");
         assert!(at(1.0).abs() < 1e-4);
     }
 }

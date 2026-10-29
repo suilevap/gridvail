@@ -6,8 +6,8 @@ use crate::model::*;
 use crate::schedule::GamePhase;
 
 use super::{
-    advance_gestures, animate_children, take_gestures, HeldMoves, MotionState, MotionStyle,
-    MovePath, ObjectMotion, Path, PendingGestures, Pose, Tween,
+    advance_gestures, animate_children, take_gestures, Flinging, HeldMoves, MotionState,
+    MotionStyle, MovePath, ObjectMotion, Path, PendingGestures, Pose, Tween,
 };
 
 /// How long an object takes to rise out of the floor or sink into it.
@@ -55,6 +55,7 @@ impl Plugin for ObjectAnimationPlugin {
         app.init_resource::<MotionStyle>()
             .add_message::<Gesture>()
             .add_message::<HoldMoves>()
+            .add_message::<Fling>()
             .add_observer(start_animation)
             .add_systems(
                 Update,
@@ -261,7 +262,11 @@ pub fn animate_objects(
             Option<&SlideRoute>,
             Has<NonBlockingAnimation>,
             (Has<Sliding>, Has<Rising>, Has<Sinking>),
-            (Option<&HeldMoves>, Option<&PendingGestures>),
+            (
+                Option<&HeldMoves>,
+                Option<&PendingGestures>,
+                Option<&Flinging>,
+            ),
             &mut ObjectAnimation,
             &mut AnimatedPos,
         ),
@@ -278,7 +283,7 @@ pub fn animate_objects(
         route,
         non_blocking,
         (sliding, rising, sinking),
-        (held, pending),
+        (held, pending, flinging),
         mut animation,
         mut shown,
     ) in &mut objects
@@ -303,7 +308,9 @@ pub fn animate_objects(
         let motion = if sliding {
             slide_style(own_style, *style, cells)
         } else {
-            style_of(own_style, *style)
+            flinging.map_or(style_of(own_style, *style), |fling| {
+                fling.style(style_of(own_style, *style))
+            })
         };
         // A rising object moves to its cell once it stands; a sinking one
         // sinks once it has got where it goes. Either waits for the other

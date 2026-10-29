@@ -18,15 +18,19 @@
 
 use bevy::prelude::*;
 
-use crate::animation::ObjectAnimation;
+use crate::animation::{Flinging, ObjectAnimation, SWING_CONTACT};
 use crate::model::*;
 use crate::schedule::{ActionStage, GamePhase};
 use crate::simulation::destroy_entities;
 
-/// How long an attacker's swing takes, in seconds...
-pub const SWING_SECS: f32 = 0.3;
-/// ...and so when its blow lands: at the middle of the swing.
-pub const CONTACT: f32 = SWING_SECS / 2.0;
+/// How long an attacker's swing takes, in seconds, from the wind-up to
+/// settling back...
+pub const SWING_SECS: f32 = 0.42;
+/// ...and so when its blow lands.
+pub const CONTACT: f32 = SWING_SECS * SWING_CONTACT;
+/// How long a knocked body's slide takes, a cell: flung fast, slowing to
+/// a stop.
+const FLING_SECS: f32 = 0.22;
 /// How long taking a blow shakes, in seconds, and how far, in cells.
 const SHAKE_SECS: f32 = 0.3;
 const SHAKE_REACH: f32 = 0.25;
@@ -40,6 +44,7 @@ impl Plugin for ChoreographyPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Gesture>()
             .add_message::<HoldMoves>()
+            .add_message::<Fling>()
             .add_systems(
                 Update,
                 (swing_attackers, react_to_blows).in_set(GamePhase::Visibility),
@@ -116,14 +121,15 @@ pub fn swing_attackers(
     }
 }
 
-/// What a blow lands on moves only once it lands: a knocked target slides
-/// from the contact, one that stays shakes away from the blow. What a
+/// What a blow lands on moves only once it lands: a knocked target is
+/// flung from the contact, one that stays shakes away from the blow. What a
 /// knocked body runs into shakes at the contact too.
 pub fn react_to_blows(
     mut hits: MessageReader<Hit>,
     mut collisions: MessageReader<Collision>,
     mut gestures: MessageWriter<Gesture>,
     mut holds: MessageWriter<HoldMoves>,
+    mut flings: MessageWriter<Fling>,
     positions: Query<&Pos>,
 ) {
     let shake = |entity: Entity, from: IVec2, at: IVec2| Gesture {
@@ -138,6 +144,10 @@ pub fn react_to_blows(
         holds.write(HoldMoves {
             entity: hit.target,
             secs: CONTACT,
+        });
+        flings.write(Fling {
+            entity: hit.target,
+            secs: FLING_SECS,
         });
         if let (Ok(from), Ok(at)) = (positions.get(hit.source), positions.get(hit.target)) {
             gestures.write(shake(hit.target, from.0, at.0));
@@ -175,6 +185,7 @@ pub fn leave_remains(
             animation.clone(),
             *shown,
             crate::animation::HeldMoves(CONTACT),
+            Flinging::new(FLING_SECS),
         ));
     }
 }

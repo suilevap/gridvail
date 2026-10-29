@@ -147,3 +147,12 @@ pub struct HoldMoves {
     pub entity: Entity,
     pub secs: f32,
 }
+
+/// `entity`'s next move to a new cell is flung, whatever its own style:
+/// fast from the start, easing in at the end, `secs` a cell (a body
+/// knocked by a blow).
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct Fling {
+    pub entity: Entity,
+    pub secs: f32,
+}

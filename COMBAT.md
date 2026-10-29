@@ -178,9 +178,12 @@ order (`src/choreography/`):
 1. the attacker swings as its weapon or move says in the roster
    (`swing`): a thrust straight at the target (a spear reaches further),
    a sweep in an arc across the front (a sideways push sweeps toward its
-   side), or a hook that reaches out and pulls back (a yank); a lunge's
-   step or a yank's swap waits until just after contact;
-2. at contact the target slides (a knock) or shakes away from the blow,
+   side), or a hook that reaches out and pulls back (a yank); every
+   swing winds up (eases into a pulled-back or far-side pose), strikes
+   fast into the contact, follows through and eases back to rest; a
+   lunge's step or a yank's swap waits until just after contact;
+2. at contact the target is flung (fast, slowing to a stop) or shakes
+   away from the blow,
    and what a knocked body runs into shakes too;
 3. a killed target dies after it has been moved, as a blow that does not
    kill: its remains finish the slide, then sink.

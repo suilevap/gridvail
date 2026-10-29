@@ -180,19 +180,18 @@ pub enum Path {
     /// Out toward `toward` (an offset in cells) and back: a move that ends
     /// where it started, such as bumping into a wall.
     Excursion { toward: Vec2 },
-    /// Pulled back a little, thrust out to `toward` at the middle of the
-    /// move, and back: an attack, with its contact at the middle.
+    /// Pulled back, thrust out to `toward` at `SWING_CONTACT`, and back: an
+    /// attack (see `swing` for its phases).
     Thrust { toward: Vec2 },
     /// Out to `toward` at once, then shaking back and forth, smaller and
     /// smaller, back to the start: taking a blow.
     Shake { toward: Vec2 },
     /// Swung in an arc across `toward` (out from the start, in cells), from
     /// the side opposite `across` (a unit direction) to the side of it,
-    /// straight at `toward` at the middle of the move, and back: a sweep,
-    /// with its contact at the middle.
+    /// straight at `toward` at `SWING_CONTACT`, and back: a sweep.
     Sweep { toward: Vec2, across: Vec2 },
-    /// Out to `toward` by the middle of the move, then pulled back past the
-    /// start, and back: a hook that drags what it caught along.
+    /// Out to `toward` at `SWING_CONTACT`, then pulled back past the start,
+    /// and back: a hook that drags what it caught along.
     Hook { toward: Vec2 },
     /// Curved to the left of the direction of travel by up to `bulge` cells
     /// (negative curves right).
@@ -214,24 +213,6 @@ pub enum Path {
     },
 }
 
-/// How far out a thrust is at progress `s`: pulled back to -0.3 over the
-/// first 30%, thrust out to 1 by the middle (the contact), back to 0 by the
-/// end.
-fn thrust(s: f32) -> f32 {
-    const BACK: f32 = 0.3;
-    const PULL: f32 = 0.3;
-    let s = s.clamp(0.0, 1.0);
-    if s < PULL {
-        -BACK * (s / PULL * std::f32::consts::FRAC_PI_2).sin()
-    } else if s < 0.5 {
-        let t = (s - PULL) / (0.5 - PULL);
-        -BACK + (1.0 + BACK) * t * t
-    } else {
-        let t = (s - 0.5) / 0.5;
-        1.0 - t * t * (3.0 - 2.0 * t)
-    }
-}
-
 /// How far out a shake is at progress `s`: out at once, then three swings
 /// back and forth, dying away.
 fn shake(s: f32) -> f32 {
@@ -239,36 +220,66 @@ fn shake(s: f32) -> f32 {
     (s * 3.0 * std::f32::consts::TAU + std::f32::consts::FRAC_PI_2).sin() * (1.0 - s) * (1.0 - s)
 }
 
-/// How far out a sweep is at progress `s`, and how far round its arc, in
-/// radians from straight ahead: out over the first quarter while swinging,
-/// straight ahead at the middle (the contact), in over the last quarter.
-fn sweep(s: f32) -> (f32, f32) {
-    const HALF_ARC: f32 = 1.2;
-    let s = s.clamp(0.0, 1.0);
-    let ease = |t: f32| {
-        let t = t.clamp(0.0, 1.0);
-        t * t * (3.0 - 2.0 * t)
-    };
-    let out = ease(s / 0.25) * (1.0 - ease((s - 0.75) / 0.25));
-    let angle = HALF_ARC * (2.0 * ease((s - 0.1) / 0.8) - 1.0);
-    (out, angle)
+/// When a swing's blow lands, as a share of the swing.
+pub const SWING_CONTACT: f32 = 0.5;
+/// When a swing is wound up, and when its follow-through is over, as
+/// shares of the swing.
+const SWING_WOUND: f32 = 0.38;
+const SWING_FOLLOWED: f32 = 0.68;
+
+/// The poses a swing goes through between rest and rest, each as an angle
+/// round from straight at the target (radians, toward `across`) and how
+/// far out (a share of the reach, negative back).
+#[derive(Clone, Copy)]
+struct SwingPoses {
+    wound: (f32, f32),
+    contact: (f32, f32),
+    followed: (f32, f32),
 }
 
-/// How far out a hook is at progress `s`: out to 1 by the middle (the
-/// contact), pulled back to -0.5, then back to 0.
-fn hook(s: f32) -> f32 {
-    const PULL: f32 = 0.5;
-    let s = s.clamp(0.0, 1.0);
-    if s < 0.5 {
-        let t = s / 0.5;
-        1.0 - (1.0 - t) * (1.0 - t)
-    } else if s < 0.8 {
-        let t = (s - 0.5) / 0.3;
-        1.0 - (1.0 + PULL) * t * t * (3.0 - 2.0 * t)
+const THRUST_POSES: SwingPoses = SwingPoses {
+    wound: (0.0, -0.45),
+    contact: (0.0, 1.0),
+    followed: (0.0, 0.85),
+};
+const SWEEP_POSES: SwingPoses = SwingPoses {
+    wound: (-1.3, 0.55),
+    contact: (0.0, 1.0),
+    followed: (1.1, 0.8),
+};
+const HOOK_POSES: SwingPoses = SwingPoses {
+    wound: (0.0, -0.3),
+    contact: (0.0, 1.0),
+    followed: (0.0, -0.55),
+};
+
+/// Where a swing is at progress `s`: anticipation (easing into the wound-up
+/// pose), the strike (short, speeding up into the contact), the
+/// follow-through (slowing down), and settling back to rest (easing in and
+/// out).
+fn swing(poses: SwingPoses, s: f32) -> (f32, f32) {
+    let smooth = |t: f32| t * t * (3.0 - 2.0 * t);
+    let lerp =
+        |a: (f32, f32), b: (f32, f32), t: f32| (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+    let phase = |from: f32, to: f32| ((s - from) / (to - from)).clamp(0.0, 1.0);
+    let rest = (0.0, 0.0);
+    if s < SWING_WOUND {
+        lerp(rest, poses.wound, smooth(phase(0.0, SWING_WOUND)))
+    } else if s < SWING_CONTACT {
+        let t = phase(SWING_WOUND, SWING_CONTACT);
+        lerp(poses.wound, poses.contact, t * t)
+    } else if s < SWING_FOLLOWED {
+        let t = phase(SWING_CONTACT, SWING_FOLLOWED);
+        lerp(poses.contact, poses.followed, 1.0 - (1.0 - t) * (1.0 - t))
     } else {
-        let t = (s - 0.8) / 0.2;
-        -PULL * (1.0 - t * t * (3.0 - 2.0 * t))
+        lerp(poses.followed, rest, smooth(phase(SWING_FOLLOWED, 1.0)))
     }
+}
+
+/// The offset of a swing's pose toward `toward`, turned toward `across`.
+fn swing_offset(poses: SwingPoses, toward: Vec2, across: Vec2, s: f32) -> Vec2 {
+    let (angle, out) = swing(poses, s.clamp(0.0, 1.0));
+    (toward * angle.cos() + across * toward.length() * angle.sin()) * out
 }
 
 impl Path {
@@ -308,13 +319,10 @@ impl Path {
         match self {
             Self::Straight => base,
             Self::Excursion { toward } => base + toward * arch,
-            Self::Thrust { toward } => base + toward * thrust(s),
+            Self::Thrust { toward } => base + swing_offset(THRUST_POSES, toward, Vec2::ZERO, s),
             Self::Shake { toward } => base + toward * shake(s),
-            Self::Sweep { toward, across } => {
-                let (out, angle) = sweep(s);
-                base + (toward * angle.cos() + across * toward.length() * angle.sin()) * out
-            }
-            Self::Hook { toward } => base + toward * hook(s),
+            Self::Sweep { toward, across } => base + swing_offset(SWEEP_POSES, toward, across, s),
+            Self::Hook { toward } => base + swing_offset(HOOK_POSES, toward, Vec2::ZERO, s),
             Self::Arc { bulge } => base + (to - from).normalize_or_zero().perp() * bulge * arch,
             Self::Hermite { m0, m1 } => {
                 let (s2, s3) = (s * s, s * s * s);
