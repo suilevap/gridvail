@@ -2,10 +2,10 @@ use bevy::prelude::*;
 use rand::SeedableRng;
 
 use crate::model::{
-    CollisionBuffer, ControlScheme, MapGrid, PortalCrossings, SharedRng, Tile, TokenTimer,
-    TurnPacing, TurnState,
+    Collision, CollisionBuffer, ControlScheme, Follow, Knock, MapGrid, PortalCrossings, SharedRng,
+    Swap, Tile, TokenTimer, TurnPacing, TurnState,
 };
-use crate::schedule::{GamePhase, StartupPhase};
+use crate::schedule::{ActionStage, GamePhase, PlayerCommands, StartupPhase};
 
 use super::*;
 
@@ -23,6 +23,7 @@ impl SimulationPlugin {
 
 impl Plugin for SimulationPlugin {
     fn build(&self, app: &mut App) {
+        time::configure(app);
         app.init_resource::<TurnState>()
             .init_resource::<ControlScheme>()
             .init_resource::<TokenTimer>()
@@ -32,6 +33,51 @@ impl Plugin for SimulationPlugin {
             .init_resource::<CommitBuffer>()
             .init_resource::<super::room_plans::RoomPlanners>()
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(self.rng_seed)))
+            .add_message::<Knock>()
+            .add_message::<Follow>()
+            .add_message::<Swap>()
+            .add_message::<Collision>()
+            // A turn's actions, in order: begun ones go on, input is read,
+            // actors decide, and the effects play out before the moves.
+            .configure_sets(
+                Update,
+                (
+                    ActionStage::Due,
+                    ActionStage::Ongoing,
+                    PlayerCommands,
+                    ActionStage::Decide,
+                    ActionStage::Effects,
+                    ActionStage::Costs,
+                    ActionStage::Movement,
+                    ActionStage::Hits,
+                    ActionStage::Damage,
+                )
+                    .chain()
+                    .after(recharge_tokens)
+                    .before(move_commands)
+                    .in_set(GamePhase::Simulation),
+            )
+            // Physics rides the movement passes: knocks start after each
+            // mover's own step is chosen, and what moved is reported once
+            // the pass is resolved.
+            .add_systems(
+                Update,
+                (
+                    swap_places.in_set(ActionStage::Movement),
+                    knock.after(update_direction).before(movement),
+                    (report_collisions, settle_knocked)
+                        .chain()
+                        .after(resolve_collect)
+                        .before(resolve_unmap),
+                    // After friction too, so the step it gives is not
+                    // slowed before the next pass takes it.
+                    follow
+                        .after(resolve_commit)
+                        .after(friction)
+                        .before(turn_portal_crossers),
+                )
+                    .in_set(GamePhase::Simulation),
+            )
             .add_systems(
                 Startup,
                 (size_commit_buffer, tile_system)
@@ -44,7 +90,7 @@ impl Plugin for SimulationPlugin {
                     sync_portals,
                     turn_tick,
                     recharge_tokens,
-                    player_input,
+                    player_input.in_set(PlayerCommands),
                     move_commands,
                     update_direction,
                     movement,

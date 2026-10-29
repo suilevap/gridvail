@@ -1,0 +1,46 @@
+// Who is who on a map, and what they fight with.
+(
+    // Weapons: damage, turns wound up between aiming and the strike, and the
+    // cells they cover, drawn with the wielder `@` facing up and each struck
+    // cell `x`.
+    weapons: {
+        // The cell in front.
+        "jab": (damage: 1, windup: 1, art: "
+            x
+            @
+        "),
+        // The whole row in front: stepping aside is no escape.
+        "sweep": (damage: 1, windup: 1, art: "
+            xxx
+            .@.
+        "),
+        // Two cells straight ahead: stepping back is no escape.
+        "spear": (damage: 1, windup: 1, art: "
+            x
+            x
+            @
+        "),
+    },
+
+    // Moves on a picked target, one for each way the second direction
+    // relates to the first: a name, the hit's damage, how many cells it
+    // knocks the target that way (1 for now: a body moves its whole speed
+    // in one movement pass), whether the mover follows into the cell the
+    // target leaves, and whether the two trade places.
+    moves: {
+        "blade": (
+            forward: (name: "lunge", hit: 1, knock: 1, follow: true),
+            side: (name: "push", hit: 1, knock: 1),
+            back: (name: "yank", hit: 1, swap: true),
+        ),
+    },
+
+    // Actors by map glyph: a name, the behaviour they run (the player runs
+    // none), hit points, and their weapon or moves.
+    actors: {
+        'p': (name: "player", hp: 2, moves: "blade"),
+        'e': (name: "guard", tree: Enemy, hp: 2, weapon: "sweep"),
+        's': (name: "spearman", tree: Enemy, hp: 2, weapon: "spear"),
+        'h': (name: "hunter", tree: Hunter, hp: 2, weapon: "jab"),
+    },
+)

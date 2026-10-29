@@ -4,7 +4,7 @@ use flatbt_bevy::prelude::*;
 use super::*;
 use crate::locomotion::follow_paths;
 use crate::navigation::share_paths;
-use crate::schedule::GamePhase;
+use crate::schedule::{ActionStage, GamePhase};
 use crate::simulation::{direction_tiles, move_commands, player_input};
 
 /// Enemy decisions: behavior trees, wandering goals, random steps, and what
@@ -23,6 +23,7 @@ pub struct AiPlugin;
 impl Plugin for AiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DoorPolicy>()
+            .add_message::<UseWeapon>()
             .init_resource::<PortalPolicy>()
             .add_plugins((
                 BehaviorPlugin::for_tree(enemy_tree).tick_mode(enemy_tick),
@@ -50,7 +51,10 @@ impl Plugin for AiPlugin {
                         .chain()
                         .after(share_paths)
                         .before(BehaviorSystems),
-                    carry_out.after(BehaviorSystems).before(follow_paths),
+                    (carry_out, expose_unaware)
+                        .after(BehaviorSystems)
+                        .before(follow_paths)
+                        .before(ActionStage::Effects),
                     wait_if_idle.after(follow_paths),
                 )
                     .in_set(GamePhase::Simulation)

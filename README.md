@@ -80,6 +80,31 @@ next to this file.
   `TraversalPrefs::crowd_cost` for cells other actors stand on, so they route
   around each other instead of queueing. Planning memory is sized to the
   map, so steady turns stay allocation-free.
+- Combat (an addition, a first playable cut; the design and what comes
+  next are in `COMBAT.md`). Moving into an enemy **picks** it instead of
+  bumping it: free, no turn spent, shown by drawing it yellow. The next
+  direction is the attack, and only where the two of you end up differs:
+  the same way again **lunges** (you take its cell, it is knocked one
+  further), sideways **pushes** it aside (you stay), back **yanks** it (you
+  swap places). A pick carries over turns while the enemy stays where it
+  was; a tap (touch), `C` or Backspace cancels it, also for free. A hit
+  does 1, 1 more on an enemy that has not noticed you or is on its `!`
+  beat (a critical hit). A knocked enemy whose way is blocked stays put,
+  and it and whatever blocked it take 1 more (an impact). Enemies next to
+  the player wind up their weapon: for a turn the cells it will strike
+  are marked (whatever stands there drawn red, a red `×` on empty floor),
+  then it lands on whoever is there then, other enemies included. The
+  strike is aimed from its wielder, so knocking the enemy moves it. Each
+  weapon strikes its own pattern, and the pattern decides which answer is
+  safe: a guard's (`e`) sweep covers the row in front, so stepping aside
+  is no escape and only a yank turns it away; a spearman's (`s`) spear
+  reaches two cells ahead, so stepping back is no escape. Who is who is
+  data: `assets/rules/actors.ron` lists actor kinds by map glyph (any
+  lowercase letter without a meaning of its own), their behaviour, hit
+  points and weapon or moves, and draws each weapon's pattern as art. The
+  player going down plays the map again. `arena.txt` is a map to try it
+  in. `--turn SECONDS` sets how long a turn waits for the player (1 by
+  default), `--hp` the player's hit points.
 - Player-bound `i` direction marker via relative position + rotation.
 - Wall autotiling from `wall_rule.txt`, direction glyphs from the three
   direction rules (the file's Y-down inversion is inherited verbatim).
@@ -268,6 +293,9 @@ src/simulation/            simulation plugin; control, motion, resolution, tiles
 src/vision/                vision plugin; FOV cache and player visibility
 src/navigation/            nav map snapshot, game rules and planner for pathfinding
 src/ai/                    enemy decisions: behavior trees (FlatBT), wander goals, door prices
+src/selection/             picking targets by moving into them, and acting on the pick
+src/combat/                maneuvers, weapons and their strikes, hits into damage
+src/damage/                health and death, whatever deals the damage
 src/locomotion/            walking actors to their destination along planned paths
 crates/gridvail-path/      grid pathfinding crate (A*, per-state paths, no deps)
 src/lighting/              light math and light colour gradients
@@ -276,11 +304,12 @@ src/rendering/             swappable Text2d and extruded-wall output plugins
 tests/full_map.rs  headless map1 boot + settle integration test
 tests/gameplay.rs  timed input, movement, collision, and vision regressions
 tests/enemy_behavior.rs  enemy behavior-tree scenarios on small ASCII maps
+tests/combat.rs  picking, maneuvers, impacts, criticals, strike patterns on small maps
 tests/allocations.rs  warmed Bevy baseline + full-turn allocation regression
 tests/reference_parity.rs  independent C# FOV/light fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
 assets/maps/       map1/2/3, map1_test, lightTest
-assets/rules/      wall + three direction rules
+assets/rules/      wall + three direction rules, statures, the actor roster
 assets/fonts/      Unscii-8 square pixel font (public domain)
 assets/shaders/    world-space procedural 3D surface material
 ```
@@ -294,6 +323,8 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
+cargo run -- --map assets/maps/arena.txt   # combat: pick an enemy, then lunge, push or yank
+cargo run -- --map assets/maps/arena.txt --turn 1.5 --hp 1  # a slower turn, one hit to go down
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk through portals too
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
@@ -307,7 +338,7 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 306 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 352 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
@@ -483,8 +514,11 @@ cargo run -- --remote-port 15703       # choose another port
 ```
 
 The server accepts JSON-RPC 2.0 POST requests. `gridvail/state` returns the
-turn phase, whether input is currently accepted, player position and tokens,
-enemy/collision counts, and the exact composed visual grid. `visual.rows`
+turn phase, whether input is currently accepted, player position, tokens,
+hit points and picked target (`player.selected`), every enemy (position, hit
+points, the direction of a wound-up strike), the cells wound-up strikes will
+land on (`strike_cells`), enemy/collision counts, and the exact composed
+visual grid. `visual.rows`
 contains Unicode glyph rows; `visual.colors` contains the matching colours as
 `#rrggbb` strings.
 
@@ -497,7 +531,8 @@ curl http://127.0.0.1:15702 \
 `gridvail/move` accepts `up`, `down`, `left`, `right`, or `wait`. It returns
 `{"accepted":true}` when queued, or `accepted:false` with a reason when the
 simulation is busy, another command is pending, or the player has no token.
-Accepted commands use the normal turn pipeline.
+Accepted commands use the normal turn pipeline, so a move into an enemy
+picks it and the next move attacks it. `gridvail/cancel` drops the pick.
 
 ```sh
 curl http://127.0.0.1:15702 \

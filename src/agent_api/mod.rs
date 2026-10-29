@@ -15,6 +15,7 @@ use crate::model::*;
 
 pub const STATE_METHOD: &str = "gridvail/state";
 pub const MOVE_METHOD: &str = "gridvail/move";
+pub const CANCEL_METHOD: &str = "gridvail/cancel";
 pub const DEFAULT_AGENT_PORT: u16 = DEFAULT_PORT;
 
 /// Loopback HTTP endpoint for agent control. It is installed only when the
@@ -41,7 +42,8 @@ impl Plugin for AgentApiPlugin {
         app.add_plugins(
             RemotePlugin::default()
                 .with_method_main(STATE_METHOD, get_state)
-                .with_method_main(MOVE_METHOD, move_player),
+                .with_method_main(MOVE_METHOD, move_player)
+                .with_method_main(CANCEL_METHOD, cancel),
         )
         .add_plugins(RemoteHttpPlugin::default().with_port(self.port));
     }
@@ -100,6 +102,18 @@ struct PlayerState {
     command_pending: bool,
     /// Keys the player carries.
     keys: usize,
+    hp: Option<i32>,
+    max_hp: Option<i32>,
+    /// Where the target the player picked stands, if one is picked.
+    selected: Option<Position>,
+}
+
+#[derive(Serialize)]
+struct EnemyState {
+    position: Position,
+    hp: Option<i32>,
+    /// The direction of a wound-up strike, landing on its next turn.
+    winding_up: Option<Position>,
 }
 
 #[derive(Serialize)]
@@ -122,6 +136,9 @@ struct GameState {
     ready_for_input: bool,
     player: PlayerState,
     enemy_count: usize,
+    enemies: Vec<EnemyState>,
+    /// Cells a wound-up strike will land on.
+    strike_cells: Vec<Position>,
     collision_count: usize,
     visual: VisualState,
 }
@@ -136,17 +153,53 @@ fn get_state(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
         .0
         .len();
 
-    let (position, tokens, command_pending, items) = {
-        let mut players = world
-            .query_filtered::<(&Pos, &Tokens, &MoveCommand, Option<&Inventory>), With<Player>>();
-        let (position, tokens, command, inventory) = players
+    let (position, tokens, command_pending, items, health, selection) = {
+        let mut players = world.query_filtered::<(
+            &Pos,
+            &Tokens,
+            &MoveCommand,
+            Option<&Inventory>,
+            Option<&Health>,
+            Option<&Selected>,
+        ), With<Player>>();
+        let (position, tokens, command, inventory, health, selection) = players
             .single(world)
             .map_err(|error| BrpError::internal(format!("player query failed: {error}")))?;
         let items = inventory
             .map(|inventory| inventory.0.clone())
             .unwrap_or_default();
-        (position.0, tokens.count, command.active, items)
+        (
+            position.0,
+            tokens.count,
+            command.active,
+            items,
+            health.copied(),
+            selection.copied(),
+        )
     };
+    let selected = selection
+        .and_then(|selection| world.get::<Pos>(selection.target))
+        .map(|pos| pos.0.into());
+    let enemies = world
+        .query_filtered::<(&Pos, Option<&Health>, Option<&Telegraph>), (With<Enemy>, Without<DestroyRequested>)>()
+        .iter(world)
+        .map(|(pos, health, telegraph)| EnemyState {
+            position: pos.0.into(),
+            hp: health.map(|health| health.hp),
+            winding_up: telegraph.map(|telegraph| telegraph.dir.into()),
+        })
+        .collect::<Vec<_>>();
+    let strike_cells = world
+        .query::<(&Pos, &Telegraph, &Weapon)>()
+        .iter(world)
+        .flat_map(|(pos, telegraph, weapon)| {
+            weapon
+                .area
+                .cells(pos.0, telegraph.dir)
+                .map(Position::from)
+                .collect::<Vec<_>>()
+        })
+        .collect();
     let keys = items
         .into_iter()
         .filter(|&item| world.get::<Key>(item).is_some())
@@ -170,8 +223,13 @@ fn get_state(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
             tokens,
             command_pending,
             keys,
+            hp: health.map(|health| health.hp),
+            max_hp: health.map(|health| health.max),
+            selected,
         },
         enemy_count,
+        enemies,
+        strike_cells,
         collision_count,
         visual,
     })
@@ -205,6 +263,14 @@ fn move_player(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
     pending.target = command.direction.vector();
     pending.relative = true;
     pending.active = true;
+    pending.repeat = false;
+    Ok(json!({ "accepted": true }))
+}
+
+/// Drops what the player is composing (a picked target), like a tap or `C`.
+/// Free: it spends no turn.
+fn cancel(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
+    world.write_message(CancelIntent);
     Ok(json!({ "accepted": true }))
 }
 
@@ -291,6 +357,29 @@ mod tests {
         app.update();
         let value = get_state(In(None), app.world_mut()).unwrap();
         assert_eq!(value["player"]["position"], json!({ "x": 9, "y": 5 }));
+    }
+
+    #[test]
+    fn a_remote_move_into_an_enemy_picks_it_and_a_cancel_drops_it() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .init_resource::<ButtonInput<KeyCode>>()
+            .insert_resource(crate::app::MapText("XXXXX\nX.peX\nXXXXX\n"))
+            .add_plugins(GamePlugin);
+        app.update();
+        app.update();
+        let response =
+            move_player(In(Some(json!({ "direction": "right" }))), app.world_mut()).unwrap();
+        assert_eq!(response, json!({ "accepted": true }));
+        app.update();
+        let value = get_state(In(None), app.world_mut()).unwrap();
+        assert_eq!(value["player"]["position"], json!({ "x": 2, "y": 1 }));
+        assert_eq!(value["player"]["selected"], json!({ "x": 3, "y": 1 }));
+
+        cancel(In(None), app.world_mut()).unwrap();
+        app.update();
+        let value = get_state(In(None), app.world_mut()).unwrap();
+        assert_eq!(value["player"]["selected"], Value::Null);
     }
 
     #[test]

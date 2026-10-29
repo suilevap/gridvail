@@ -48,9 +48,15 @@ pub fn player_input(
     for (mut command, tokens, intent) in players.iter_mut() {
         // The intent follows the keys every frame, between turns too, so a
         // key held while the view turns keeps what it meant when pressed.
-        let target = match intent {
-            Some(mut intent) => intent.hold(screen, map_direction),
-            None => screen.map(map_direction),
+        let (target, repeat) = match intent {
+            Some(mut intent) => {
+                let held = intent.held.map(|held| held.screen);
+                (
+                    intent.hold(screen, map_direction),
+                    held.is_some() && held == screen,
+                )
+            }
+            None => (screen.map(map_direction), false),
         };
         let Some(target) = target else {
             continue;
@@ -61,6 +67,7 @@ pub fn player_input(
         command.target = target;
         command.relative = true;
         command.active = true;
+        command.repeat = repeat;
     }
 }
 

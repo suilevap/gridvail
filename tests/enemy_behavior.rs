@@ -11,7 +11,7 @@
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::ai::PortalPolicy;
-use pav_ecs_game_bevy_port::app::{GamePlugin, MapText};
+use pav_ecs_game_bevy_port::app::{ActorKinds, GamePlugin, MapText};
 use pav_ecs_game_bevy_port::lighting::YELLOW;
 use pav_ecs_game_bevy_port::model::*;
 use pav_ecs_game_bevy_port::navigation::{NavMap, PathService};
@@ -88,6 +88,11 @@ impl Game {
             )))
             .insert_resource(MapText(map))
             .add_plugins(GamePlugin);
+        // Scenarios are about where enemies go: everyone outlasts every
+        // strike rather than going down (and the player starting over).
+        for kind in app.world_mut().resource_mut::<ActorKinds>().0.values_mut() {
+            kind.hp = 1000;
+        }
         let mut game = Self {
             app,
             map,
@@ -211,17 +216,14 @@ impl Game {
         (pos, act)
     }
 
-    fn collided(&mut self, source: Entity, target_is_player: bool) -> bool {
+    /// The player has been struck at least once.
+    fn player_hurt(&mut self) -> bool {
         let world = self.app.world_mut();
-        let player = world
-            .query_filtered::<Entity, With<Player>>()
+        let health = world
+            .query_filtered::<&Health, With<Player>>()
             .single(world)
             .unwrap();
-        world
-            .resource::<CollisionBuffer>()
-            .0
-            .iter()
-            .any(|c| c.source == source && (c.target == player) == target_is_player)
+        health.hp < health.max
     }
 
     fn print(&self, title: &str) {
@@ -326,8 +328,7 @@ fn a_sighting_freezes_the_enemy_then_it_chases_and_attacks() {
         assert_eq!(act, Some(expected), "turn {turn}");
         assert_eq!(manhattan(pos, player), (before - 1).max(1), "turn {turn}");
     }
-    let enemy = game.trace[0].enemies[0].0;
-    assert!(game.collided(enemy, true));
+    assert!(game.player_hurt());
 }
 
 #[test]
@@ -799,7 +800,10 @@ fn a_hunter_fetches_keys_while_the_player_paces() {
     let last = game.trace.last().unwrap();
     assert_eq!(last.keys, vec![IVec2::new(9, 1)], "took the wrong keys");
     assert_eq!(doors_open(last), 2);
-    assert_caught(&game);
+    // A pacing player steps off every strike wound up at them, so the
+    // hunter ends a step behind as often as next to them.
+    let (_, pos, _) = last.enemies[0];
+    assert!(manhattan(pos, last.player) <= 2, "{pos} vs {}", last.player);
 }
 
 /// Fetching the key with plans made off the frame, as in the game.

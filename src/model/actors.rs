@@ -43,6 +43,10 @@ pub struct MoveCommand {
     pub target: IVec2,
     pub relative: bool,
     pub active: bool,
+    /// Comes from input held on from an earlier frame (a key or a finger
+    /// kept down), not a fresh press: walking treats both alike, but a
+    /// second input of a maneuver must be fresh.
+    pub repeat: bool,
 }
 
 /// What the player means to do with the movement input they are holding:

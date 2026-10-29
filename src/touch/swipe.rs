@@ -1,4 +1,4 @@
-//! One-finger swipes walk the player.
+//! One-finger swipes walk the player; a tap cancels what they compose.
 
 use bevy::prelude::*;
 
@@ -27,6 +27,9 @@ pub struct Swipe {
     /// A second finger landed: two-finger gestures are not swipes, so
     /// nothing walks until every finger lifts.
     cancelled: bool,
+    /// The tracked finger travelled far enough to swipe: lifting it is not
+    /// a tap.
+    swiped: bool,
 }
 
 impl Swipe {
@@ -37,11 +40,14 @@ impl Swipe {
     }
 }
 
+/// A finger lifted without swiping is a tap, which asks to cancel
+/// (`CancelIntent`): there are no buttons to cancel with.
 pub fn read_swipes(
     time: Res<Time>,
     touches: Res<Touches>,
     mut swipe: ResMut<Swipe>,
     mut scheme: ResMut<ControlScheme>,
+    mut cancel: MessageWriter<CancelIntent>,
 ) {
     if touches.any_just_pressed() {
         scheme.set_if_neq(ControlScheme::Touch);
@@ -67,14 +73,19 @@ pub fn read_swipes(
         return;
     };
     let Some(touch) = touches.get_pressed(id) else {
+        if !swipe.swiped {
+            cancel.write(CancelIntent);
+        }
         swipe.origin = None;
         swipe.held = None;
+        swipe.swiped = false;
         return;
     };
     let delta = touch.position() - origin;
     if delta.length() < SWIPE_THRESHOLD {
         return;
     }
+    swipe.swiped = true;
     // Window coordinates grow downward, like grid rows.
     let dir = if delta.x.abs() > delta.y.abs() {
         IVec2::new(delta.x.signum() as i32, 0)
@@ -117,6 +128,8 @@ pub fn swipe_commands(
         command.target = target;
         command.relative = true;
         command.active = true;
+        // A swipe is fresh; a finger kept down walking on is not.
+        command.repeat = swipe.pending.is_none();
         swipe.pending = None;
     }
 }

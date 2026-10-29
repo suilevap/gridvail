@@ -258,3 +258,18 @@ impl Default for StaticLight {
 pub fn is_hex_pos(p: IVec2) -> bool {
     (p.x + p.y % 2) % 2 == 0
 }
+
+/// How a marked cell is drawn: whatever stands there in `tint`, or, when
+/// nothing does, the floor as `ground`. Both keep their own colours (light
+/// does not change them).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CellMark {
+    pub ground: RenderCell,
+    pub tint: Rgb,
+}
+
+/// Cells marked for the player to see (where a strike lands, what is
+/// picked), drawn where the player sees them. Cleared every frame before
+/// the `MarkCells` systems list them again; a later mark of a cell wins.
+#[derive(Resource, Debug, Default)]
+pub struct CellMarks(pub Vec<(IVec2, CellMark)>);

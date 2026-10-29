@@ -7,14 +7,16 @@ foundation  content  layout  model  schedule
      ↑        ↑        ↑       ↑       ↑
      simulation  vision  navigation  lighting  animation  presentation
           ↑               ↑                  ↑
-          ai  →  locomotion              transition
+          ai  →  locomotion   selection  combat  damage   transition
              ↑       ↑       ↑
                     app       rendering  agent_api  debug_ui
                       \         |         /         /
                          main
 ```
 
-Arrows point toward dependencies. `transition` sits on `simulation`,
+Arrows point toward dependencies. `selection`, `combat` and `damage` sit
+on `model`, `schedule` and `simulation` and import none of each other; they
+meet only in messages and components. `transition` sits on `simulation`,
 `camera` and `model`. `camera` sits on top of `animation` (it
 eases the view with the same curves) and below `app` and `rendering`.
 `schedule` is the small, neutral contract
@@ -134,6 +136,60 @@ and renderers must not import it.
   needs `GetKey`, which needs `FetchKey(key)` for each known key in turn
   and fails only when every one has; with a key, door pricing lets the next
   plan through the door.
+- Fights are put together from small modules that only share data and
+  messages, on general mechanisms that other features can use too
+  (`COMBAT.md` has the design, `PRINCIPLES.md` the mechanisms). A turn's
+  actions go through `schedule::ActionStage`, in order, within the
+  simulation before the moves: `Due` (time passes), `Ongoing` (what fell
+  due happens), `PlayerCommands` (input), `Decide`, `Effects`, `Costs`,
+  `Movement`, `Hits`, `Damage`. Each system names its stage, not its
+  neighbours.
+  - `simulation/time.rs`, time: an actor in `Debt` has each of its turns
+    pay one off instead (its token taken before anyone decides, so
+    deciders such as the AI need no check) until `DebtPaid`; anything adds
+    debt with a `Delay` (a wind-up, later a stun). A message can be
+    `Scheduled` on an entity and is sent when its debt is paid; a message
+    type opts in with `add_scheduled_message`. An action with a cast time
+    is a delay plus its effect scheduled.
+  - `simulation/physics.rs`, bodies moved by more than their own walking,
+    on the simulation's own movement passes: a `Knock` gives a body a
+    `Speed` (after each mover's own step is chosen, so it wins) and marks it
+    `Knocked`; movement, `Friction` and collision resolution then move it
+    like anything that walks, pass after pass until everything settles. A
+    knocked body that is blocked is a `Collision`, and one that has stopped
+    is no longer `Knocked`. A `Follow` steps into a cell on the pass after
+    it is left (walking into a cell just left is blocked in the same pass),
+    and a `Swap` trades two bodies' places, which walking cannot.
+  - `model::Area`: a set of cells around an origin, in the frame of a
+    facing (what a weapon strikes).
+  - `selection/`: a `Selector` moving into something `Selectable` picks it
+    (`Selected`), free; its next fresh move is a `ContextAction`, its
+    action for the turn, which anything may answer; a `CancelIntent` (a
+    tap, `C`, the agent API) drops the pick. Input layers mark held-on
+    commands (`MoveCommand::repeat`) so a held key never acts twice.
+  - `combat/`: `perform_maneuvers` answers a context action by an actor
+    with `Maneuvers` (one move per `Relation` of the second direction to
+    the first) with a `Hit`, and a `Knock` (with a `Follow`) or a `Swap`;
+    `ready_weapons` answers a
+    `UseWeapon` by aiming the `Weapon` (`Telegraph`, a direction from the
+    wielder), then owing its wind-up with the `Strike` scheduled, and
+    `strike` hits every cell of the weapon's `Area`; `hits_deal_damage`,
+    `critical_hits` (on `Exposed` targets, which the AI writes) and
+    `collisions_deal_damage` turn what landed into `Damage`.
+  - `damage/`: `Damage` comes off `Health`; what runs out has `Died` and is
+    destroyed, unless it `KeepOnDeath` (the player: the app plays the map
+    again).
+  - Cells to show the player (strikes, picks) are listed each frame into
+    `CellMarks` by `MarkCells` systems; the frame composer tints whatever
+    stands there, or draws a mark on the floor.
+  - Who is who comes from data. `content::data::read` reads any RON file
+    into any type that derives `Deserialize`, so a new data file is a new
+    type, with no parser; `content::art` reads shapes drawn as text art.
+    The roster (`assets/rules/actors.ron`: actor kinds by map glyph, their
+    behaviour, hit points, weapon or moves; weapons with their area drawn
+    as art; move sets) is read that way into `content::actors` types, and
+    `app::ActorKinds` equips each actor spawned from a map glyph with what
+    its kind names.
 - `lighting/` contains light blending and light colour: a `LightCell` keeps
   a level per kind of light, summed over every light of that kind; each
   kind has a gradient baked into a 256-entry lookup table (`LightLut`), and
@@ -297,6 +353,11 @@ in place. Startup parsing/autotiling and exceptional spawn/destruction paths may
 allocate. `tests/allocations.rs` protects the warmed steady-turn boundary.
 
 ## Placement rule
+
+`PRINCIPLES.md` describes how to shape code once it is placed: one job per
+system, entities composed of small components, systems meeting in messages,
+stats as data.
+
 
 When adding code, place it in the lowest layer that can own it:
 
