@@ -26,6 +26,10 @@
 #   noflip         where its side is drawn mirrored, the glyph keeps its own
 #                  way round (its place still mirrors), for glyphs read as
 #                  themselves, such as @
+#
+# At the default scale a font pixel is 1/16 of a cell, and `█` at
+# scale=0.0625 is exactly one pixel, in any colour: for eyes and other
+# details.
 
 # The player: a lantern-bearer, the @ of their hat over a blue cloak,
 # carrying the lantern they light the way with.
@@ -47,9 +51,10 @@ figure person
 # A guard: a spearman in mail with a red shield. The spear's bright tip
 # always points where they look, so their line of sight reads at a glance
 # whichever way they face: down past their feet toward the viewer, up over
-# their head away from them, or held out level to a side. Facing the viewer
-# they show their face, facing away the back of their head. Their mood
-# shows over their head.
+# their head away from them, or held out level to a side. Their face is
+# built of parts: a head under a steel helmet, and eyes a pixel each, which
+# show toward the viewer, turn to one eye and a nose from the side, and are
+# gone from behind. Their mood shows over their head.
 figure guard
   view front
     legs    Π  y=-0.3 shade=0.55
@@ -57,7 +62,10 @@ figure guard
     shield  ♦  x=0.3 y=-0.06 tint=#c83838
     shaft   │  x=-0.3 y=-0.14 shade=0.6
     tip     ▾  x=-0.3 y=-0.46 tint=#f0f4ff
-    head    ☺  y=0.27
+    head    ●  y=0.27 tint=#e0b890
+    helmet  ▀  y=0.3325 tint=#a8b0c0
+    leye    █  x=-0.094 y=0.301 scale=0.0625 tint=#200808
+    reye    █  x=0.094 y=0.301 scale=0.0625 tint=#200808
     mood    own y=0.62 tint=#ffd040 only=!?
   view back
     shaft   │  x=0.3 y=0.16 shade=0.5
@@ -65,7 +73,8 @@ figure guard
     shield  ♦  x=-0.3 y=-0.06 tint=#802828
     legs    Π  y=-0.3 shade=0.45
     mail    Ш  y=-0.02 tint=#788090
-    head    ●  y=0.27 shade=0.55
+    head    ●  y=0.27 tint=#806048
+    helmet  ▀  y=0.3325 tint=#788090
     mood    own y=0.62 tint=#ffd040 only=!?
   view right
     shield  ♦  x=-0.24 y=-0.04 tint=#802828
@@ -74,7 +83,10 @@ figure guard
     shaft   ─  x=0.2 y=0.02 shade=0.6
     shaft   ─  x=0.42 y=0.02 shade=0.6
     tip     ▸  x=0.62 y=0.02 tint=#f0f4ff
-    head    ☺  x=0.02 y=0.27 noflip
+    head    ●  y=0.27 tint=#e0b890
+    nose    █  x=0.219 y=0.239 scale=0.0625 tint=#e0b890
+    helmet  ▀  x=-0.0625 y=0.3325 tint=#a8b0c0
+    eye     █  x=0.094 y=0.301 scale=0.0625 tint=#200808
     mood    own y=0.62 tint=#ffd040 only=!? noflip
 
 # A standing lamp: a foot, a post, and the light under a little roof.
