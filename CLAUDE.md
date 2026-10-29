@@ -3,6 +3,12 @@
 See `README.md` for what the game is, how to run it and the agent runtime
 API, and `ARCHITECTURE.md` for how the code is laid out.
 
+Read `PRINCIPLES.md` before adding or changing gameplay code: small
+single-purpose systems, entities composed of small components, systems that
+meet in messages rather than in each other, stats as data. Do not fix the
+existing code it lists under Backfill in passing; each item is its own
+change.
+
 ## Web build and pull request previews
 
 The game runs in the browser. `.github/workflows/pages.yml` builds it to

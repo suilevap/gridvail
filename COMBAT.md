@@ -156,6 +156,19 @@ Out, roughly in the order they would follow:
   on the `!` beat, or from darkness and around corners. Sight that depends
   on facing would make stealth openers a real choice.
 
+### Open: fights feel hard to predict
+
+From playtesting the preview: a fight does not yet feel intuitive or
+predictable. To look into separately; possible causes, none decided yet:
+
+- **The patterns.** A sweep or a spear may be hard to read from the glyph
+  alone, and a pattern shows only once the enemy winds up.
+- **Missing feedback on a pick.** Picking marks the target, but not what
+  each second direction would do: where the target and the player would
+  end up, and which cells would then be struck.
+- **Missing motion.** Knockbacks, swaps and strikes could animate, so the
+  player sees what happened and why.
+
 ## How it is put together
 
 Small modules that share only data and messages (see `ARCHITECTURE.md`):

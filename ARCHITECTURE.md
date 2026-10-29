@@ -314,6 +314,11 @@ allocate. `tests/allocations.rs` protects the warmed steady-turn boundary.
 
 ## Placement rule
 
+`PRINCIPLES.md` describes how to shape code once it is placed: one job per
+system, entities composed of small components, systems meeting in messages,
+stats as data.
+
+
 When adding code, place it in the lowest layer that can own it:
 
 1. Pure algorithm or container: `foundation`; a way to lay out walls:
