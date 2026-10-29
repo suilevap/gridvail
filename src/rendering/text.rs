@@ -411,6 +411,7 @@ pub(super) fn place_object_sprites(
     volume: Option<Res<WallVolume>>,
     statures: Option<Res<GlyphStatures>>,
     own_statures: Query<&Stature>,
+    figures: Query<(), With<Figure>>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
     mut drawn: Local<String>,
     mut sprites: Query<(
@@ -441,10 +442,12 @@ pub(super) fn place_object_sprites(
         let Ok((mut sprite, mut text, mut color, ..)) = sprites.get_mut(entity) else {
             continue;
         };
-        // The volume shader draws whatever stands up instead.
-        let stands = statures.as_ref().is_some_and(|statures| {
-            statures.of(object.cell.ch, own_statures.get(object.entity).ok()) > 0.0
-        });
+        // The volume shaders draw whatever stands up instead, figures
+        // included.
+        let stands = figures.contains(object.entity)
+            || statures.as_ref().is_some_and(|statures| {
+                statures.of(object.cell.ch, own_statures.get(object.entity).ok()) > 0.0
+            });
         if volume != WallVolume::Flat && stands {
             continue;
         }

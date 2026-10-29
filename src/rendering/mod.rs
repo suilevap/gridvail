@@ -1,6 +1,7 @@
 //! Swappable output backends for composed game frames.
 
 mod extruded;
+mod figures;
 mod light;
 mod settings;
 mod text;

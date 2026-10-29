@@ -48,7 +48,7 @@ use super::text::{ObjectSprite, TurnedGlyphs, CELL_FONT_BYTES, CELL_SIZE};
 /// stature (times how far it has risen) over this.
 const MAX_STATURE: f32 = 4.0;
 /// The font's design size: one atlas and wall map texel per font pixel.
-const GLYPH_PX: usize = 8;
+pub(super) const GLYPH_PX: usize = 8;
 /// Atlas slots per side.
 const ATLAS_SLOTS: usize = 16;
 /// The render layer only the wall map camera sees.
@@ -62,7 +62,10 @@ impl Plugin for WallVolumePlugin {
     fn build(&self, app: &mut App) {
         super::load_view_shader(app);
         embedded_asset!(app, "wall_volume.wgsl");
-        app.add_plugins(Material2dPlugin::<WallVolumeMaterial>::default())
+        app.add_plugins((
+            Material2dPlugin::<WallVolumeMaterial>::default(),
+            super::figures::FigurePlugin,
+        ))
             .add_systems(
                 Startup,
                 setup
@@ -139,9 +142,32 @@ struct WallVolumeQuad {
 /// The cell font's glyphs, white with their ink as alpha, rasterized as
 /// they are needed: the glyph of each slot by character.
 #[derive(Resource)]
-struct GlyphAtlas {
+pub(super) struct GlyphAtlas {
     slots: HashMap<char, usize>,
-    handle: Handle<Image>,
+    pub(super) handle: Handle<Image>,
+}
+
+impl GlyphAtlas {
+    /// The top-left texel of `ch`'s glyph, rasterized the first time it is
+    /// asked for; `None` once the atlas is full.
+    pub(super) fn corner(&mut self, ch: char, images: &mut Assets<Image>) -> Option<Vec2> {
+        let next = self.slots.len();
+        let slot = match self.slots.get(&ch) {
+            Some(&slot) => slot,
+            None if next < ATLAS_SLOTS * ATLAS_SLOTS => {
+                if let Some(mut image) = images.get_mut(&self.handle) {
+                    rasterize(ch, next, &mut image);
+                }
+                self.slots.insert(ch, next);
+                next
+            }
+            None => return None,
+        };
+        Some(Vec2::new(
+            (slot % ATLAS_SLOTS * GLYPH_PX) as f32,
+            (slot / ATLAS_SLOTS * GLYPH_PX) as f32,
+        ))
+    }
 }
 
 fn wall_map_image(size: IVec2) -> Image {
@@ -348,22 +374,9 @@ fn draw_wall_map(
             tallest = tallest.max(stature);
             // In map space: only a portal's turn, not the view's.
             let ch = turned.turned(object.cell.ch, object.quarters as i32);
-            let next = atlas.slots.len();
-            let slot = match atlas.slots.get(&ch) {
-                Some(&slot) => slot,
-                None if next < ATLAS_SLOTS * ATLAS_SLOTS => {
-                    if let Some(mut image) = images.get_mut(&atlas.handle) {
-                        rasterize(ch, next, &mut image);
-                    }
-                    atlas.slots.insert(ch, next);
-                    next
-                }
-                None => continue,
+            let Some(corner) = atlas.corner(ch, &mut images) else {
+                continue;
             };
-            let corner = Vec2::new(
-                (slot % ATLAS_SLOTS * GLYPH_PX) as f32,
-                (slot / ATLAS_SLOTS * GLYPH_PX) as f32,
-            );
             // With smooth light, a wall in its cell's own light is drawn
             // black into the wall map: the shader then lights it wholly from
             // the light map, which fades from turn to turn. Any other colour

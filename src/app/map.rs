@@ -14,6 +14,7 @@ use flatbt_bevy::prelude::Behavior;
 use crate::ai::{enemy_tree, hunter_tree};
 use crate::content::map::{parse_map, parse_next, parse_rooms, portal_links, SpawnKind};
 use crate::content::map::{PortalLink, RoomSpec, SpawnCell};
+use crate::content::figures::parse_figures;
 use crate::content::statures::parse_statures;
 use crate::content::tile_rules::{DirectionTileRule, TileRule};
 use crate::foundation::grid::nearest_cell;
@@ -28,6 +29,7 @@ const WALL_RULE_TEXT: &str = include_str!("../../assets/rules/wall_rule.txt");
 const TRIANGLE_RULE_TEXT: &str = include_str!("../../assets/rules/direction_triangle_rule.txt");
 const V_RULE_TEXT: &str = include_str!("../../assets/rules/direction_v_rule.txt");
 const STATURES_TEXT: &str = include_str!("../../assets/rules/statures.txt");
+const FIGURES_TEXT: &str = include_str!("../../assets/rules/figures.txt");
 
 // The generated table of bundled maps.
 include!(concat!(env!("OUT_DIR"), "/bundled_maps.rs"));
@@ -108,6 +110,7 @@ fn construct_map(
             .into_iter()
             .collect(),
     ));
+    commands.insert_resource(Figures(parse_figures(FIGURES_TEXT).expect("figures")));
     loaded.write(MapLoaded::default());
 }
 
@@ -366,7 +369,12 @@ fn spawn_cell(commands: &mut Commands, kind: SpawnKind, at: IVec2, cell_count: u
             light(LightKind::Electricity, 3, 32),
         )),
         SpawnKind::Light => {
-            commands.spawn((Lamp, marker('i', WHITE), light(LightKind::Fire, 16, 196)))
+            commands.spawn((
+                Lamp,
+                marker('i', WHITE),
+                Figure::named("lamp"),
+                light(LightKind::Fire, 16, 196),
+            ))
         }
         SpawnKind::Acid => {
             commands.spawn((AcidPool, marker('▒', WHITE), light(LightKind::Acid, 4, 32)))
@@ -403,7 +411,7 @@ fn spawn_player(commands: &mut Commands, at: IVec2, cell_count: usize) -> Entity
                 PendingPos::default(),
                 PrevPos(at),
             ),
-            Glyph::new('@', 1, WHITE),
+            (Glyph::new('@', 1, WHITE), Figure::named("person")),
             Player(0),
             Inventory::default(),
             Tokens::new(1),
@@ -461,6 +469,7 @@ fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
             PrevPos(pos),
         ),
         Glyph::new('☺', 1, RED),
+        Figure::named("guard"),
         Inventory::default(),
         (
             Destination::default(),

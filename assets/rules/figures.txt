@@ -1,0 +1,52 @@
+# Figures: objects drawn as stacks of glyph parts by renderers that show
+# height (the text renderer's `--walls stacked` and `--walls leaning`), in
+# place of their glyph. Flat renderers draw the glyph as before.
+#
+# A figure is drawn as seen from above, facing north (up the screen), one
+# part a line, bottom to top. A part is a glyph lying flat, its ink standing
+# from one height to another (in cells above the floor; walls stand 0.625),
+# like a slice of the figure: what stands higher is seen on top, what stands
+# lower shows below it toward the viewer. The whole figure turns to the way
+# the object faces.
+#
+#   LABEL GLYPH FROM TO [options]
+#
+# LABEL names the part for the reader. GLYPH is one character, or `own` for
+# the object's own glyph. Options:
+#   x=X y=Y      where the glyph's cell is centred, in cells from the
+#                object's centre (x to the right, y toward the back: -y is
+#                ahead)
+#   scale=S      the glyph's size, 1 for a whole cell
+#   shade=S      how much of the light it shows, 0 to 1 (default 1)
+#   tint=#rrggbb a colour the light is multiplied by, instead of a shade
+#   upright      the glyph does not turn with the figure (its place does)
+#   only=GLYPHS  drawn only while the object's glyph is one of these
+
+# Someone standing: feet apart, a torso wider than deep, hands at its
+# sides and a head on top, a little ahead, its nose showing which way it
+# looks.
+figure person
+  feet   ‥  0.00 0.16 y=-0.25 shade=0.45
+  torso  ▬  0.12 0.36 y=-0.19 tint=#5090d0
+  left   ·  0.18 0.30 x=-0.40 y=0.06 shade=0.85
+  right  ·  0.18 0.30 x=0.40 y=0.06 shade=0.85
+  eyes   ·  0.40 0.52 y=-0.19 shade=0.1
+  head   •  0.34 0.52 y=-0.06 shade=1
+
+# A guard: someone holding a blade out ahead in their right hand, with
+# their mood shown over their head.
+figure guard
+  feet   ‥  0.00 0.16 y=-0.25 shade=0.45
+  torso  ▬  0.12 0.36 y=-0.19 tint=#c05050
+  left   ·  0.18 0.30 x=-0.40 y=0.06 shade=0.85
+  right  ·  0.18 0.30 x=0.40 y=0.06 shade=0.85
+  blade  ╵  0.24 0.28 x=0.40 y=-0.25 shade=1
+  eyes   ·  0.40 0.52 y=-0.19 shade=0.1
+  head   •  0.34 0.52 y=-0.06 shade=1
+  mood   own 0.60 0.66 scale=0.75 upright only=!?
+
+# A standing lamp: a base, a thin post and the lamp on top.
+figure lamp
+  base   ▪  0.00 0.04 x=0.06 y=0.06 shade=0.5
+  post   ·  0.00 0.42 y=0.06 shade=0.6
+  lamp   •  0.42 0.54 shade=1

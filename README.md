@@ -198,7 +198,12 @@ next to this file.
   up off the floor, their glyphs extruded up the screen. How tall each
   glyph stands is set in `assets/rules/statures.txt` (walls and closed
   doors by default; any glyph can be listed), and a `Stature` component
-  gives one object its own height.
+  gives one object its own height. People, guards and lamps stand as
+  figures instead: small stacks of glyph parts (feet, torso, hands, a
+  head, a guard's blade), each a glyph slice at its own height, which turn
+  to face the way the actor faces. Figures are defined in
+  `assets/rules/figures.txt`, so other objects (boxes, barrels, doors) can
+  be made of parts the same way.
 - Light effects (an addition, `--light`): with `smooth`, light blends
   between cells across standing walls, pixel by pixel, instead of one
   colour a cell, and fades from one turn's light to the next over about a
