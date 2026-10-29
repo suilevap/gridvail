@@ -24,12 +24,12 @@ use pav_ecs_game_bevy_port::app::{
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
 use pav_ecs_game_bevy_port::model::{
-    AnimatedPos, CompassMode, Player, Pos, RevealAll, SettingsMenu, TokenTimer, ViewCamera, Vis,
-    VisibilityMap, WallVolume,
+    AnimatedPos, CompassMode, LightEffects, Player, Pos, RevealAll, SettingsMenu, TokenTimer,
+    ViewCamera, Vis, VisibilityMap, WallVolume,
 };
 #[cfg(not(target_family = "wasm"))]
 use pav_ecs_game_bevy_port::rendering::ExtrudedWallRendererPlugin;
-use pav_ecs_game_bevy_port::rendering::{TextRendererPlugin, WallVolumePlugin};
+use pav_ecs_game_bevy_port::rendering::{LightEffectsPlugin, TextRendererPlugin, WallVolumePlugin};
 use pav_ecs_game_bevy_port::schedule::{GamePhase, StartupPhase};
 use pav_ecs_game_bevy_port::simulation::room_plans::RoomPlanners;
 use pav_ecs_game_bevy_port::touch::TouchControlPlugin;
@@ -90,6 +90,7 @@ fn main() -> AppExit {
         .insert_resource(options.motion)
         .insert_resource(options.compass)
         .insert_resource(options.walls)
+        .insert_resource(options.light)
         .insert_resource(PortalPolicy {
             enemies: options.enemy_portals,
         })
@@ -100,6 +101,7 @@ fn main() -> AppExit {
             ObjectAnimationPlugin,
             TextRendererPlugin,
             WallVolumePlugin,
+            LightEffectsPlugin,
             TouchControlPlugin,
         ));
     if renderer == Renderer::Walls3d {
@@ -194,6 +196,8 @@ struct Options {
     compass: CompassMode,
     /// How walls stand out of the floor in the text renderer.
     walls: WallVolume,
+    /// How light is drawn in the text renderer.
+    light: LightEffects,
     /// How rooms that name no planner move their walls between layouts.
     room_planner: String,
     /// What the map's walls come together from when it loads, if anything.
@@ -264,6 +268,7 @@ impl Options {
         let mut portal_turn = None;
         let mut compass = None;
         let mut walls = None;
+        let mut light = None;
         let mut room_planner = None;
         let mut intro = None;
         let mut turn = None;
@@ -321,6 +326,12 @@ impl Options {
                 walls = Some(
                     WallVolume::from_name(&name)
                         .expect("--walls must be flat, stacked or leaning"),
+                );
+            },
+            "--light": value if light.is_none() => {
+                let name = args.next().expect("--light requires flat, smooth or glow");
+                light = Some(
+                    LightEffects::from_name(&name).expect("--light must be flat, smooth or glow"),
                 );
             },
             "--enemy-portals": flag => {
@@ -406,6 +417,7 @@ impl Options {
             portal_turn: portal_turn.unwrap_or_default(),
             compass: compass.unwrap_or_default(),
             walls: walls.unwrap_or_default(),
+            light: light.unwrap_or_default(),
             room_planner: room_planner.unwrap_or(RoomPlanners::default().default),
             // Screenshots and recordings play a walk from a fixed frame, which
             // the intro's cutscene would hold back: no intro unless asked.

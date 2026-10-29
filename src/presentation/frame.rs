@@ -185,6 +185,11 @@ pub fn compose_frame(
         let position = buffers.pos_of(index);
         let occupied = !matches!(buffers.current[index].ch, ' ' | '\0');
         let seen = buffers.seen[index];
+        buffers.light[index] = match seen {
+            Some(seen) => light_color(&light_at(seen.world)),
+            None if known(position) => dimmed(light_color(&light_at(position))),
+            None => Rgb::BLACK,
+        };
         if seen.is_some() || known(position) {
             let cell = &mut buffers.current[index];
             light_cell(cell, seen, position, &grid, &light_at);
