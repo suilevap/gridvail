@@ -122,11 +122,12 @@ pub struct UseWeapon {
     pub dir: IVec2,
 }
 
-/// `wielder`'s weapon strikes where it is aimed, now. Sent at once by a
-/// weapon with no wind-up, else `Scheduled` until its wind-up is paid.
+/// `wielder`'s weapon strikes toward `dir`, now. Sent at once by a weapon
+/// with no wind-up, else `Scheduled` until its wind-up is paid.
 #[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Strike {
     pub wielder: Entity,
+    pub dir: IVec2,
 }
 
 #[cfg(test)]

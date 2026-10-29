@@ -107,7 +107,7 @@ pub fn compose_frame(
                 index,
                 entity,
                 instance,
-                inverse.apply_point(shown.position),
+                inverse.apply_point(shown.drawn()),
                 shown.lift,
                 shown.height,
                 inverse.quarters,
@@ -126,7 +126,7 @@ pub fn compose_frame(
                         index,
                         entity,
                         0,
-                        shown.position,
+                        shown.drawn(),
                         shown.lift,
                         shown.height,
                         0,
@@ -160,7 +160,7 @@ pub fn compose_frame(
             let Some(index) = buffers.idx(inverse.apply(pos.0)) else {
                 continue;
             };
-            let position = inverse.apply_point(shown.position);
+            let position = inverse.apply_point(shown.drawn());
             draw(
                 &mut buffers,
                 index,

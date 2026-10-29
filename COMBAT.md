@@ -167,7 +167,25 @@ predictable. To look into separately; possible causes, none decided yet:
   each second direction would do: where the target and the player would
   end up, and which cells would then be struck.
 - **Missing motion.** Knockbacks, swaps and strikes could animate, so the
-  player sees what happened and why.
+  player sees what happened and why. A first step is in: each exchange is
+  choreographed (below).
+
+### Choreography
+
+The simulation settles a blow in one frame; the animation plays it in
+order (`src/choreography/`):
+
+1. the attacker pulls back and thrusts (a lunge's step or a yank's swap
+   waits until just after contact);
+2. at contact the target slides (a knock) or shakes away from the blow,
+   and what a knocked body runs into shakes too;
+3. a killed target dies after it has been moved, as a blow that does not
+   kill: its remains finish the slide, then sink.
+
+Still to come, each its own step once needed: something that shows the
+weapon (a trail, an arc), hit points shown on enemies, and the
+infrastructure under them (particles, decals, camera shake or hit-stop,
+sound).
 
 ## How it is put together
 

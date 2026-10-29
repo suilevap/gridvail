@@ -29,6 +29,7 @@ pub fn ready_weapons(
         };
         let strike = Strike {
             wielder: use_weapon.user,
+            dir: use_weapon.dir,
         };
         let mut user = commands.entity(use_weapon.user);
         user.insert(Telegraph {
@@ -47,21 +48,21 @@ pub fn ready_weapons(
 }
 
 /// A `Strike` hits every cell of the weapon's area, from where its wielder
-/// stands now and the way it is aimed: a hit on whatever there has health,
-/// friend or foe.
+/// stands now and the way it strikes: a hit on whatever there has health,
+/// friend or foe. The weapon is no longer aimed.
 pub fn strike(
     mut commands: Commands,
     grid: Res<MapGrid>,
     mut strikes: MessageReader<Strike>,
     mut hits: MessageWriter<Hit>,
-    wielders: Query<(&Pos, &Weapon, &Telegraph)>,
+    wielders: Query<(&Pos, &Weapon)>,
     health: Query<(), With<Health>>,
 ) {
-    for &Strike { wielder } in strikes.read() {
-        let Ok((pos, weapon, telegraph)) = wielders.get(wielder) else {
+    for &Strike { wielder, dir } in strikes.read() {
+        let Ok((pos, weapon)) = wielders.get(wielder) else {
             continue;
         };
-        for cell in weapon.area.cells(pos.0, telegraph.dir) {
+        for cell in weapon.area.cells(pos.0, dir) {
             let Some(target) = grid.get(grid.safe_pos(cell)) else {
                 continue;
             };

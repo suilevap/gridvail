@@ -7,7 +7,7 @@ foundation  content  layout  model  schedule
      ↑        ↑        ↑       ↑       ↑
      simulation  vision  navigation  lighting  animation  presentation
           ↑               ↑                  ↑
-          ai  →  locomotion   selection  combat  damage   transition
+          ai  →  locomotion   selection  combat  damage   transition  choreography
              ↑       ↑       ↑
                     app       rendering  agent_api  debug_ui
                       \         |         /         /
@@ -17,7 +17,8 @@ foundation  content  layout  model  schedule
 Arrows point toward dependencies. `selection`, `combat` and `damage` sit
 on `model`, `schedule` and `simulation` and import none of each other; they
 meet only in messages and components. `transition` sits on `simulation`,
-`camera` and `model`. `camera` sits on top of `animation` (it
+`camera` and `model`. `choreography` sits on `animation`, `model` and
+`schedule` and only reads what the simulation says happened. `camera` sits on top of `animation` (it
 eases the view with the same curves) and below `app` and `rendering`.
 `schedule` is the small, neutral contract
 shared by the domain plugins and output backends. `app` is the game composition
@@ -142,8 +143,11 @@ and renderers must not import it.
   actions go through `schedule::ActionStage`, in order, within the
   simulation before the moves: `Due` (time passes), `Ongoing` (what fell
   due happens), `PlayerCommands` (input), `Decide`, `Effects`, `Costs`,
-  `Movement`, `Hits`, `Damage`. Each system names its stage, not its
-  neighbours.
+  `Movement`, then, after the movement passes have settled, `Hits` and
+  `Damage`. Each system names its stage, not its neighbours. Death comes
+  after movement, so a lethal blow knocks its target first, like a
+  blow that does not kill, and what the body runs into is hurt in the
+  same frame.
   - `simulation/time.rs`, time: an actor in `Debt` has each of its turns
     pay one off instead (its token taken before anyone decides, so
     deciders such as the AI need no check) until `DebtPaid`; anything adds
@@ -216,7 +220,19 @@ and renderers must not import it.
   shown position to `AnimatedPos`, and reports how long unfinished moves
   still run to `TurnPacing`, which holds the next turn until they have nearly
   finished. It needs no renderer; without it the simulation runs with no
-  delay.
+  delay. On top of the move, an object can make a `Gesture` (a reach, a
+  thrust, a shake): an offset out and back that keeps the cell
+  (`AnimatedPos::pose`, drawn at `drawn()` but not followed by the camera),
+  started now or after a delay. `HoldMoves` keeps an object's next cell
+  move from starting for a while (the turn waits for it too), so moves
+  and gestures of different objects can be timed against each other.
+- `choreography/` times one exchange of blows from what the simulation
+  reports (`ContextAction`, `Strike`, `Hit`, `Collision`, `Died`), which
+  it settles in one frame: the attacker thrusts at once, its own move
+  held until just after contact; what the blow lands on is held until
+  contact, then slides (a knock) or shakes, and what a knocked body runs
+  into shakes. The dead leave `Remains`, a copy of their glyph and motion
+  that finishes the slide and sinks. It changes nothing in the simulation.
 - `presentation/` builds light maps and renderer-neutral composed cell frames.
   Frame cells are in the player's map coordinates; a cell the player sees
   shows the map cell it looks onto (`RenderBuffers::seen`), which behind a

@@ -5,7 +5,10 @@ use bevy::prelude::*;
 use crate::model::*;
 use crate::schedule::GamePhase;
 
-use super::{animate_children, MotionState, MotionStyle, MovePath, ObjectMotion, Path, Tween};
+use super::{
+    advance_gestures, animate_children, take_gestures, HeldMoves, MotionState, MotionStyle,
+    MovePath, ObjectMotion, Path, PendingGestures, Pose, Tween,
+};
 
 /// How long an object takes to rise out of the floor or sink into it.
 const RISE_SECONDS: f32 = 0.4;
@@ -27,11 +30,16 @@ pub struct ObjectAnimation {
     pub state: MotionState,
     /// How far it stands out of the floor (`AnimatedPos::height`).
     pub height: Tween<f32>,
+    /// The gesture it is making, on top of its motion (`AnimatedPos::pose`).
+    pub pose: Pose,
 }
 
 impl ObjectAnimation {
     fn remaining(&self) -> f32 {
-        self.state.remaining().max(self.height.remaining())
+        self.state
+            .remaining()
+            .max(self.height.remaining())
+            .max(self.pose.remaining())
     }
 }
 
@@ -45,11 +53,15 @@ pub struct ObjectAnimationPlugin;
 impl Plugin for ObjectAnimationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MotionStyle>()
+            .add_message::<Gesture>()
+            .add_message::<HoldMoves>()
             .add_observer(start_animation)
             .add_systems(
                 Update,
                 (
                     bump_blocked_movers,
+                    take_gestures,
+                    advance_gestures,
                     animate_objects,
                     animate_children,
                     remove_sunk,
@@ -74,13 +86,18 @@ fn start_animation(
         Option<&BoundTo>,
         Option<&ObjectMotion>,
         Option<&Rising>,
+        Has<ObjectAnimation>,
     )>,
     facings: Query<&Facing>,
     mut commands: Commands,
 ) {
-    let Ok((pos, bound, own_style, rising)) = objects.get(add.entity) else {
+    let Ok((pos, bound, own_style, rising, animated)) = objects.get(add.entity) else {
         return;
     };
+    // Placed already animating (remains carrying on a body's motion).
+    if animated {
+        return;
+    }
     let start = match (bound, rising) {
         (Some(bound), _) => rotate(bound.offset, facing_of(bound.parent, &facings)),
         (None, Some(rising)) => rising.from,
@@ -99,6 +116,7 @@ fn start_animation(
         ObjectAnimation {
             state: MotionState::at(start.as_vec2()),
             height,
+            pose: Pose::default(),
         },
         shown,
     ));
@@ -243,6 +261,7 @@ pub fn animate_objects(
             Option<&SlideRoute>,
             Has<NonBlockingAnimation>,
             (Has<Sliding>, Has<Rising>, Has<Sinking>),
+            (Option<&HeldMoves>, Option<&PendingGestures>),
             &mut ObjectAnimation,
             &mut AnimatedPos,
         ),
@@ -259,6 +278,7 @@ pub fn animate_objects(
         route,
         non_blocking,
         (sliding, rising, sinking),
+        (held, pending),
         mut animation,
         mut shown,
     ) in &mut objects
@@ -290,12 +310,24 @@ pub fn animate_objects(
         // step, which the next turn waits for too.
         let still_rising = rising && !animation.height.done();
         let mut to_come = 0.0;
+        // Held, it keeps going where it was going; the move to its new
+        // cell starts when the hold is over (and the turn waits for it).
+        let goal = match held {
+            Some(held) => {
+                to_come = held.0 + cells * motion.timing().0;
+                animation.state.target()
+            }
+            None => pos.0.as_vec2(),
+        };
+        if let Some(pending) = pending {
+            to_come = to_come.max(pending.remaining());
+        }
         if still_rising {
             to_come = cells * motion.timing().0;
         } else {
             follow(
                 &mut animation.state,
-                pos.0.as_vec2(),
+                goal,
                 path,
                 motion,
                 // A sliding wall stays in its room, so however far it goes
@@ -312,11 +344,13 @@ pub fn animate_objects(
             }
         }
         animation.height.advance(dt);
+        animation.pose.advance(dt);
         if !non_blocking {
             blocking = blocking.max(animation.remaining() + to_come);
         }
         shown.set_if_neq(AnimatedPos {
             position: animation.state.position,
+            pose: animation.pose.offset(),
             lift: animation.state.lift,
             height: animation.height.value(),
         });

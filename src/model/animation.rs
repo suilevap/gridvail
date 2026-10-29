@@ -3,12 +3,15 @@ use bevy::prelude::*;
 /// Where an object is shown, written by the animation step.
 ///
 /// `position` is in fractional grid cells and trails `Pos` while the object
-/// moves between cells; `lift` is its height above the ground in cells;
+/// moves between cells; `pose` is how far a gesture (a thrust, a shake)
+/// takes it off that position, which is drawn but not followed (the camera
+/// stays on `position`); `lift` is its height above the ground in cells;
 /// `height` is how far it stands out of the floor, from 0 (sunk into it) to
 /// 1 (standing), for an object [`Rising`] or [`Sinking`].
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct AnimatedPos {
     pub position: Vec2,
+    pub pose: Vec2,
     pub lift: f32,
     pub height: f32,
 }
@@ -17,9 +20,15 @@ impl AnimatedPos {
     pub fn at(cell: IVec2) -> Self {
         Self {
             position: cell.as_vec2(),
+            pose: Vec2::ZERO,
             lift: 0.0,
             height: 1.0,
         }
+    }
+
+    /// Where it is drawn: its position, posed.
+    pub fn drawn(&self) -> Vec2 {
+        self.position + self.pose
     }
 }
 
@@ -95,3 +104,39 @@ impl Corners {
 /// animation step follows them instead of going straight.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SlideRoute(pub Corners);
+
+/// How a gesture moves: out toward `toward` (in cells) and back, in one of
+/// a few shapes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum GestureShape {
+    /// Out and back in one smooth arch (a bump, a lean).
+    Reach { toward: Vec2 },
+    /// A pull back, a fast thrust out to `toward` at the middle of the
+    /// gesture (the moment of contact), and back: an attack.
+    Thrust { toward: Vec2 },
+    /// Knocked out toward `toward`, then shaking back and forth smaller and
+    /// smaller: taking a blow.
+    Shake { toward: Vec2 },
+}
+
+/// A move out and back that does not change the object's cell, `secs`
+/// long, starting `delay` seconds from now: a swing, a recoil. Several
+/// gestures (and held moves) timed against each other play one exchange in
+/// order. Shown by the animation step, if there is one.
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct Gesture {
+    pub entity: Entity,
+    pub shape: GestureShape,
+    pub secs: f32,
+    pub delay: f32,
+}
+
+/// Holds `entity`'s moves to new cells for `secs`: it keeps being shown
+/// where it was going (and any gesture plays on) while the simulation has
+/// already moved it, so a knocked body starts sliding when the blow lands,
+/// not when it was decided. The longest hold asked for wins.
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct HoldMoves {
+    pub entity: Entity,
+    pub secs: f32,
+}

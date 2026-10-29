@@ -49,12 +49,22 @@ impl Plugin for SimulationPlugin {
                     ActionStage::Effects,
                     ActionStage::Costs,
                     ActionStage::Movement,
-                    ActionStage::Hits,
-                    ActionStage::Damage,
                 )
                     .chain()
                     .after(recharge_tokens)
                     .before(move_commands)
+                    .in_set(GamePhase::Simulation),
+            )
+            // Damage is taken once the pass has moved everything, knocked
+            // bodies included: a lethal blow knocks its target like any
+            // other, and it dies where it lands, before the dead are
+            // removed.
+            .configure_sets(
+                Update,
+                (ActionStage::Hits, ActionStage::Damage)
+                    .chain()
+                    .after(resolve_commit)
+                    .before(drop_items)
                     .in_set(GamePhase::Simulation),
             )
             // Physics rides the movement passes: knocks start after each

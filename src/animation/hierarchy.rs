@@ -91,6 +91,8 @@ pub fn animate_children(
         if let Ok(mut shown) = shown.get_mut(entity) {
             shown.set_if_neq(AnimatedPos {
                 position: parent.position + animation.state.position,
+                // A child goes with its parent's gestures.
+                pose: parent.pose,
                 lift: parent.lift + animation.state.lift,
                 height: parent.height,
             });

@@ -402,3 +402,22 @@ fn a_dead_player_plays_the_map_again() {
     assert_eq!(health.hp, health.max);
     assert_eq!(pos, PLAYER);
 }
+
+#[test]
+fn a_lethal_blow_still_knocks_its_target_before_it_dies() {
+    let mut game = Game::new("XXXXXXX\nX.....X\nX.pee.X\nX.....X\nXXXXXXX\n", 100);
+    // On its alert beat the near guard is caught off guard: the lunge's
+    // critical hit downs it, but it is knocked into the far guard first.
+    game.press(RIGHT);
+    game.press(RIGHT);
+    game.frames(4);
+    assert!(
+        game.enemy_at(IVec2::new(3, 2)).is_none(),
+        "the near one lives"
+    );
+    assert_eq!(
+        game.enemy_at(IVec2::new(4, 2)).expect("stays").1,
+        1,
+        "the dead body did not hit the far one"
+    );
+}

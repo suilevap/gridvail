@@ -180,6 +180,12 @@ pub enum Path {
     /// Out toward `toward` (an offset in cells) and back: a move that ends
     /// where it started, such as bumping into a wall.
     Excursion { toward: Vec2 },
+    /// Pulled back a little, thrust out to `toward` at the middle of the
+    /// move, and back: an attack, with its contact at the middle.
+    Thrust { toward: Vec2 },
+    /// Out to `toward` at once, then shaking back and forth, smaller and
+    /// smaller, back to the start: taking a blow.
+    Shake { toward: Vec2 },
     /// Curved to the left of the direction of travel by up to `bulge` cells
     /// (negative curves right).
     Arc { bulge: f32 },
@@ -198,6 +204,31 @@ pub enum Path {
         corners: [Vec2; MAX_CORNERS],
         len: u8,
     },
+}
+
+/// How far out a thrust is at progress `s`: pulled back to -0.3 over the
+/// first 30%, thrust out to 1 by the middle (the contact), back to 0 by the
+/// end.
+fn thrust(s: f32) -> f32 {
+    const BACK: f32 = 0.3;
+    const PULL: f32 = 0.3;
+    let s = s.clamp(0.0, 1.0);
+    if s < PULL {
+        -BACK * (s / PULL * std::f32::consts::FRAC_PI_2).sin()
+    } else if s < 0.5 {
+        let t = (s - PULL) / (0.5 - PULL);
+        -BACK + (1.0 + BACK) * t * t
+    } else {
+        let t = (s - 0.5) / 0.5;
+        1.0 - t * t * (3.0 - 2.0 * t)
+    }
+}
+
+/// How far out a shake is at progress `s`: out at once, then three swings
+/// back and forth, dying away.
+fn shake(s: f32) -> f32 {
+    let s = s.clamp(0.0, 1.0);
+    (s * 3.0 * std::f32::consts::TAU + std::f32::consts::FRAC_PI_2).sin() * (1.0 - s) * (1.0 - s)
 }
 
 impl Path {
@@ -237,6 +268,8 @@ impl Path {
         match self {
             Self::Straight => base,
             Self::Excursion { toward } => base + toward * arch,
+            Self::Thrust { toward } => base + toward * thrust(s),
+            Self::Shake { toward } => base + toward * shake(s),
             Self::Arc { bulge } => base + (to - from).normalize_or_zero().perp() * bulge * arch,
             Self::Hermite { m0, m1 } => {
                 let (s2, s3) = (s * s, s * s * s);
@@ -383,6 +416,12 @@ impl MotionState {
         self.current.path = match self.current.path {
             Path::Straight => Path::Straight,
             Path::Excursion { toward } => Path::Excursion {
+                toward: turn(toward),
+            },
+            Path::Thrust { toward } => Path::Thrust {
+                toward: turn(toward),
+            },
+            Path::Shake { toward } => Path::Shake {
                 toward: turn(toward),
             },
             // A rigid turn keeps left on the left.
