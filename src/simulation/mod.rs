@@ -2,12 +2,11 @@
 
 #![allow(clippy::type_complexity)]
 
-mod channel;
 mod control;
-mod displace;
 mod items;
 mod lifecycle;
 mod motion;
+mod physics;
 mod plates;
 mod plugin;
 mod portals;
@@ -15,20 +14,21 @@ mod resolution;
 pub mod room_plans;
 mod rooms;
 mod tiles;
+mod time;
 mod turn;
 
-pub use channel::*;
 pub use control::*;
-pub use displace::*;
 pub use items::*;
 pub use lifecycle::*;
 pub use motion::*;
+pub use physics::*;
 pub use plates::*;
 pub use plugin::*;
 pub use portals::*;
 pub use resolution::*;
 pub use rooms::*;
 pub use tiles::*;
+pub use time::*;
 pub use turn::*;
 
 #[cfg(test)]

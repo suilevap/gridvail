@@ -29,18 +29,19 @@ pub fn critical_hits(
     }
 }
 
-/// Driven into something, both the mover and what it hit take
-/// `ImpactDamage`.
-pub fn impacts_deal_damage(
+/// A body knocked into something, and what it ran into, both take
+/// `ImpactDamage` for each cell of speed it had left: the faster, the
+/// harder.
+pub fn collisions_deal_damage(
     impact_damage: Res<ImpactDamage>,
-    mut impacts: MessageReader<Impact>,
+    mut collisions: MessageReader<Collision>,
     mut damage: MessageWriter<Damage>,
 ) {
-    for impact in impacts.read() {
-        for target in [impact.mover, impact.obstacle] {
+    for collision in collisions.read() {
+        for target in [collision.mover, collision.obstacle] {
             damage.write(Damage {
                 target,
-                amount: impact_damage.0,
+                amount: impact_damage.0 * collision.speed,
             });
         }
     }

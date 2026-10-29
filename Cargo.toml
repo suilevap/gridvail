@@ -40,6 +40,9 @@ rand = "0.10"
 bitflags = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The rules files' format. Bevy's asset crate already uses it, so it adds
+# nothing to the web download.
+ron = "0.12"
 # Rasterizes the cell font's glyphs for the wall shader; Bevy's text uses it
 # too, so it adds nothing to the download.
 swash = "0.2"

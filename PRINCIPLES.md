@@ -7,8 +7,8 @@ yet is listed under [Backfill](#backfill), to be brought in line in
 changes of its own, not alongside features.
 
 The combat code (`selection/`, `combat/`, `damage/`,
-`simulation/channel.rs`, `simulation/displace.rs`) follows them and is the
-reference for the examples below.
+`simulation/time.rs`, `simulation/physics.rs`, `content/data.rs`) follows
+them and is the reference for the examples below.
 
 ## Principles
 
@@ -33,7 +33,7 @@ Components are small and hold data only: a few fields, no behaviour. A
 property that comes and goes often (being off guard) is a component
 written in place (`Exposed(bool)`), so entities do not move between
 archetypes every turn. One that comes and goes rarely (a wound-up strike)
-is a component inserted and removed (`Telegraph`, `Channeling`).
+is a component inserted and removed (`Telegraph`, `Debt`).
 
 ### 3. Systems meet in messages and components, not in each other
 
@@ -64,11 +64,12 @@ Changes to the world pass through three kinds of system:
 
 1. **Deciders** (input, AI) write intents: `MoveCommand`, `UseWeapon`,
    `ContextAction`.
-2. **Effect** systems turn intents into requests: `Hit`, `Displace`,
-   `Damage`.
+2. **Effect** systems turn intents into requests: `Hit`, `Impulse`,
+   `Delay`, `Damage`.
 3. **Resolvers** apply requests to shared state, and are the only systems
-   that change it: `displace` and movement resolution move things on the
-   grid, `take_damage` changes `Health`.
+   that change it: `move_bodies` and movement resolution move things on
+   the grid, `owe` and `pay_debts` keep time, `take_damage` changes
+   `Health`.
 
 Deciders and effect systems never write the grid, positions or health
 directly. That keeps the rules of the world (swaps, blocking, who goes
@@ -131,7 +132,7 @@ only it knows, such as whether a direction is a fresh press or held on
 
 ### 11. Steady turns allocate nothing
 
-Buffers are kept and reused (`Local<DisplaceBatch>`, `CellMarks`),
+Buffers are kept and reused (`Local<Bodies>`, `CellMarks`),
 messages carry what happens, and components are inserted or removed only on
 rare transitions. `tests/allocations.rs` guards steady turns.
 
@@ -139,7 +140,7 @@ rare transitions. `tests/allocations.rs` guards steady turns.
 
 A module is tested with `MinimalPlugins`, its own plugin and messages
 written by hand (`src/combat/tests.rs`, `src/selection/tests.rs`,
-`src/simulation/displace.rs`). Behaviour across modules is tested through
+`src/simulation/physics.rs`, `src/simulation/time.rs`). Behaviour across modules is tested through
 `GamePlugin` on small ASCII maps (`tests/combat.rs`). A system that cannot
 be tested without half the game is doing too much.
 
@@ -148,8 +149,8 @@ be tested without half the game is doing too much.
 - What does it read and write? Name the components and messages first.
 - What is it a case of? Is there a general mechanism below it should use
   or extend?
-- Can an existing message carry it (`ContextAction`, `Damage`, `Displace`,
-  `Hit`)? Answer that instead of adding a path.
+- Can an existing message carry it (`ContextAction`, `Damage`, `Impulse`,
+  `Delay`, `Hit`)? Answer that instead of adding a path.
 - Which stage does each system belong to?
 - Which numbers belong in `assets/rules/`?
 - What does the player see, and which marks or presentation system shows
@@ -158,18 +159,19 @@ be tested without half the game is doing too much.
 
 ## General mechanisms
 
-What today's systems are special cases of, and the general mechanism each
-should become. These are proposals, not yet built; each is its own change,
-and each lists what it would absorb, so the code ends with one of each.
+What the game's systems are special cases of, and the general mechanism
+each should become. Each says what is built (the combat systems use the
+mechanism already) and what older code it should still absorb; that
+absorbing is backfill, each its own change, so the code ends with one of
+each.
 
 ### Physics: bodies that move, push and collide
 
-**Today, two movement resolvers.** Walking already has the parts of
+**Before, two movement resolvers.** Walking already has the parts of
 physics: `Speed` (a velocity), `Friction`, `Collider`, and a resolver that
-records collisions. Knockback has a second one (`displace`), with its own
-rules for blocking, and its own collision report (`Impact`). Neither lets
-the player push a crate. Walking also moves a whole `Speed` in one jump, so
-a fast body would pass through what lies between.
+records collisions. Knockback had a second one, with its own rules for
+blocking and its own collision report. Walking also moves a whole `Speed`
+in one jump, so a fast body would pass through what lies between.
 
 **General.** One grid physics for every body:
 
@@ -187,18 +189,21 @@ a fast body would pass through what lies between.
   passed on to what was hit (billiards, a crate shoved into an enemy),
   doors that open when bumped, the animation's bump.
 
-**Absorbs.** `movement` and the resolution systems, `displace`,
-`CollisionBuffer`, `Impact`. **First users.** Maneuvers' knockback,
-pushing crates, throwing. **Also enables** previews (below): planning a
-sub-step is a pure function of the grid and the bodies.
+**Built** (`simulation/physics.rs`): `Impulse`, sub-steps, `Friction`,
+`Collision` with speed, `Pushable` passing motion on, rings that move only
+on purpose. Maneuvers' knockback uses it, and impact damage grows with
+speed. **Not yet:** `Mass`. **Still to absorb:** walking (`movement` and
+the resolution systems) and `CollisionBuffer`. **Next users:** pushing
+crates, throwing. **Also enables** previews (below): planning a sub-step is
+a pure function of the grid and the bodies.
 
 ### Time: actions cost turns, and effects can wait
 
-**Today.** `Tokens` give one action per turn, and recharging assigns, so
-nothing can cost more than a turn. `Channeling` spends whole turns and then
-says it is done; only weapons use it, so it reads as part of them. Other
-ways of counting turns are each their own: the AI's alert beat (`Pause`),
-`THINK_FRAMES`, and soon status effects.
+**Before.** `Tokens` give one action per turn, and recharging assigns, so
+nothing can cost more than a turn. A weapon-shaped "channeling" spent whole
+turns and then said it was done. Other ways of counting turns are each
+their own: the AI's alert beat (`Pause`), `THINK_FRAMES`, and soon status
+effects.
 
 **General.** An action economy with debt, plus scheduled effects:
 
@@ -213,16 +218,19 @@ ways of counting turns are each their own: the AI's alert beat (`Pause`),
   wind-up, then send the strike"; a fuse, a status that wears off, a
   respawn are the same.
 
-**Absorbs.** `Channeling`, `ChannelDone`, the AI's `Pause` turns.
-**First users.** Weapon wind-ups (cost plus scheduled strike), staggering a
-knocked enemy.
+**Built** (`simulation/time.rs`): `Debt` paid off a turn at a time before
+anyone decides, `Delay` to add to it, `Scheduled` messages released when it
+is paid (any message type, by `add_scheduled_message`). Weapon wind-ups use
+it: a delay plus the strike scheduled. Debt lives beside `Tokens` rather
+than in them. **Still to absorb:** `Tokens` themselves (costs other than
+one turn, a different recharge for haste or slowness), the AI's `Pause`
+turns. **Next users:** a stagger after a collision, a stun.
 
 ### Data: one format, and prefabs
 
-**Today.** Each rules file has its own format and its own parser
-(`content/actors.rs`, `statures.rs`, the tile rules), and the app converts
-each spec to components by hand (`ActorKind::equip`). A new file or a new
-field means new parser code and new glue.
+**Before.** Each rules file had its own format and its own parser, and the
+app converts each spec to components by hand (`ActorKind::equip`). A new
+file or a new field meant new parser code and new glue.
 
 **General.** One serde format for every new data file (RON: readable,
 comments, multi-line strings for ASCII art; already compiled into the web
@@ -242,8 +250,12 @@ Maps stay in their own text format (their point is the picture), and the
 tile rules stay in the original game's formats (they are reference data
 for the parity tests).
 
-**Absorbs.** The actor roster parser, the statures parser, `ActorKind`'s
-hand-written conversion, the spawn constants in `app/map.rs`.
+**Built** (`content/data.rs`, `content/art.rs`): `data::read` reads any
+RON file into any `Deserialize` type; `art::cells` reads shapes drawn as
+text. The actor roster (`assets/rules/actors.ron`) is read that way, with
+no parser of its own. **Not yet:** prefabs; `ActorKind::equip` still
+converts by hand. **Still to absorb:** the statures parser, the spawn
+constants in `app/map.rs`.
 
 ### Interactions: something happens to a thing, and the thing reacts
 
@@ -268,7 +280,7 @@ Doors and plates (backfill), then hazards.
 
 ### Areas: sets of cells around a point
 
-**Today.** Weapon `StrikeShape`s, field-of-view and light results, the
+**Before.** Weapon strike shapes, field-of-view and light results, the
 transition's `Oval`, room rectangles and cell marks each describe "these
 cells" their own way.
 
@@ -278,14 +290,16 @@ can be seen from the origin (the FOV code already answers that), giving
 the cells it covers. Strikes, explosions, noise, aimed throws (the
 design's sector projectiles) and marks all ask an area for their cells.
 
-**Absorbs.** `StrikeShape`; the cell-set parts of the transition and
-rooms. **First users.** Weapon strikes, then aiming.
+**Built** (`model::Area`): listed cells in the frame of a facing; weapons
+strike an `Area`. **Not yet:** radius, sector and seen-from-the-origin
+shapes, when blasts and aiming need them. **Still to absorb:** the
+cell-set parts of the transition and rooms.
 
 ### Conditions: states with a duration
 
 **Today.** `Exposed` (worked out from awareness every frame), `Telegraph`
-and `Channeling` (until the strike), the alert beat; soon stunned,
-staggered, burning.
+and `Debt` (until the strike), the alert beat; soon stunned, staggered,
+burning.
 
 **General.** Conditions as small components with a duration on the time
 mechanism above, applied by whatever causes them and removed when they
@@ -316,13 +330,14 @@ code.
 
 ### Suggested order
 
-1. **Data**: small, and every later mechanism takes its numbers from it.
-2. **Time**: small; replaces `Channeling` and makes "time off" possible.
-3. **Physics**: the largest; replaces both movement resolvers and makes
-   pushing objects possible; its pure planning makes previews possible.
-4. **Previews**: on top of physics, for the predictability issue.
-5. **Interactions**: with the doors, plates and hazards backfill.
-6. **Areas** and **conditions**: when aiming and status effects arrive.
+Data, time, physics and areas are built for the combat systems. What
+remains, in order:
+
+1. **Previews**: on physics' planning, for the predictability issue.
+2. **Backfill into the built mechanisms**: walking into physics, `Tokens`
+   into time, statures and spawn constants into data.
+3. **Interactions**: with the doors, plates and hazards backfill.
+4. **Prefabs**, then **conditions**, when status effects arrive.
 
 ## Backfill
 
@@ -336,7 +351,7 @@ it would help. Each item is its own change.
    derivation (tiles, direction glyphs). (Principle 6.)
 2. **Collisions as a shared buffer** (`CollisionBuffer`). Bumps are a
    resource vector read by doors, animation, the HUD and the agent API.
-   Make them a message (`Bumped`), like `Impact`; part of
+   Make them a message, like physics' `Collision`; part of
    [physics](#physics-bodies-that-move-push-and-collide). (Principle 3.)
 3. **Doors do several jobs in one system** (`simulation/items.rs`,
    `open_doors`). It spends the key, opens the door, frees the grid cell
@@ -355,7 +370,7 @@ it would help. Each item is its own change.
    [prefabs](#data-one-format-and-prefabs). (Principle 8.)
 6. **Hazards that do nothing.** `ElectroField` and `AcidPool` are markers
    with light only. As small systems sending `Damage` (and later
-   reactions to `Impact`), they would be the first hazards, with no change
+   reactions to `Collision`), they would be the first hazards, with no change
    to combat. (Principles 3, 4.)
 7. **Input gated by knowing other features** (`player_input`). It checks
    the settings menu and cutscenes itself. Make "input blocked" one

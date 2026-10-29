@@ -1,24 +1,17 @@
 //! Kinds of actor, by map glyph, from the roster in
-//! `assets/rules/actors.txt`: what each is made of when spawned.
+//! `assets/rules/actors.ron`: what each is made of when spawned.
 
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use flatbt_bevy::prelude::Behavior;
 
 use crate::ai::{enemy_tree, hunter_tree};
-use crate::content::actors::{parse_roster, MoveSpec, Roster};
+pub use crate::content::actors::Tree;
+use crate::content::actors::{MoveSpec, Roster};
+use crate::content::data;
 use crate::model::*;
 
-const ROSTER_TEXT: &str = include_str!("../../assets/rules/actors.txt");
-
-/// The behaviour an actor runs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tree {
-    /// Watches, hunts, wanders (`enemy_tree`).
-    Enemy,
-    /// Follows its order, fetching keys (`hunter_tree`).
-    Hunter,
-}
+const ROSTER_TEXT: &str = include_str!("../../assets/rules/actors.ron");
 
 /// One kind of actor: its stats and what it fights with.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -64,6 +57,8 @@ impl ActorKind {
 pub struct ActorKinds(pub HashMap<char, ActorKind>);
 
 impl ActorKinds {
+    /// The kinds a roster describes; every weapon and move set an actor
+    /// names must be in it.
     pub fn from_roster(roster: &Roster) -> Result<Self, String> {
         let move_of = |spec: &MoveSpec| Maneuver {
             name: spec.name.clone(),
@@ -72,36 +67,43 @@ impl ActorKinds {
             follow: spec.follow,
         };
         let mut kinds = HashMap::default();
-        for actor in &roster.actors {
-            let tree = match actor.tree.as_deref() {
+        for (&glyph, actor) in &roster.actors {
+            let weapon = match actor.weapon.as_deref() {
                 None => None,
-                Some("enemy") => Some(Tree::Enemy),
-                Some("hunter") => Some(Tree::Hunter),
-                Some(other) => return Err(format!("{} runs no known tree `{other}`", actor.name)),
+                Some(name) => {
+                    let spec = roster
+                        .weapons
+                        .get(name)
+                        .ok_or_else(|| format!("{} names no known weapon `{name}`", actor.name))?;
+                    let cells = spec
+                        .cells()
+                        .map_err(|error| format!("weapon `{name}`: {error}"))?;
+                    Some(Weapon {
+                        area: Area(cells),
+                        damage: spec.damage,
+                        windup: spec.windup,
+                    })
+                }
             };
-            let weapon = actor
-                .weapon
-                .as_deref()
-                .and_then(|name| roster.weapon(name))
-                .map(|spec| Weapon {
-                    shape: StrikeShape(spec.cells.clone()),
-                    damage: spec.damage,
-                    windup: spec.windup,
-                });
-            let maneuvers = actor
-                .moves
-                .as_deref()
-                .and_then(|name| roster.moves(name))
-                .map(|spec| Maneuvers {
-                    forward: move_of(&spec.forward),
-                    side: move_of(&spec.side),
-                    back: move_of(&spec.back),
-                });
+            let maneuvers = match actor.moves.as_deref() {
+                None => None,
+                Some(name) => {
+                    let spec = roster
+                        .moves
+                        .get(name)
+                        .ok_or_else(|| format!("{} names no known moves `{name}`", actor.name))?;
+                    Some(Maneuvers {
+                        forward: move_of(&spec.forward),
+                        side: move_of(&spec.side),
+                        back: move_of(&spec.back),
+                    })
+                }
+            };
             kinds.insert(
-                actor.glyph,
+                glyph,
                 ActorKind {
                     name: actor.name.clone(),
-                    tree,
+                    tree: actor.tree,
                     hp: actor.hp,
                     weapon,
                     maneuvers,
@@ -129,7 +131,7 @@ impl ActorKinds {
 
 impl Default for ActorKinds {
     fn default() -> Self {
-        parse_roster(ROSTER_TEXT)
+        data::read::<Roster>("actors.ron", ROSTER_TEXT)
             .and_then(|roster| Self::from_roster(&roster))
             .unwrap_or_else(|error| panic!("actors: {error}"))
     }

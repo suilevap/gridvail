@@ -42,14 +42,19 @@ pub struct PlayerCommands;
 /// belongs to, not the systems around it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActionStage {
-    /// Actions begun on an earlier turn go on (and may end), before anyone
+    /// Time passes: owed turns are paid off, and what was scheduled for
+    /// then falls due.
+    Due,
+    /// What fell due happens (a wound-up strike lands), before anyone
     /// decides anything this turn.
     Ongoing,
     /// Actors decide what to do (after `PlayerCommands`).
     Decide,
-    /// Decisions turn into effects: hits, knockbacks, weapons readied.
+    /// Decisions turn into effects: hits, impulses, delays.
     Effects,
-    /// Knocked things move.
+    /// What actions cost in time is owed.
+    Costs,
+    /// Bodies set moving move, push and collide.
     Movement,
     /// What landed turns into damage.
     Hits,

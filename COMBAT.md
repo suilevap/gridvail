@@ -135,7 +135,7 @@ Out, roughly in the order they would follow:
   before anyone acts in it. The player gets exactly one action in between:
   step off, or knock the striker so its blow lands elsewhere.
 - **Strike patterns decide the answer.** Each weapon strikes its own cells
-  (drawn as art in `assets/rules/actors.txt`). Against a guard's sweep (the
+  (drawn as art in `assets/rules/actors.ron`). Against a guard's sweep (the
   row in front) stepping aside does not help and, of the maneuvers, only a
   yank is safe: a lunge or a push leaves the player in the row the sweep
   covers once the guard is knocked. Against a spearman's spear (two cells
@@ -181,21 +181,26 @@ Small modules that share only data and messages (see `ARCHITECTURE.md`):
   second direction to the first (a name, the hit's damage, whether it
   knocks the target and the actor follows). A new fighting style is a new
   `@moves` block in the roster.
-- **Weapons own their strikes.** A `Weapon` (pattern, damage, wind-up) on
-  any actor answers `UseWeapon`: it aims (`Telegraph`) and winds up
-  (`Channeling`), then strikes its cells. The AI only decides to attack.
-  New patterns are new `@weapon` art.
-- **Multi-turn actions are general.** `Channeling` spends an actor's turns
-  before anyone decides, so nothing else needs to check whether an actor
-  is busy.
-- **Knockback is general.** `Displace` moves things together (swaps,
-  chains); a blocked forced move is an `Impact`.
+- **Weapons own their strikes.** A `Weapon` (an `Area`, damage, wind-up)
+  on any actor answers `UseWeapon`: it aims (`Telegraph`), owes its
+  wind-up in turns (`Delay`) with the `Strike` scheduled for when that is
+  paid, then strikes its area. The AI only decides to attack. New patterns
+  are new art in the roster.
+- **Time is general.** An actor in `Debt` sits out its turns until paid,
+  and any message can wait on that (`Scheduled`). A wind-up is one user; a
+  stun or a stagger is a `Delay` with nothing scheduled.
+- **Knockback is physics.** An `Impulse` sets a body moving cell by cell,
+  friction slows it, a blocked one is a `Collision` with the speed it had
+  left, and a `Pushable` body it hits carries the motion on. A knock of 1
+  is a maneuver today; a throw or a shove of a crate is a bigger impulse
+  on the same mechanism.
 - **Damage is its own thing** (`damage/`): `Damage` comes off `Health`,
-  whatever sent it. Hits, critical hits and impacts are separate small
-  systems that each send their share; a hazard, fire or a fall can send
+  whatever sent it. Hits, critical hits and collisions (harder the faster)
+  are separate small systems that each send their share; a hazard, fire or a fall can send
   `Damage` too.
 - **Who is who is data.** Actor kinds, by map glyph, name their
-  behaviour, hit points and weapon or moves (`assets/rules/actors.txt`).
+  behaviour, hit points and weapon or moves (`assets/rules/actors.ron`),
+  read by the one generic RON reader: a new data file needs only a type.
 - **Input is intent.** Keys, swipes and the agent API all write the same
   `MoveCommand` (and `CancelIntent`); nothing reads devices.
 - Still to come: actions in progress beyond a pick (aiming, with a

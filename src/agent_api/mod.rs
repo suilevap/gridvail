@@ -194,7 +194,7 @@ fn get_state(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
         .iter(world)
         .flat_map(|(pos, telegraph, weapon)| {
             weapon
-                .shape
+                .area
                 .cells(pos.0, telegraph.dir)
                 .map(Position::from)
                 .collect::<Vec<_>>()

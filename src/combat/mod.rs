@@ -2,13 +2,17 @@
 //! one message. See `COMBAT.md` for the design.
 //!
 //! - `perform_maneuvers`: a `ContextAction` (from `selection`) by an actor
-//!   with `Maneuvers` becomes a `Hit` and `Displace`ments;
+//!   with `Maneuvers` becomes a `Hit` and `Impulse`s;
 //! - `ready_weapons` and `strike`: a `UseWeapon` (from the AI) aims a
-//!   `Weapon` (`Telegraph`) and winds it up (`Channeling`); when that is
-//!   done its cells are struck: a `Hit` on each;
+//!   `Weapon` (`Telegraph`) and owes its wind-up (`Delay`), with the
+//!   `Strike` `Scheduled` for when it is paid; the strike hits each cell of
+//!   the weapon's `Area`;
 //! - `hits_deal_damage`, `critical_hits` (on `Exposed` targets) and
-//!   `impacts_deal_damage` (an `Impact` from a blocked displacement) turn
-//!   what landed into `Damage`, which `damage` takes off `Health`.
+//!   `collisions_deal_damage` (a knocked body's `Collision`) turn what
+//!   landed into `Damage`, which `damage` takes off `Health`.
+//!
+//! Time (debts, scheduled messages) and physics (impulses, collisions) are
+//! general mechanisms in `simulation`; combat is one of their users.
 //!
 //! Each reads and writes messages and components only, so a new move, a
 //! new weapon or a new reaction to hits is data or one more system.
@@ -25,7 +29,7 @@ use bevy::prelude::*;
 
 use crate::model::*;
 use crate::schedule::{ActionStage, GamePhase, MarkCells};
-use crate::simulation::channel;
+use crate::simulation::ScheduleMessages;
 
 pub struct CombatPlugin;
 
@@ -35,12 +39,13 @@ impl Plugin for CombatPlugin {
             .init_resource::<ImpactDamage>()
             .add_message::<Hit>()
             .add_message::<UseWeapon>()
+            .add_scheduled_message::<Strike>()
             .add_systems(
                 Update,
                 (
-                    strike.after(channel).in_set(ActionStage::Ongoing),
+                    strike.in_set(ActionStage::Ongoing),
                     (perform_maneuvers, ready_weapons).in_set(ActionStage::Effects),
-                    (hits_deal_damage, critical_hits, impacts_deal_damage)
+                    (hits_deal_damage, critical_hits, collisions_deal_damage)
                         .in_set(ActionStage::Hits),
                 )
                     .in_set(GamePhase::Simulation),

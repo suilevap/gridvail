@@ -1,17 +1,21 @@
 use bevy::prelude::*;
 
 use super::*;
+use crate::simulation::TimeSet;
 
 fn app() -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .insert_resource(MapGrid::new(8, 8))
-        .add_message::<ChannelDone>()
+        .add_message::<DebtPaid>()
+        .add_message::<Delay>()
         .add_message::<ContextAction>()
-        .add_message::<Displace>()
-        .add_message::<Impact>()
+        .add_message::<Impulse>()
+        .add_message::<Collision>()
         .add_message::<Damage>()
-        .add_plugins(CombatPlugin);
+        .add_plugins(CombatPlugin)
+        // As in the game: what falls due is released before it happens.
+        .configure_sets(Update, TimeSet::Release.before(ActionStage::Ongoing));
     app
 }
 
@@ -24,7 +28,7 @@ fn blade() -> Maneuvers {
     let make = |name: &str, follow| Maneuver {
         name: name.to_string(),
         hit: 1,
-        knock: true,
+        knock: 1,
         follow,
     };
     Maneuvers {
@@ -62,16 +66,16 @@ fn a_lunge_hits_knocks_the_target_on_and_follows() {
         }]
     );
     assert_eq!(
-        sent::<Displace>(&app),
+        sent::<Impulse>(&app),
         vec![
-            Displace {
+            Impulse {
                 entity: target,
-                to: IVec2::new(4, 2),
+                velocity: IVec2::X,
                 forced: true
             },
-            Displace {
+            Impulse {
                 entity: actor,
-                to: IVec2::new(3, 2),
+                velocity: IVec2::X,
                 forced: false
             },
         ]
@@ -82,26 +86,23 @@ fn a_lunge_hits_knocks_the_target_on_and_follows() {
 fn a_push_knocks_the_target_aside_and_stays() {
     let (app, _, target) = maneuver(IVec2::Y);
     assert_eq!(
-        sent::<Displace>(&app),
-        vec![Displace {
+        sent::<Impulse>(&app),
+        vec![Impulse {
             entity: target,
-            to: IVec2::new(3, 3),
+            velocity: IVec2::Y,
             forced: true
         }]
     );
 }
 
 #[test]
-fn a_yank_pulls_the_target_into_the_actors_cell_and_swaps() {
+fn a_yank_pulls_the_target_back_and_the_actor_steps_after_it() {
     let (app, actor, target) = maneuver(IVec2::NEG_X);
-    let displaced: Vec<_> = sent::<Displace>(&app)
+    let impulses: Vec<_> = sent::<Impulse>(&app)
         .iter()
-        .map(|d| (d.entity, d.to))
+        .map(|i| (i.entity, i.velocity))
         .collect();
-    assert_eq!(
-        displaced,
-        vec![(target, IVec2::new(2, 2)), (actor, IVec2::new(3, 2))]
-    );
+    assert_eq!(impulses, vec![(target, IVec2::NEG_X), (actor, IVec2::X)]);
 }
 
 #[test]
@@ -129,23 +130,30 @@ fn a_hit_on_an_exposed_target_is_critical() {
 }
 
 #[test]
-fn an_impact_hurts_both_sides() {
+fn a_collision_hurts_both_sides_by_its_speed() {
     let mut app = app();
     let (mover, obstacle) = (
         app.world_mut().spawn_empty().id(),
         app.world_mut().spawn_empty().id(),
     );
-    app.world_mut().write_message(Impact { mover, obstacle });
+    app.world_mut().write_message(Collision {
+        mover,
+        obstacle,
+        speed: 2,
+    });
     app.update();
-    let targets: Vec<_> = sent::<Damage>(&app).iter().map(|d| d.target).collect();
-    assert_eq!(targets, vec![mover, obstacle]);
+    let damage: Vec<_> = sent::<Damage>(&app)
+        .iter()
+        .map(|d| (d.target, d.amount))
+        .collect();
+    assert_eq!(damage, vec![(mover, 2), (obstacle, 2)]);
 }
 
 #[test]
-fn a_weapon_is_aimed_and_wound_up_then_strikes_its_shape() {
+fn a_weapon_is_aimed_owes_its_windup_then_strikes_its_area() {
     let mut app = app();
     let sweep = Weapon {
-        shape: StrikeShape(vec![IVec2::new(1, -1), IVec2::X, IVec2::new(1, 1)]),
+        area: Area(vec![IVec2::new(1, -1), IVec2::X, IVec2::new(1, 1)]),
         damage: 1,
         windup: 1,
     };
@@ -164,19 +172,34 @@ fn a_weapon_is_aimed_and_wound_up_then_strikes_its_shape() {
         dir: IVec2::NEG_X,
     });
     app.update();
+    assert_eq!(
+        sent::<Delay>(&app),
+        vec![Delay {
+            entity: wielder,
+            turns: 1
+        }]
+    );
     let world = app.world();
     assert_eq!(
         world.get::<Telegraph>(wielder).map(|t| t.dir),
         Some(IVec2::NEG_X)
     );
-    assert_eq!(
-        world.get::<Channeling>(wielder),
-        Some(&Channeling { turns: 1 })
-    );
+    assert!(world.get::<Scheduled<Strike>>(wielder).is_some());
 
-    app.world_mut().write_message(ChannelDone(wielder));
+    app.world_mut().write_message(DebtPaid(wielder));
     app.update();
-    let struck: Vec<_> = sent::<Hit>(&app).iter().map(|hit| hit.target).collect();
+    app.update();
+    let messages = app.world().resource::<Messages<Hit>>();
+    let struck: Vec<_> = messages
+        .iter_current_update_messages()
+        .map(|hit| hit.target)
+        .collect();
+    let struck = if struck.is_empty() {
+        let mut cursor = messages.get_cursor();
+        cursor.read(messages).map(|hit| hit.target).collect()
+    } else {
+        struck
+    };
     assert!(struck.contains(&front) && struck.contains(&beside));
     assert!(!struck.contains(&behind));
     assert!(app.world().get::<Telegraph>(wielder).is_none());

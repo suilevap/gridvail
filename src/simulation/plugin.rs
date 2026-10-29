@@ -2,8 +2,8 @@ use bevy::prelude::*;
 use rand::SeedableRng;
 
 use crate::model::{
-    ChannelDone, CollisionBuffer, ControlScheme, Displace, Impact, MapGrid, PortalCrossings,
-    SharedRng, Tile, TokenTimer, TurnPacing, TurnState,
+    Collision, CollisionBuffer, ControlScheme, Impulse, MapGrid, PortalCrossings, SharedRng, Tile,
+    TokenTimer, TurnPacing, TurnState,
 };
 use crate::schedule::{ActionStage, GamePhase, PlayerCommands, StartupPhase};
 
@@ -23,6 +23,7 @@ impl SimulationPlugin {
 
 impl Plugin for SimulationPlugin {
     fn build(&self, app: &mut App) {
+        time::configure(app);
         app.init_resource::<TurnState>()
             .init_resource::<ControlScheme>()
             .init_resource::<TokenTimer>()
@@ -32,18 +33,19 @@ impl Plugin for SimulationPlugin {
             .init_resource::<CommitBuffer>()
             .init_resource::<super::room_plans::RoomPlanners>()
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(self.rng_seed)))
-            .add_message::<ChannelDone>()
-            .add_message::<Displace>()
-            .add_message::<Impact>()
+            .add_message::<Impulse>()
+            .add_message::<Collision>()
             // A turn's actions, in order: begun ones go on, input is read,
             // actors decide, and the effects play out before the moves.
             .configure_sets(
                 Update,
                 (
+                    ActionStage::Due,
                     ActionStage::Ongoing,
                     PlayerCommands,
                     ActionStage::Decide,
                     ActionStage::Effects,
+                    ActionStage::Costs,
                     ActionStage::Movement,
                     ActionStage::Hits,
                     ActionStage::Damage,
@@ -53,13 +55,7 @@ impl Plugin for SimulationPlugin {
                     .before(move_commands)
                     .in_set(GamePhase::Simulation),
             )
-            .add_systems(
-                Update,
-                (
-                    channel.in_set(ActionStage::Ongoing),
-                    displace.in_set(ActionStage::Movement),
-                ),
-            )
+            .add_systems(Update, move_bodies.in_set(ActionStage::Movement))
             .add_systems(
                 Startup,
                 (size_commit_buffer, tile_system)

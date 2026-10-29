@@ -4,20 +4,17 @@ use crate::model::*;
 
 /// Answers a `ContextAction` by an actor with `Maneuvers`: the move for how
 /// the second direction relates to the first hits the target, knocks it
-/// the way of the second direction and has the actor follow, as the move
-/// says. It only says what should happen; hits and displacements are
-/// carried out by their own systems.
+/// the way of the second direction and has the actor step after it, as the
+/// move says. It only asks; hits and impulses are carried out elsewhere.
 pub fn perform_maneuvers(
     mut actions: MessageReader<ContextAction>,
     mut hits: MessageWriter<Hit>,
-    mut displacements: MessageWriter<Displace>,
+    mut impulses: MessageWriter<Impulse>,
     actors: Query<&Maneuvers>,
-    targets: Query<(&Pos, Has<Movable>)>,
+    movable: Query<(), With<Movable>>,
 ) {
     for action in actions.read() {
-        let (Ok(maneuvers), Ok((target_pos, movable))) =
-            (actors.get(action.actor), targets.get(action.target))
-        else {
+        let Ok(maneuvers) = actors.get(action.actor) else {
             continue;
         };
         let maneuver = maneuvers.get(Relation::of(action.picked, action.dir));
@@ -28,18 +25,18 @@ pub fn perform_maneuvers(
                 damage: maneuver.hit,
             });
         }
-        if !(maneuver.knock && movable) {
+        if maneuver.knock <= 0 || !movable.contains(action.target) {
             continue;
         }
-        displacements.write(Displace {
+        impulses.write(Impulse {
             entity: action.target,
-            to: target_pos.0 + action.dir,
+            velocity: action.dir * maneuver.knock,
             forced: true,
         });
         if maneuver.follow {
-            displacements.write(Displace {
+            impulses.write(Impulse {
                 entity: action.actor,
-                to: target_pos.0,
+                velocity: action.picked,
                 forced: false,
             });
         }

@@ -502,7 +502,8 @@ fn spawn_player(
 const ENEMY_CROWD_COST: u32 = 4;
 
 /// What every actor from the roster is made of: a walking, carrying,
-/// token-taking body that can be picked and knocked about. Its kind adds
+/// token-taking body that can be picked, knocked about, and pushed on by
+/// a body knocked into it. Its kind adds
 /// the rest (`ActorKind::equip`).
 fn actor_body(pos: IVec2, cell_count: usize) -> impl Bundle {
     (
@@ -515,7 +516,7 @@ fn actor_body(pos: IVec2, cell_count: usize) -> impl Bundle {
         ),
         Glyph::new('☺', 1, RED),
         Inventory::default(),
-        (Selectable, Movable, Exposed::default()),
+        (Selectable, Movable, Pushable, Exposed::default()),
         (
             Destination::default(),
             TraversalPrefs {

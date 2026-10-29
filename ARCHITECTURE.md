@@ -135,18 +135,30 @@ and renderers must not import it.
   and fails only when every one has; with a key, door pricing lets the next
   plan through the door.
 - Fights are put together from small modules that only share data and
-  messages (`COMBAT.md` has the design). A turn's actions go through
-  `schedule::ActionStage`, in order, within the simulation before the
-  moves: `Ongoing` (actions begun earlier go on), `PlayerCommands`
-  (input), `Decide`, `Effects`, `Movement`, `Hits`, `Damage`. Each system
-  names its stage, not its neighbours.
-  - `simulation/channel.rs`: an actor `Channeling` an action of several
-    turns has each turn spent on it (its token taken before anyone
-    decides, so deciders such as the AI need no check) until
-    `ChannelDone`.
-  - `simulation/displace.rs`: `Displace` moves things at once, outside
-    walking, all of a frame's together, so swaps and chains work; a
-    blocked forced one is an `Impact`.
+  messages, on general mechanisms that other features can use too
+  (`COMBAT.md` has the design, `PRINCIPLES.md` the mechanisms). A turn's
+  actions go through `schedule::ActionStage`, in order, within the
+  simulation before the moves: `Due` (time passes), `Ongoing` (what fell
+  due happens), `PlayerCommands` (input), `Decide`, `Effects`, `Costs`,
+  `Movement`, `Hits`, `Damage`. Each system names its stage, not its
+  neighbours.
+  - `simulation/time.rs`, time: an actor in `Debt` has each of its turns
+    pay one off instead (its token taken before anyone decides, so
+    deciders such as the AI need no check) until `DebtPaid`; anything adds
+    debt with a `Delay` (a wind-up, later a stun). A message can be
+    `Scheduled` on an entity and is sent when its debt is paid; a message
+    type opts in with `add_scheduled_message`. An action with a cast time
+    is a delay plus its effect scheduled.
+  - `simulation/physics.rs`, physics for bodies moved outside walking: an
+    `Impulse` sets a body moving at a speed in cells; every moving body
+    takes a cell per sub-step, all together (so one can follow another,
+    and a ring of bodies moves only if one steps on purpose), losing its
+    `Friction` of speed per cell. A forced body that is blocked sends a
+    `Collision` with the speed it had left, and a `Pushable` body it ran
+    into carries that speed on. Walking still has its own resolver (see
+    `PRINCIPLES.md`, Backfill).
+  - `model::Area`: a set of cells around an origin, in the frame of a
+    facing (what a weapon strikes).
   - `selection/`: a `Selector` moving into something `Selectable` picks it
     (`Selected`), free; its next fresh move is a `ContextAction`, its
     action for the turn, which anything may answer; a `CancelIntent` (a
@@ -154,23 +166,27 @@ and renderers must not import it.
     commands (`MoveCommand::repeat`) so a held key never acts twice.
   - `combat/`: `perform_maneuvers` answers a context action by an actor
     with `Maneuvers` (one move per `Relation` of the second direction to
-    the first) with a `Hit` and `Displace`ments; `ready_weapons` answers a
+    the first) with a `Hit` and `Impulse`s; `ready_weapons` answers a
     `UseWeapon` by aiming the `Weapon` (`Telegraph`, a direction from the
-    wielder) and winding it up (`Channeling`), and `strike` hits every cell
-    of its `StrikeShape` when that is done; `hits_deal_damage`,
+    wielder), then owing its wind-up with the `Strike` scheduled, and
+    `strike` hits every cell of the weapon's `Area`; `hits_deal_damage`,
     `critical_hits` (on `Exposed` targets, which the AI writes) and
-    `impacts_deal_damage` turn hits and impacts into `Damage`.
+    `collisions_deal_damage` (by the collision's speed) turn what landed
+    into `Damage`.
   - `damage/`: `Damage` comes off `Health`; what runs out has `Died` and is
     destroyed, unless it `KeepOnDeath` (the player: the app plays the map
     again).
   - Cells to show the player (strikes, picks) are listed each frame into
     `CellMarks` by `MarkCells` systems; the frame composer tints whatever
     stands there, or draws a mark on the floor.
-  - Who is who comes from data: `content/actors.rs` reads the roster
-    (`assets/rules/actors.txt`: actor kinds by map glyph, their behaviour,
-    hit points, weapon or moves; weapons with their strike pattern drawn
-    as art; move sets), and `app::ActorKinds` equips each actor spawned
-    from a map glyph with what its kind names.
+  - Who is who comes from data. `content::data::read` reads any RON file
+    into any type that derives `Deserialize`, so a new data file is a new
+    type, with no parser; `content::art` reads shapes drawn as text art.
+    The roster (`assets/rules/actors.ron`: actor kinds by map glyph, their
+    behaviour, hit points, weapon or moves; weapons with their area drawn
+    as art; move sets) is read that way into `content::actors` types, and
+    `app::ActorKinds` equips each actor spawned from a map glyph with what
+    its kind names.
 - `lighting/` contains light blending and light colour: a `LightCell` keeps
   a level per kind of light, summed over every light of that kind; each
   kind has a gradient baked into a 256-entry lookup table (`LightLut`), and

@@ -13,49 +13,55 @@ pub const STRIKE_MARK: CellMark = CellMark {
     tint: RED,
 };
 
-/// Readies the weapon of each `UseWeapon`: aimed at once (`Telegraph`), and
-/// wound up for its turns (`Channeling`) before it strikes; one with no
-/// wind-up strikes at once.
+/// Readies the weapon of each `UseWeapon`: aims it (`Telegraph`), then
+/// strikes at once, or, with a wind-up, owes the wind-up's turns (`Delay`)
+/// with the `Strike` scheduled for when they are paid.
 pub fn ready_weapons(
     mut commands: Commands,
     mut uses: MessageReader<UseWeapon>,
-    mut done: MessageWriter<ChannelDone>,
+    mut delays: MessageWriter<Delay>,
+    mut strikes: MessageWriter<Strike>,
     weapons: Query<&Weapon, Without<Telegraph>>,
 ) {
     for use_weapon in uses.read() {
         let Ok(weapon) = weapons.get(use_weapon.user) else {
             continue;
         };
+        let strike = Strike {
+            wielder: use_weapon.user,
+        };
         let mut user = commands.entity(use_weapon.user);
         user.insert(Telegraph {
             dir: use_weapon.dir,
         });
-        if weapon.windup > 0 {
-            user.insert(Channeling {
-                turns: weapon.windup,
-            });
-        } else {
-            done.write(ChannelDone(use_weapon.user));
+        if weapon.windup == 0 {
+            strikes.write(strike);
+            continue;
         }
+        user.insert(Scheduled(strike));
+        delays.write(Delay {
+            entity: use_weapon.user,
+            turns: weapon.windup,
+        });
     }
 }
 
-/// When a wielder is done winding up, its weapon strikes every cell of its
-/// shape, counted from where the wielder stands now: a hit on whatever
-/// there has health, friend or foe.
+/// A `Strike` hits every cell of the weapon's area, from where its wielder
+/// stands now and the way it is aimed: a hit on whatever there has health,
+/// friend or foe.
 pub fn strike(
     mut commands: Commands,
     grid: Res<MapGrid>,
-    mut done: MessageReader<ChannelDone>,
+    mut strikes: MessageReader<Strike>,
     mut hits: MessageWriter<Hit>,
     wielders: Query<(&Pos, &Weapon, &Telegraph)>,
     health: Query<(), With<Health>>,
 ) {
-    for &ChannelDone(wielder) in done.read() {
+    for &Strike { wielder } in strikes.read() {
         let Ok((pos, weapon, telegraph)) = wielders.get(wielder) else {
             continue;
         };
-        for cell in weapon.shape.cells(pos.0, telegraph.dir) {
+        for cell in weapon.area.cells(pos.0, telegraph.dir) {
             let Some(target) = grid.get(grid.safe_pos(cell)) else {
                 continue;
             };
@@ -71,7 +77,7 @@ pub fn strike(
     }
 }
 
-/// Marks every cell a wound-up weapon will strike.
+/// Marks every cell an aimed weapon will strike.
 pub fn mark_strikes(
     grid: Res<MapGrid>,
     marks: Option<ResMut<CellMarks>>,
@@ -81,7 +87,7 @@ pub fn mark_strikes(
         return;
     };
     for (pos, weapon, telegraph) in &wielders {
-        for cell in weapon.shape.cells(pos.0, telegraph.dir) {
+        for cell in weapon.area.cells(pos.0, telegraph.dir) {
             marks.0.push((grid.safe_pos(cell), STRIKE_MARK));
         }
     }
