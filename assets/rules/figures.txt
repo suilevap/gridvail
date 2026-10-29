@@ -15,10 +15,10 @@
 #
 # LABEL names the part for the reader. GLYPH is one character, or `own` for
 # the object's own glyph. Options:
-#   x=X y=Y        where the glyph's centre is, in cells from the centre of
-#                  the object's cell, on screen: x to the right, y up
-#   scale=S        the glyph's size, 1 for a whole cell (default 0.5, the
-#                  font's own size)
+#   x=X y=Y        where the glyph's centre is, from the centre of the
+#                  object's cell, on screen: x to the right, y up
+#   scale=S        the glyph's size, 1 (or 16px) for a whole cell (default
+#                  0.5, the font's own size)
 #   turn=DEGREES   turned counter-clockwise
 #   shade=S        how much of the light it shows, 0 to 1 (default 1)
 #   tint=#rrggbb   a colour the light is multiplied by, instead of a shade
@@ -27,71 +27,232 @@
 #                  way round (its place still mirrors), for glyphs read as
 #                  themselves, such as @
 #
-# At the default scale a font pixel is 1/16 of a cell, and `█` at
-# scale=0.0625 is exactly one pixel, in any colour: for eyes and other
-# details.
+# Lengths (x, y, scale) are in cells, or in font pixels with `px`: a cell
+# is 16 font pixels at the default scale, so `scale=8px` is the default
+# size and `█` at `scale=1px` is exactly one pixel, in any colour, for eyes
+# and other details. `tools/figure_preview.py` draws every view of the
+# figures here as the game draws them, for designing without the game.
 
-# The player: a lantern-bearer, the @ of their hat over a blue cloak,
-# carrying the lantern they light the way with.
+# The player: a lantern-bearer in a teal cloak and red scarf, the @ of
+# their hat over its brim, holding out a lantern that glows where they look.
 figure person
   view front
-    cloak   ▲  y=-0.14 tint=#5878b8
-    lantern ¤  x=0.3 y=-0.18 tint=#ffd070
-    head    @  y=0.24
+    cloak   ▲  y=-1px scale=14px tint=#2e4a48
+    lboot   ▄  x=-3px y=-7px scale=4px tint=#2a1c14
+    rboot   ▄  x=2px y=-7px scale=4px tint=#2a1c14
+    clasp   █  y=4px scale=2px tint=#d0a040
+    scarf   ▬  y=6px scale=6px tint=#a02828
+    head    ■  y=9px tint=#e8b890
+    leye    █  x=-1.5px y=9.5px scale=1px tint=#201010
+    reye    █  x=1.5px y=9.5px scale=1px tint=#201010
+    hat     @  y=16px tint=#d8ccb0
+    brim    ▂  y=15px tint=#5a4030
+    hand    █  x=5px y=0px scale=2px tint=#e8b890
+    cap     ▀  x=6px y=-2px scale=4px tint=#d0a040
+    glass   █  x=6px y=-4.5px scale=3px tint=#70ffff
+    base    ▄  x=6px y=-6px scale=4px tint=#d0a040
   view back
-    lantern ¤  x=-0.3 y=-0.18 tint=#c09050
-    cloak   ▲  y=-0.14 tint=#3c5488
-    head    @  y=0.24 shade=0.6
+    cap     ▀  x=-6px y=-2px scale=4px tint=#a07830
+    glass   █  x=-6px y=-4.5px scale=3px tint=#40b0b0
+    base    ▄  x=-6px y=-6px scale=4px tint=#a07830
+    lboot   ▄  x=-3px y=-7px scale=4px tint=#2a1c14
+    rboot   ▄  x=2px y=-7px scale=4px tint=#2a1c14
+    cloak   ▲  y=-1px scale=14px tint=#243c3a
+    hood    ■  y=7px scale=6px tint=#243c3a
+    hair    ■  y=9px tint=#4a3020
+    hat     @  y=16px tint=#a8a090
+    brim    ▂  y=15px tint=#4a3428
   view right
-    cloak   ▲  x=-0.04 y=-0.14 tint=#5878b8
-    arm     ─  x=0.16 y=-0.02 tint=#5878b8
-    lantern ¤  x=0.34 y=-0.16 tint=#ffd070
-    head    @  x=0.02 y=0.24 noflip
+    cloak   ▲  x=-1px y=-1px scale=14px tint=#2e4a48
+    lboot   ▄  x=-2px y=-7px scale=4px tint=#2a1c14
+    rboot   ▄  x=3px y=-7px scale=4px tint=#2a1c14
+    scarf   ▬  y=6px scale=6px tint=#a02828
+    tail    █  x=-4px y=4px scale=2px tint=#a02828
+    hair    █  x=-2px y=8px scale=2px tint=#4a3020
+    head    ■  x=1px y=9px tint=#e8b890
+    eye     █  x=2.5px y=9.5px scale=1px tint=#201010
+    nose    █  x=4.5px y=8.5px scale=1px tint=#e8b890
+    hat     @  x=1px y=16px tint=#d8ccb0 noflip
+    brim    ▂  x=2px y=15px tint=#5a4030
+    arm     ─  x=5px y=2px scale=4px tint=#2e4a48
+    hand    █  x=7px y=2px scale=2px tint=#e8b890
+    cap     ▀  x=9px y=0px scale=4px tint=#d0a040
+    glass   █  x=9px y=-2.5px scale=3px tint=#70ffff
+    base    ▄  x=9px y=-4px scale=4px tint=#d0a040
 
-# A guard: a spearman in mail with a red shield. The spear's bright tip
-# always points where they look, so their line of sight reads at a glance
-# whichever way they face: down past their feet toward the viewer, up over
-# their head away from them, or held out level to a side. Their face is
-# built of parts: a head under a steel helmet, and eyes a pixel each, which
-# show toward the viewer, turn to one eye and a nose from the side, and are
-# gone from behind. Their mood shows over their head.
-figure guard
+# A rifleman, for guards: shako with a brass badge and pompom, navy coat
+# with cross belts and epaulettes, red cape, backpack and boots. Their
+# bayonet's bright tip always points where they look, so their line of sight
+# reads at a glance: down past their feet toward the viewer, up over their
+# shoulder away from them, or levelled ahead to a side. Their mood shows
+# over their shako.
+figure rifleman
   view front
-    legs    Π  y=-0.3 shade=0.55
-    mail    Ш  y=-0.02 tint=#a8b0c0
-    shield  ♦  x=0.3 y=-0.06 tint=#c83838
-    shaft   │  x=-0.3 y=-0.14 shade=0.6
-    tip     ▾  x=-0.3 y=-0.46 tint=#f0f4ff
-    head    ●  y=0.27 tint=#e0b890
-    helmet  ▀  y=0.3325 tint=#a8b0c0
-    leye    █  x=-0.094 y=0.301 scale=0.0625 tint=#200808
-    reye    █  x=0.094 y=0.301 scale=0.0625 tint=#200808
-    mood    own y=0.62 tint=#ffd040 only=!?
+    lcape   ▐  x=-8px y=1px tint=#902424
+    rcape   ▌  x=8px y=1px tint=#902424
+    legs    Π  y=-4px tint=#4a4c55
+    lboot   ▄  x=-3px y=-6px scale=4px tint=#1c1c20
+    rboot   ▄  x=2px y=-6px scale=4px tint=#1c1c20
+    coat    █  y=2px scale=8px tint=#2c3e70
+    belts   X  y=2px tint=#d8ccb0
+    belt    ─  y=-1px tint=#5a3a1c
+    buckle  █  y=-1.5px scale=2px tint=#d0a040
+    larm    │  x=-5px y=2px tint=#24345e
+    rarm    │  x=5px y=2px tint=#24345e
+    lepaul  ▀  x=-5px y=5px scale=4px tint=#d0a040
+    repaul  ▀  x=5px y=5px scale=4px tint=#d0a040
+    head    ■  y=9px tint=#e8b890
+    leye    █  x=-1.5px y=9.5px scale=1px tint=#201010
+    reye    █  x=1.5px y=9.5px scale=1px tint=#201010
+    lstache █  x=-0.5px y=7.5px scale=1px tint=#3a2a20
+    rstache █  x=0.5px y=7.5px scale=1px tint=#3a2a20
+    shako   ■  y=15px tint=#2c3e70
+    band    ▔  y=17px scale=6px tint=#d0a040
+    badge   +  y=15px scale=4px tint=#e0b050
+    visor   ▂  y=15px tint=#1c1c20
+    pom     █  y=19px scale=2px tint=#f0e8d8
+    stock   │  x=6px y=1px tint=#7a4a24
+    barrel  │  x=6px y=-6px tint=#9098a8
+    lhand   █  x=-5px y=-3px scale=2px tint=#e8b890
+    rhand   █  x=6px y=-1px scale=2px tint=#e8b890
+    bayonet ▾  x=6px y=-12px scale=6px tint=#f0f4ff
+    mood    own y=24px tint=#ffd040 only=!?
   view back
-    shaft   │  x=0.3 y=0.16 shade=0.5
-    tip     ▴  x=0.3 y=0.48 tint=#f0f4ff
-    shield  ♦  x=-0.3 y=-0.06 tint=#802828
-    legs    Π  y=-0.3 shade=0.45
-    mail    Ш  y=-0.02 tint=#788090
-    head    ●  y=0.27 tint=#806048
-    helmet  ▀  y=0.3325 tint=#788090
-    mood    own y=0.62 tint=#ffd040 only=!?
+    legs    Π  y=-4px tint=#3c3e46
+    lboot   ▄  x=-3px y=-6px scale=4px tint=#1c1c20
+    rboot   ▄  x=2px y=-6px scale=4px tint=#1c1c20
+    larm    │  x=-5px y=2px tint=#1e2c50
+    rarm    │  x=5px y=2px tint=#1e2c50
+    cape    █  y=1px scale=8px tint=#7a1c1c
+    lflare  ◣  x=-4px y=-2px scale=4px tint=#7a1c1c
+    rflare  ◢  x=4px y=-2px scale=4px tint=#7a1c1c
+    pack    █  y=3px scale=6px tint=#8a5a2a
+    straps  #  y=3px scale=6px tint=#5a3418
+    roll    ▬  y=5px tint=#d8ccb0
+    lepaul  ▀  x=-5px y=5px scale=4px tint=#a07830
+    repaul  ▀  x=5px y=5px scale=4px tint=#a07830
+    hair    ■  y=9px tint=#4a3020
+    shako   ■  y=15px tint=#24345e
+    band    ▔  y=17px scale=6px tint=#a07830
+    pom     █  y=19px scale=2px tint=#d8d0c0
+    stock   │  x=6px y=4px tint=#6a4020
+    barrel  │  x=6px y=12px tint=#7880a0
+    bayonet ▴  x=6px y=18px scale=6px tint=#e0e4f0
+    mood    own y=24px tint=#ffd040 only=!?
   view right
-    shield  ♦  x=-0.24 y=-0.04 tint=#802828
-    legs    Λ  y=-0.3 shade=0.55
-    mail    Ш  x=-0.02 y=-0.02 tint=#a8b0c0
-    shaft   ─  x=0.2 y=0.02 shade=0.6
-    shaft   ─  x=0.42 y=0.02 shade=0.6
-    tip     ▸  x=0.62 y=0.02 tint=#f0f4ff
-    head    ●  y=0.27 tint=#e0b890
-    nose    █  x=0.219 y=0.239 scale=0.0625 tint=#e0b890
-    helmet  ▀  x=-0.0625 y=0.3325 tint=#a8b0c0
-    eye     █  x=0.094 y=0.301 scale=0.0625 tint=#200808
-    mood    own y=0.62 tint=#ffd040 only=!? noflip
+    cape    ▐  x=-6px y=1px tint=#902424
+    flare   ◣  x=-5px y=-3px scale=4px tint=#902424
+    pack    █  x=-5px y=3px scale=5px tint=#8a5a2a
+    straps  #  x=-5px y=3px scale=5px tint=#5a3418
+    legs    Λ  y=-4px tint=#4a4c55
+    lboot   ▄  x=-3px y=-6px scale=4px tint=#1c1c20
+    rboot   ▄  x=3px y=-6px scale=4px tint=#1c1c20
+    coatlo  █  y=1px scale=6px tint=#2c3e70
+    coathi  █  y=3px scale=6px tint=#2c3e70
+    belt    ─  y=-1px scale=6px tint=#5a3a1c
+    epaul   ▀  x=0px y=5px scale=4px tint=#d0a040
+    hair    █  x=-2px y=8px scale=2px tint=#4a3020
+    head    ■  x=1px y=9px tint=#e8b890
+    eye     █  x=2.5px y=9.5px scale=1px tint=#201010
+    nose    █  x=4.5px y=8.5px scale=1px tint=#e8b890
+    stache  █  x=3.5px y=7.5px scale=1px tint=#3a2a20
+    shako   ■  x=1px y=15px tint=#2c3e70
+    band    ▔  x=1px y=17px scale=6px tint=#d0a040
+    visor   ▂  x=4px y=13.5px scale=4px tint=#1c1c20
+    pom     █  x=1px y=19px scale=2px tint=#f0e8d8
+    stock   ─  x=3px y=1.5px tint=#7a4a24
+    barrel  ─  x=11px y=1.5px tint=#9098a8
+    arm     █  x=2px y=3px scale=2px tint=#24345e
+    hand    █  x=4px y=1px scale=2px tint=#e8b890
+    bayonet ▸  x=17px y=1.5px scale=6px tint=#f0f4ff
+    mood    own y=24px tint=#ffd040 only=!? noflip
 
-# A standing lamp: a foot, a post, and the light under a little roof.
+# An officer, for hunters: a red plume, brass frogging, a long coat and a
+# cape, and a sabre whose point shows where they look, as a rifleman's
+# bayonet does.
+figure officer
+  view front
+    lcape   ▐  x=-8px y=0px tint=#a02828
+    rcape   ▌  x=8px y=0px tint=#a02828
+    legs    Π  y=-5px tint=#d8ccb0
+    lboot   ▄  x=-3px y=-6px scale=4px tint=#1c1c20
+    rboot   ▄  x=2px y=-6px scale=4px tint=#1c1c20
+    tails   ▀  y=-2px tint=#24345e
+    coat    █  y=2px scale=8px tint=#2c3e70
+    frogs   ≡  y=3px scale=6px tint=#e0b050
+    sash    ─  y=-1px tint=#a02828
+    larm    │  x=-5px y=2px tint=#24345e
+    rarm    │  x=5px y=2px tint=#24345e
+    lepaul  ▀  x=-5px y=5px scale=4px tint=#f0c060
+    repaul  ▀  x=5px y=5px scale=4px tint=#f0c060
+    head    ■  y=9px tint=#e8b890
+    leye    █  x=-1.5px y=9.5px scale=1px tint=#201010
+    reye    █  x=1.5px y=9.5px scale=1px tint=#201010
+    beard   ▄  y=7px scale=4px tint=#4a3020
+    shako   ■  y=15px tint=#2c3e70
+    band    ▔  y=17px scale=6px tint=#e0b050
+    badge   +  y=15px scale=4px tint=#f0c060
+    visor   ▂  y=15px tint=#1c1c20
+    plume   ♠  x=-2px y=19px scale=5px tint=#c82828
+    lhand   █  x=-5px y=-3px scale=2px tint=#e8b890
+    hilt    +  x=6px y=-2px scale=4px tint=#e0b050
+    blade   │  x=6px y=-7px tint=#e0e4f0
+    tip     ▾  x=6px y=-12px scale=4px tint=#f0f4ff
+    mood    own y=24px tint=#ffd040 only=!?
+  view back
+    lboot   ▄  x=-3px y=-6px scale=4px tint=#1c1c20
+    rboot   ▄  x=2px y=-6px scale=4px tint=#1c1c20
+    legs    Π  y=-5px tint=#b0a490
+    larm    │  x=-5px y=2px tint=#1e2c50
+    rarm    │  x=5px y=2px tint=#1e2c50
+    cape    █  y=1px scale=8px tint=#8a2020
+    lflare  ◣  x=-4px y=-2px scale=4px tint=#8a2020
+    rflare  ◢  x=4px y=-2px scale=4px tint=#8a2020
+    lepaul  ▀  x=-5px y=5px scale=4px tint=#c09840
+    repaul  ▀  x=5px y=5px scale=4px tint=#c09840
+    hair    ■  y=9px tint=#4a3020
+    shako   ■  y=15px tint=#24345e
+    band    ▔  y=17px scale=6px tint=#c09840
+    plume   ♠  x=-2px y=19px scale=5px tint=#a02020
+    hilt    +  x=6px y=4px scale=4px tint=#c09840
+    blade   │  x=6px y=9px tint=#c0c4d0
+    tip     ▴  x=6px y=14px scale=4px tint=#e0e4f0
+    mood    own y=24px tint=#ffd040 only=!?
+  view right
+    cape    ▐  x=-6px y=0px tint=#a02828
+    flare   ◣  x=-5px y=-4px scale=4px tint=#a02828
+    legs    Λ  y=-5px tint=#d8ccb0
+    lboot   ▄  x=-3px y=-6px scale=4px tint=#1c1c20
+    rboot   ▄  x=3px y=-6px scale=4px tint=#1c1c20
+    tails   ▀  x=-1px y=-2px scale=6px tint=#24345e
+    coatlo  █  y=1px scale=6px tint=#2c3e70
+    coathi  █  y=3px scale=6px tint=#2c3e70
+    frogs   ≡  x=1px y=3px scale=4px tint=#e0b050
+    sash    ─  y=-1px scale=6px tint=#a02828
+    epaul   ▀  x=0px y=5px scale=4px tint=#f0c060
+    hair    █  x=-2px y=8px scale=2px tint=#4a3020
+    head    ■  x=1px y=9px tint=#e8b890
+    eye     █  x=2.5px y=9.5px scale=1px tint=#201010
+    nose    █  x=4.5px y=8.5px scale=1px tint=#e8b890
+    beard   ▄  x=2px y=7px scale=4px tint=#4a3020
+    shako   ■  x=1px y=15px tint=#2c3e70
+    band    ▔  x=1px y=17px scale=6px tint=#e0b050
+    visor   ▂  x=4px y=13.5px scale=4px tint=#1c1c20
+    plume   ♠  x=-1px y=19px scale=5px tint=#c82828
+    arm     █  x=2px y=3px scale=2px tint=#24345e
+    hand    █  x=4px y=2px scale=2px tint=#e8b890
+    hilt    +  x=6px y=2px scale=4px tint=#e0b050
+    blade   ─  x=11px y=2.5px tint=#e0e4f0
+    tip     ▸  x=16px y=2px scale=4px tint=#f0f4ff
+    mood    own y=24px tint=#ffd040 only=!? noflip
+
+# A gas lamp: a foot, a post, and a brass lantern with a warm glass.
 figure lamp
-    foot    ┴  y=-0.32 shade=0.5
-    post    │  y=-0.05 shade=0.6
-    light   ♦  y=0.26 tint=#ffe080
-    roof    ▲  y=0.46 shade=0.5
+    foot    ▄  y=-7px scale=6px tint=#28282c
+    post    │  y=-4px tint=#3a3a40
+    post    │  y=3px tint=#3a3a40
+    ledge   ▀  y=3px scale=6px tint=#d0a040
+    glass   █  y=8px scale=4px tint=#ffd890
+    frame   │  y=8px scale=4px tint=#a07830
+    roof    ▲  y=13px scale=6px tint=#d0a040
+    finial  █  y=16.5px scale=1px tint=#d0a040

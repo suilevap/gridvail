@@ -357,12 +357,17 @@ fn spawn_cell(commands: &mut Commands, kind: SpawnKind, at: IVec2, cell_count: u
             EnemyMind::default(),
             Behavior::for_tree(enemy_tree),
         )),
-        SpawnKind::Hunter => commands.spawn((
-            enemy_body(at, cell_count),
-            (Hunter, Order::default()),
-            EnemyMind::default(),
-            Behavior::for_tree(hunter_tree),
-        )),
+        SpawnKind::Hunter => {
+            let mut hunter = commands.spawn((
+                enemy_body(at, cell_count),
+                (Hunter, Order::default()),
+                EnemyMind::default(),
+                Behavior::for_tree(hunter_tree),
+            ));
+            // Hunters lead: drawn as officers rather than riflemen.
+            hunter.insert(Figure::named("officer"));
+            hunter
+        }
         SpawnKind::Electricity => commands.spawn((
             ElectroField,
             marker('Ω', WHITE),
@@ -467,7 +472,7 @@ fn enemy_body(pos: IVec2, cell_count: usize) -> impl Bundle {
             PrevPos(pos),
         ),
         Glyph::new('☺', 1, RED),
-        Figure::named("guard"),
+        Figure::named("rifleman"),
         Inventory::default(),
         (
             Destination::default(),

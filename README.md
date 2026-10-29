@@ -199,15 +199,19 @@ next to this file.
   glyph stands is set in `assets/rules/statures.txt` (walls and closed
   doors by default; any glyph can be listed), and a `Stature` component
   gives one object its own height. People, guards and lamps stand as
-  figures instead: a few small upright glyphs placed together (the player
-  is a lantern-bearer, the `@` of their hat over a cloak `▲`, carrying a
-  lantern `¤`; guards are spearmen with a shield), with a front, back and
-  side view picked by the way the actor faces on screen, so a guard's
-  spear held out ahead shows where it looks (the player's direction marker
-  is left out: the figure shows it). Figures are defined in
-  `assets/rules/figures.txt` (each glyph with its own offset, size, turn
-  and tint), so other objects (boxes, barrels, doors) can be made the same
-  way. `assets/maps/figures.txt` is a small room to look at them in.
+  figures instead: a few dozen small glyphs placed together, each in its
+  own colour (the player is a cloaked lantern-bearer under the `@` of their
+  hat; guards are riflemen in shakos and capes, hunters officers with a
+  plume and sabre), with a front, back and side view picked by the way the
+  actor faces on screen. A guard's bayonet or sabre always points where
+  they look, so their line of sight reads at a glance (the player's
+  direction marker is left out: the figure shows it). Figures are defined
+  in `assets/rules/figures.txt` (each glyph with its own offset, size, turn
+  and tint, in cells or font pixels), so other objects (boxes, barrels,
+  doors) can be made the same way, and `tools/figure_preview.py OUT.png
+  [NAME...]` draws every view of them as the game does, for designing
+  without running it. `assets/maps/figures.txt` is a small room to look at
+  them in.
 - Light effects (an addition, `--light`): with `smooth`, light blends
   between cells across standing walls, pixel by pixel, instead of one
   colour a cell, and fades from one turn's light to the next over about a

@@ -8,6 +8,9 @@ use crate::model::{FigurePart, FigureShape, FigureView, PartGlyph, Rgb};
 /// The size of a figure's glyphs unless a part says otherwise: half a cell,
 /// the cell font's own 8 px.
 pub const DEFAULT_PART_SCALE: f32 = 0.5;
+/// Font pixels a cell is wide at the default scale: lengths given in `px`
+/// are in these, so parts line up with the glyphs' own pixels.
+pub const FONT_PIXELS: f32 = 16.0;
 
 /// Parses figures: a `figure NAME` line, then for each way it can be seen a
 /// `view front|back|left|right` line (parts before any are the front), then
@@ -17,9 +20,11 @@ pub const DEFAULT_PART_SCALE: f32 = 0.5;
 /// LABEL GLYPH [x=X] [y=Y] [scale=S] [turn=DEGREES] [shade=S | tint=#rrggbb] [only=GLYPHS] [noflip]
 /// ```
 ///
-/// The label only names the part for whoever reads the file. `GLYPH` is a
-/// single character, or `own` for the object's own glyph. Blank lines and
-/// lines starting with `#` are skipped.
+/// `x`, `y` and `scale` are in cells, or in font pixels with `px` (16 a
+/// cell; `scale=8px` is the default size). The label only names the part
+/// for whoever reads the file. `GLYPH` is a single character, or `own` for
+/// the object's own glyph. Blank lines and lines starting with `#` are
+/// skipped.
 pub fn parse_figures(text: &str) -> Result<HashMap<String, FigureShape>, String> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let mut figures: HashMap<String, FigureShape> = HashMap::default();
@@ -68,6 +73,17 @@ pub fn parse_figures(text: &str) -> Result<HashMap<String, FigureShape>, String>
             no_flip: false,
         };
         for word in words {
+            // A length in cells, or in font pixels with `px`.
+            let length = |value: &str| match value.strip_suffix("px") {
+                Some(pixels) => pixels.parse::<f32>().map(|pixels| pixels / FONT_PIXELS),
+                None => value.parse::<f32>(),
+            };
+            let length = |value: &str| {
+                length(value)
+                    .ok()
+                    .filter(|value| value.is_finite())
+                    .ok_or_else(|| error(format!("`{word}`: `{value}` is not a length")))
+            };
             let number = |value: &str| {
                 value
                     .parse::<f32>()
@@ -77,11 +93,11 @@ pub fn parse_figures(text: &str) -> Result<HashMap<String, FigureShape>, String>
             };
             match word.split_once('=') {
                 None if word == "noflip" => part.no_flip = true,
-                Some(("x", value)) => part.offset.x = number(value)?,
-                Some(("y", value)) => part.offset.y = number(value)?,
+                Some(("x", value)) => part.offset.x = length(value)?,
+                Some(("y", value)) => part.offset.y = length(value)?,
                 Some(("turn", value)) => part.turn = number(value)?.to_radians(),
                 Some(("scale", value)) => {
-                    part.scale = number(value)?;
+                    part.scale = length(value)?;
                     if part.scale <= 0.0 {
                         return Err(error(format!("`{word}`: a scale is above 0")));
                     }
@@ -149,6 +165,15 @@ mod tests {
     }
 
     #[test]
+    fn lengths_may_be_font_pixels() {
+        let figures = parse_figures("figure a\neye █ x=-3px y=4px scale=1px\n").unwrap();
+        let eye = &figures["a"].parts(FigureView::Front).0[0];
+        assert_eq!(eye.offset, Vec2::new(-3.0, 4.0) / FONT_PIXELS);
+        assert_eq!(eye.scale, 1.0 / FONT_PIXELS);
+        assert!(parse_figures("figure a\neye █ x=3pt").is_err());
+    }
+
+    #[test]
     fn mistakes_are_errors() {
         assert!(parse_figures("foot ▪").is_err());
         assert!(parse_figures("figure a\nfoot ab").is_err());
@@ -161,7 +186,7 @@ mod tests {
     #[test]
     fn the_bundled_file_parses() {
         let figures = parse_figures(include_str!("../../assets/rules/figures.txt")).unwrap();
-        for name in ["person", "guard", "lamp"] {
+        for name in ["person", "rifleman", "officer", "lamp"] {
             assert!(
                 !figures[name].parts(FigureView::Front).0.is_empty(),
                 "{name}"
