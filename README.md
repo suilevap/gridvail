@@ -200,9 +200,11 @@ next to this file.
   doors by default; any glyph can be listed), and a `Stature` component
   gives one object its own height. People, guards and lamps stand as
   figures instead: a few small upright glyphs placed together (the player
-  is `@` over `/|\` over `/\`), with a front, back and side view picked
-  by the way the actor faces on screen, so a guard's blade held out ahead
-  shows where it looks. Figures are defined in
+  is a lantern-bearer, the `@` of their hat over a cloak `▲`, carrying a
+  lantern `¤`; guards are spearmen with a shield), with a front, back and
+  side view picked by the way the actor faces on screen, so a guard's
+  spear held out ahead shows where it looks (the player's direction marker
+  is left out: the figure shows it). Figures are defined in
   `assets/rules/figures.txt` (each glyph with its own offset, size, turn
   and tint), so other objects (boxes, barrels, doors) can be made the same
   way. `assets/maps/figures.txt` is a small room to look at them in.

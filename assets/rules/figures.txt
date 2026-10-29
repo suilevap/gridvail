@@ -27,61 +27,59 @@
 #                  way round (its place still mirrors), for glyphs read as
 #                  themselves, such as @
 
-# The player: a head with its hat, arms out, legs apart.
+# The player: a lantern-bearer, the @ of their hat over a blue cloak,
+# carrying the lantern they light the way with.
 figure person
   view front
-    larm   /  x=-0.25
-    body   |
-    rarm   \  x=0.25
-    lleg   /  x=-0.12 y=-0.27
-    rleg   \  x=0.12 y=-0.27
-    head   @  y=0.27
+    cloak   ▲  y=-0.14 tint=#5878b8
+    lantern ¤  x=0.3 y=-0.18 tint=#ffd070
+    head    @  y=0.24
   view back
-    larm   /  x=-0.25 shade=0.7
-    body   |  shade=0.7
-    rarm   \  x=0.25 shade=0.7
-    lleg   /  x=-0.12 y=-0.27 shade=0.7
-    rleg   \  x=0.12 y=-0.27 shade=0.7
-    head   @  y=0.27 shade=0.6
+    lantern ¤  x=-0.3 y=-0.18 tint=#c09050
+    cloak   ▲  y=-0.14 tint=#3c5488
+    head    @  y=0.24 shade=0.6
   view right
-    body   |  x=-0.04
-    arm    ─  x=0.16 y=0.02 scale=0.4
-    back   /  x=-0.12 y=-0.27
-    front  \  x=0.06 y=-0.27
-    head   @  x=0.04 y=0.27 noflip
+    cloak   ▲  x=-0.04 y=-0.14 tint=#5878b8
+    arm     ─  x=0.16 y=-0.02 tint=#5878b8
+    lantern ¤  x=0.34 y=-0.16 tint=#ffd070
+    head    @  x=0.02 y=0.24 noflip
 
-# A guard: a face, and a blade held up in front or out ahead, which shows
-# which way they look. Their mood shows over their head.
+# A guard: a spearman in mail with a red shield. Facing the viewer they
+# show their face with the spear upright beside them; from the side they
+# hold the spear out ahead, which shows where they look. Their mood shows
+# over their head.
 figure guard
   view front
-    body   |  tint=#e06060
-    larm   /  x=-0.25
-    rarm   \  x=0.25
-    lleg   /  x=-0.12 y=-0.27
-    rleg   \  x=0.12 y=-0.27
-    head   ☺  y=0.27
-    blade  †  x=-0.4 y=0.1
-    mood   own y=0.6 tint=#ffd040 only=!?
+    shaft   │  x=-0.34 y=-0.14 shade=0.6
+    shaft   │  x=-0.34 y=0.18 shade=0.6
+    tip     ♠  x=-0.34 y=0.48 tint=#c8d0e0
+    legs    Π  y=-0.3 shade=0.55
+    mail    Ш  y=-0.02 tint=#a8b0c0
+    shield  ♦  x=0.3 y=-0.06 tint=#c83838
+    head    ☺  y=0.27
+    mood    own y=0.62 tint=#ffd040 only=!?
   view back
-    blade  †  x=0.4 y=0.1 shade=0.6
-    body   |  tint=#a04040
-    larm   /  x=-0.25 shade=0.7
-    rarm   \  x=0.25 shade=0.7
-    lleg   /  x=-0.12 y=-0.27 shade=0.7
-    rleg   \  x=0.12 y=-0.27 shade=0.7
-    head   ●  y=0.27 shade=0.6
-    mood   own y=0.6 tint=#ffd040 only=!?
+    shield  ♦  x=-0.3 y=-0.06 tint=#802828
+    legs    Π  y=-0.3 shade=0.45
+    mail    Ш  y=-0.02 tint=#788090
+    head    ●  y=0.27 shade=0.55
+    shaft   │  x=0.34 y=-0.14 shade=0.5
+    shaft   │  x=0.34 y=0.18 shade=0.5
+    tip     ♠  x=0.34 y=0.48 tint=#909aa8
+    mood    own y=0.62 tint=#ffd040 only=!?
   view right
-    body   |  x=-0.04 tint=#e06060
-    arm    ─  x=0.14 y=0.02 scale=0.4
-    blade  †  x=0.36 y=0.04 turn=-90
-    back   /  x=-0.12 y=-0.27
-    front  \  x=0.06 y=-0.27
-    head   ☺  x=0.04 y=0.27 noflip
-    mood   own y=0.6 tint=#ffd040 only=!? noflip
+    shield  ♦  x=-0.24 y=-0.04 tint=#802828
+    legs    Λ  y=-0.3 shade=0.55
+    mail    Ш  x=-0.02 y=-0.02 tint=#a8b0c0
+    shaft   ─  x=0.2 y=0.02 shade=0.6
+    shaft   ─  x=0.44 y=0.02 shade=0.6
+    tip     ►  x=0.66 y=0.02 tint=#c8d0e0
+    head    ☺  x=0.02 y=0.27 noflip
+    mood    own y=0.62 tint=#ffd040 only=!? noflip
 
-# A standing lamp: a foot, a post and the lamp on top.
+# A standing lamp: a foot, a post, and the light under a little roof.
 figure lamp
-    foot   ┴  y=-0.3 shade=0.6
-    post   │  y=-0.05 shade=0.7
-    lamp   o  y=0.3
+    foot    ┴  y=-0.32 shade=0.5
+    post    │  y=-0.05 shade=0.6
+    light   ♦  y=0.26 tint=#ffe080
+    roof    ▲  y=0.46 shade=0.5

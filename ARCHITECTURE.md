@@ -215,7 +215,8 @@ and renderers must not import it.
   figure has parts for each way it is seen facing on screen
   (`FigureView`: toward the viewer, away, either side, a side not drawn
   being the other mirrored), picked from its `Facing` turned by the view,
-  so which way an actor looks shows however the view is turned. A part can
+  so which way an actor looks shows however the view is turned (a
+  marker bound to a figure, the player's direction marker, is not drawn). A part can
   draw the object's own glyph and show only for some glyphs, so state the
   simulation shows by glyph (a mood, an open door) shows on the figure.
   Flat renderers draw the glyph. With smooth light it colours
