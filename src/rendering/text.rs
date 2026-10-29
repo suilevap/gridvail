@@ -730,6 +730,7 @@ fn write_combat(
             moves.forward.name, moves.side.name, moves.back.name
         )?;
     }
+    text.push_str(" | marks: green downs it, cyan safe, red you get hit");
     let cancel = match scheme {
         ControlScheme::Keyboard => "C cancels",
         ControlScheme::Touch => "tap cancels",

@@ -95,3 +95,13 @@ impl Corners {
 /// animation step follows them instead of going straight.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SlideRoute(pub Corners);
+
+/// A move out toward `toward` (in cells: its length is how far) and back,
+/// to show an action that does not change the object's cell: leaning toward
+/// what it picked, swinging at a target, recoiling from a blow. Shown by the
+/// animation step, if there is one.
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct Gesture {
+    pub entity: Entity,
+    pub toward: Vec2,
+}

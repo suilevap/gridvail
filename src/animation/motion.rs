@@ -484,14 +484,18 @@ impl MotionState {
     /// Pushes toward `direction` and back to the current cell, for an action
     /// that did not move the object (such as walking into a wall).
     pub fn bump(&mut self, direction: Vec2, style: MotionStyle) {
+        self.reach(direction.normalize_or_zero() * BUMP_CELLS, style);
+    }
+
+    /// Moves out by `offset` (in cells) and back to the current cell, taking
+    /// one step's time: a gesture that does not change the object's cell.
+    pub fn reach(&mut self, offset: Vec2, style: MotionStyle) {
         let (duration, easing) = style.timing();
         self.velocity = Vec2::ZERO;
         self.play(Move {
             from: self.position,
             to: self.target(),
-            path: Path::Excursion {
-                toward: direction.normalize_or_zero() * BUMP_CELLS,
-            },
+            path: Path::Excursion { toward: offset },
             duration,
             easing,
             secondary: Secondary::default(),

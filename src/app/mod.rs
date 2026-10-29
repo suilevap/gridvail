@@ -18,6 +18,7 @@ use crate::ai::AiPlugin;
 use crate::camera::CameraPlugin;
 use crate::combat::CombatPlugin;
 use crate::damage::DamagePlugin;
+use crate::feedback::FeedbackPlugin;
 use crate::locomotion::LocomotionPlugin;
 use crate::navigation::NavigationPlugin;
 use crate::presentation::PresentationPlugin;
@@ -68,6 +69,7 @@ impl Plugin for GamePlugin {
             DamagePlugin,
             SelectionPlugin,
             CombatPlugin,
+            FeedbackPlugin,
             LocomotionPlugin,
             VisionPlugin,
             PresentationPlugin,

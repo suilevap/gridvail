@@ -402,3 +402,60 @@ fn a_dead_player_plays_the_map_again() {
     assert_eq!(health.hp, health.max);
     assert_eq!(pos, PLAYER);
 }
+
+// --- feedback: what the player is shown ---------------------------------
+
+/// The colour the frame's marks give `cell`, if any (the last mark wins).
+fn mark_at(game: &Game, cell: IVec2) -> Option<Rgb> {
+    let marks = game.app.world().resource::<CellMarks>();
+    marks
+        .0
+        .iter()
+        .rev()
+        .find(|(at, _)| *at == cell)
+        .map(|(_, mark)| mark.tint)
+}
+
+#[test]
+fn a_pick_shows_what_each_direction_would_do() {
+    use pav_ecs_game_bevy_port::lighting::{CYAN, RED};
+    let mut game = Game::new(OPEN, 100);
+    game.until_wound_up(ENEMY);
+    game.press(RIGHT);
+    assert!(game.player().3.is_some(), "not picked");
+    // The guard's sweep covers the row in front of it (the player's
+    // column): a lunge or a push leaves the player in it, a yank does not.
+    assert_eq!(mark_at(&game, ENEMY + IVec2::X), Some(RED), "lunge");
+    assert_eq!(mark_at(&game, ENEMY + IVec2::Y), Some(RED), "push down");
+    assert_eq!(mark_at(&game, ENEMY + IVec2::NEG_Y), Some(RED), "push up");
+    assert_eq!(mark_at(&game, PLAYER), Some(CYAN), "yank");
+    // What the marks say is what happens.
+    assert!(hit_after(DOWN), "push");
+    assert!(!hit_after(LEFT), "yank");
+}
+
+#[test]
+fn a_blow_that_would_down_the_target_shows_green() {
+    use pav_ecs_game_bevy_port::lighting::GREEN;
+    let mut game = Game::new(OPEN, 100);
+    // On its alert beat a hit is critical: any move downs it.
+    game.press(RIGHT);
+    assert_eq!(mark_at(&game, ENEMY + IVec2::Y), Some(GREEN));
+}
+
+#[test]
+fn a_hit_pops_up_its_damage_above_the_target() {
+    let mut game = Game::new(OPEN, 100);
+    game.until_aware();
+    game.press(RIGHT);
+    game.press(DOWN);
+    let world = game.app.world_mut();
+    let popups: Vec<(IVec2, char)> = world
+        .query_filtered::<(&Pos, &Glyph), With<pav_ecs_game_bevy_port::feedback::Popup>>()
+        .iter(world)
+        .map(|(pos, glyph)| (pos.0, glyph.ch))
+        .collect();
+    // Pushed down to (4, 4): its 1 damage shows above it. (The guard's
+    // sweep then catches the player too: the push was the unsafe answer.)
+    assert!(popups.contains(&(IVec2::new(4, 3), '1')), "{popups:?}");
+}

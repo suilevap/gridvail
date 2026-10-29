@@ -45,11 +45,13 @@ pub struct ObjectAnimationPlugin;
 impl Plugin for ObjectAnimationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MotionStyle>()
+            .add_message::<Gesture>()
             .add_observer(start_animation)
             .add_systems(
                 Update,
                 (
                     bump_blocked_movers,
+                    play_gestures,
                     animate_objects,
                     animate_children,
                     remove_sunk,
@@ -216,6 +218,21 @@ pub fn bump_blocked_movers(
             toward = facing_of(collision.source, &facings);
         }
         animation.state.bump(toward.as_vec2(), motion);
+    }
+}
+
+/// Plays each `Gesture` as a move out and back to the object's cell.
+pub fn play_gestures(
+    style: Res<MotionStyle>,
+    mut gestures: MessageReader<Gesture>,
+    mut objects: Query<(Option<&ObjectMotion>, &mut ObjectAnimation)>,
+) {
+    for gesture in gestures.read() {
+        if let Ok((own_style, mut animation)) = objects.get_mut(gesture.entity) {
+            animation
+                .state
+                .reach(gesture.toward, style_of(own_style, *style));
+        }
     }
 }
 

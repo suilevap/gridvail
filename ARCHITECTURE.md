@@ -179,9 +179,19 @@ and renderers must not import it.
   - `damage/`: `Damage` comes off `Health`; what runs out has `Died` and is
     destroyed, unless it `KeepOnDeath` (the player: the app plays the map
     again).
-  - Cells to show the player (strikes, picks) are listed each frame into
-    `CellMarks` by `MarkCells` systems; the frame composer tints whatever
-    stands there, or draws a mark on the floor.
+  - `feedback/`: what the player sees of a fight, apart from the fight
+    itself. It reads gameplay state and messages (`Selected`, `Telegraph`,
+    `ContextAction`, `Strike`, `Hit`, `Damage`) and turns them into
+    `Gesture`s (moves out and back, played by the animation step: a lean
+    on picking, a swing on attacking, a recoil on being hit) and cell
+    marks: a picked target pulses; each option's cell is coloured by
+    `combat::preview`'s outcome (green downs the target, red leaves the
+    player under a strike, cyan neither); aimed weapons' cells show a red
+    `×`; a hit target flashes; damage pops up as a number above it.
+    Gameplay modules mark nothing themselves.
+  - Cells to show the player are listed each frame into `CellMarks` by
+    `MarkCells` systems; the frame composer tints whatever stands there,
+    or draws a mark on the floor.
   - Who is who comes from data. `content::data::read` reads any RON file
     into any type that derives `Deserialize`, so a new data file is a new
     type, with no parser; `content::art` reads shapes drawn as text art.

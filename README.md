@@ -101,8 +101,11 @@ next to this file.
   reaches two cells ahead, so stepping back is no escape. Who is who is
   data: `assets/rules/actors.ron` lists actor kinds by map glyph (any
   lowercase letter without a meaning of its own), their behaviour, hit
-  points and weapon or moves, and draws each weapon's pattern as art. The
-  player going down plays the map again. `arena.txt` is a map to try it
+  points and weapon or moves, and draws each weapon's pattern as art.
+  While an enemy is picked it pulses, and the cell each direction would
+  send it to is marked by outcome: green downs it, red leaves you under a
+  strike, cyan neither. Attacks swing, hits recoil and flash, and damage
+  pops up as a number. The player going down plays the map again. `arena.txt` is a map to try it
   in. `--turn SECONDS` sets how long a turn waits for the player (1 by
   default), `--hp` the player's hit points.
 - Player-bound `i` direction marker via relative position + rotation.
@@ -296,6 +299,7 @@ src/ai/                    enemy decisions: behavior trees (FlatBT), wander goal
 src/selection/             picking targets by moving into them, and acting on the pick
 src/combat/                maneuvers, weapons and their strikes, hits into damage
 src/damage/                health and death, whatever deals the damage
+src/feedback/              what a fight shows: leans, swings, recoils, option and damage marks
 src/locomotion/            walking actors to their destination along planned paths
 crates/gridvail-path/      grid pathfinding crate (A*, per-state paths, no deps)
 src/lighting/              light math and light colour gradients
