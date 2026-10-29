@@ -318,9 +318,9 @@ Staggered after an impact, exposed for a turn after a stagger.
 
 ### Previews: what an action would do, before doing it
 
-**Today.** Marks show a wound-up strike and a pick, but nothing shows what
-a second direction would do, which is likely part of why fights feel hard
-to predict (`COMBAT.md`).
+**Before.** Marks showed a wound-up strike and a pick, but nothing showed
+what a second direction would do, which was likely part of why fights felt
+hard to predict (`COMBAT.md`).
 
 **General.** Resolvers split into a pure plan and an apply step (a
 movement pass, damage). A preview runs the plan for a candidate action without
@@ -328,7 +328,14 @@ applying it and marks the result: where bodies would end up, what would be
 hit. Any action that goes through the general mechanisms can then be
 previewed with no code of its own.
 
-**First users.** The three maneuvers on a pick.
+**Built** (`combat::preview`, shown by `feedback`): the outcome of each
+maneuver on a pick, where the target and the actor would end up, what it
+would be knocked into and the damage, and from that whether the actor
+would stand under a strike. **Not yet** the general form: it mirrors
+`perform_maneuvers` and the movement rules by hand instead of running the
+resolvers' own plan, so the two must be kept in step (`tests/combat.rs`
+checks the colours against what happens). Splitting the resolvers into
+plan and apply would let any action be previewed with no code of its own.
 
 ### Not yet
 
@@ -341,8 +348,8 @@ code.
 Data, time, physics and areas are built for the combat systems. What
 remains, in order:
 
-1. **Previews**: on planning a movement pass, for the predictability
-   issue.
+1. **Previews** in general: resolvers split into plan and apply, so the
+   maneuver preview stops mirroring them by hand.
 2. **Backfill into the built mechanisms**: walking into physics, `Tokens`
    into time, statures and spawn constants into data.
 3. **Interactions**: with the doors, plates and hazards backfill.

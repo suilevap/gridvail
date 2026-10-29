@@ -156,18 +156,38 @@ Out, roughly in the order they would follow:
   on the `!` beat, or from darkness and around corners. Sight that depends
   on facing would make stealth openers a real choice.
 
-### Open: fights feel hard to predict
+### Feedback (first pass)
 
-From playtesting the preview: a fight does not yet feel intuitive or
-predictable. To look into separately; possible causes, none decided yet:
+From playtesting: a fight did not feel intuitive or predictable: it was
+unclear when an enemy was picked, what the options were and what they
+would do, and when anything was hit. The first answers (`src/feedback/`):
+
+- **Picking.** The player leans toward what they pick, and the pick
+  pulses yellow and white until it is used or dropped.
+- **Options.** While picked, the cell each second direction would send the
+  target to is marked: a dot on free floor, else whatever is there (a wall
+  or an enemy it would be knocked into, or the player for a yank) is
+  tinted. Green: the move downs it. Red: the player would stand under a
+  wound-up strike afterwards. Cyan: neither. The HUD names the moves and
+  the colours.
+- **Attacks.** The attacker swings at its target; a weapon's wielder
+  swings the way it strikes when the strike lands.
+- **Hits.** The target recoils from the blow and strobes red and white.
+  Whatever takes damage and lives shows its hearts above it for a moment
+  (red for each hit point left, grey for each lost); the player's hearts
+  are always in the bottom-left corner. A death leaves a burst (`*`) where
+  it happened. (A first try popped up the damage as a number, which read
+  as unclear: "1" what?)
+
+Still open, from the causes first suspected:
 
 - **The patterns.** A sweep or a spear may be hard to read from the glyph
   alone, and a pattern shows only once the enemy winds up.
-- **Missing feedback on a pick.** Picking marks the target, but not what
-  each second direction would do: where the target and the player would
-  end up, and which cells would then be struck.
-- **Missing motion.** Knockbacks, swaps and strikes could animate, so the
-  player sees what happened and why.
+- **Patterns before the wind-up.** What an enemy's weapon covers is shown
+  only once it winds up.
+- **Hit points while choosing.** An enemy's hearts show after it is hit;
+  while it is picked, its hit points are only in the HUD (the cells around
+  it carry the option marks).
 
 ## How it is put together
 

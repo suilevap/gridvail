@@ -11,6 +11,7 @@ pub mod combat;
 pub mod content;
 pub mod damage;
 pub mod debug_ui;
+pub mod feedback;
 pub mod foundation;
 pub mod layout;
 pub mod lighting;

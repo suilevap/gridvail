@@ -34,6 +34,12 @@ const CELL_FONT_SIZE: f32 = 16.0;
 #[derive(Component)]
 struct HudText;
 
+/// The player's hearts, in the bottom-left corner (the HUD above can run
+/// to several lines), in the cell font (the HUD's narrow default font has
+/// no hearts).
+#[derive(Component)]
+struct HeartsText;
+
 /// The text entity drawing one frame slot (see `RenderBuffers`): the map
 /// position it shows changes as the frame follows the player.
 #[derive(Component, Clone, Copy)]
@@ -146,6 +152,7 @@ impl Plugin for TextRendererPlugin {
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
                     update_hud,
+                    update_hearts,
                     super::settings::draw_settings,
                     super::settings::draw_compass,
                 )
@@ -291,6 +298,23 @@ pub(super) fn setup(
             top: Val::Px(8.0),
             left: Val::Px(8.0),
             right: Val::Px(8.0),
+            ..default()
+        },
+    ));
+    commands.spawn((
+        HeartsText,
+        UiTargetCamera(camera),
+        Text::new(String::with_capacity(16)),
+        TextFont {
+            font: FontSource::Handle(font.clone()),
+            font_size: FontSize::Px(CELL_FONT_SIZE * 1.5),
+            ..default()
+        },
+        TextColor(Color::from(crate::lighting::RED)),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(8.0),
+            left: Val::Px(8.0),
             ..default()
         },
     ));
@@ -705,6 +729,28 @@ fn update_hud(
     }
 }
 
+/// The player's hearts: a full one for each hit point left, an empty one
+/// for each lost.
+fn update_hearts(
+    players: Query<&Health, With<Player>>,
+    mut hearts: Query<&mut Text, With<HeartsText>>,
+) {
+    let Ok(health) = players.single() else {
+        return;
+    };
+    for mut text in &mut hearts {
+        let full = health.hp.clamp(0, health.max) as usize;
+        let empty = (health.max.max(0) as usize).saturating_sub(full);
+        let drawn = text.0.chars().filter(|&c| c == '♥').count() == full
+            && text.0.chars().filter(|&c| c == '♡').count() == empty;
+        if !drawn {
+            text.0.clear();
+            text.0.extend(std::iter::repeat_n('♥', full));
+            text.0.extend(std::iter::repeat_n('♡', empty));
+        }
+    }
+}
+
 /// The player's hit points and, with a target picked, its hit points and
 /// what each second direction does to it.
 fn write_combat(
@@ -730,6 +776,7 @@ fn write_combat(
             moves.forward.name, moves.side.name, moves.back.name
         )?;
     }
+    text.push_str(" | marks: green downs it, cyan safe, red you get hit");
     let cancel = match scheme {
         ControlScheme::Keyboard => "C cancels",
         ControlScheme::Touch => "tap cancels",

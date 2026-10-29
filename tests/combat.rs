@@ -402,3 +402,84 @@ fn a_dead_player_plays_the_map_again() {
     assert_eq!(health.hp, health.max);
     assert_eq!(pos, PLAYER);
 }
+
+// --- feedback: what the player is shown ---------------------------------
+
+/// The colour the frame's marks give `cell`, if any (the last mark wins).
+fn mark_at(game: &Game, cell: IVec2) -> Option<Rgb> {
+    let marks = game.app.world().resource::<CellMarks>();
+    marks
+        .0
+        .iter()
+        .rev()
+        .find(|(at, _)| *at == cell)
+        .map(|(_, mark)| mark.tint)
+}
+
+#[test]
+fn a_pick_shows_what_each_direction_would_do() {
+    use pav_ecs_game_bevy_port::lighting::{CYAN, RED};
+    let mut game = Game::new(OPEN, 100);
+    game.until_wound_up(ENEMY);
+    game.press(RIGHT);
+    assert!(game.player().3.is_some(), "not picked");
+    // The guard's sweep covers the row in front of it (the player's
+    // column): a lunge or a push leaves the player in it, a yank does not.
+    assert_eq!(mark_at(&game, ENEMY + IVec2::X), Some(RED), "lunge");
+    assert_eq!(mark_at(&game, ENEMY + IVec2::Y), Some(RED), "push down");
+    assert_eq!(mark_at(&game, ENEMY + IVec2::NEG_Y), Some(RED), "push up");
+    assert_eq!(mark_at(&game, PLAYER), Some(CYAN), "yank");
+    // What the marks say is what happens.
+    assert!(hit_after(DOWN), "push");
+    assert!(!hit_after(LEFT), "yank");
+}
+
+#[test]
+fn a_blow_that_would_down_the_target_shows_green() {
+    use pav_ecs_game_bevy_port::lighting::GREEN;
+    let mut game = Game::new(OPEN, 100);
+    // On its alert beat a hit is critical: any move downs it.
+    game.press(RIGHT);
+    assert_eq!(mark_at(&game, ENEMY + IVec2::Y), Some(GREEN));
+}
+
+/// The character the frame's marks give `cell`, if any (the last wins).
+fn mark_char_at(game: &Game, cell: IVec2) -> Option<char> {
+    let marks = game.app.world().resource::<CellMarks>();
+    marks
+        .0
+        .iter()
+        .rev()
+        .find(|(at, _)| *at == cell)
+        .map(|(_, mark)| mark.ground.ch)
+}
+
+#[test]
+fn a_hit_shows_the_hearts_left_above_the_target() {
+    let mut game = Game::new(OPEN, 100);
+    game.until_aware();
+    game.press(RIGHT);
+    game.press(DOWN);
+    // Pushed down to (4, 4), with 1 of its 2 hit points left: a full heart
+    // and an empty one in the row above it, from its own column (the
+    // player's own show in the HUD).
+    let above = IVec2::new(4, 3);
+    assert_eq!(mark_char_at(&game, above), Some('♥'));
+    assert_eq!(mark_char_at(&game, above + IVec2::X), Some('♡'));
+}
+
+#[test]
+fn a_death_leaves_a_burst_where_it_happened() {
+    let mut game = Game::new(OPEN, 100);
+    // A critical hit on its alert beat downs it where it stands.
+    game.press(RIGHT);
+    game.press(DOWN);
+    let world = game.app.world_mut();
+    let bursts: Vec<(IVec2, char)> = world
+        .query_filtered::<(&Pos, &Glyph), With<pav_ecs_game_bevy_port::feedback::Popup>>()
+        .iter(world)
+        .map(|(pos, glyph)| (pos.0, glyph.ch))
+        .collect();
+    assert_eq!(game.enemies(), 0);
+    assert!(bursts.iter().any(|&(_, ch)| ch == '*'), "{bursts:?}");
+}

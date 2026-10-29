@@ -20,16 +20,18 @@
 
 mod hits;
 mod maneuvers;
+mod preview;
 mod weapons;
 
 pub use hits::*;
 pub use maneuvers::*;
+pub use preview::*;
 pub use weapons::*;
 
 use bevy::prelude::*;
 
 use crate::model::*;
-use crate::schedule::{ActionStage, GamePhase, MarkCells};
+use crate::schedule::{ActionStage, GamePhase};
 use crate::simulation::ScheduleMessages;
 
 pub struct CombatPlugin;
@@ -50,10 +52,6 @@ impl Plugin for CombatPlugin {
                         .in_set(ActionStage::Hits),
                 )
                     .in_set(GamePhase::Simulation),
-            )
-            .add_systems(
-                Update,
-                mark_strikes.in_set(MarkCells).in_set(GamePhase::Visibility),
             );
     }
 }

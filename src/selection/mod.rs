@@ -10,19 +10,8 @@
 
 use bevy::prelude::*;
 
-use crate::lighting::YELLOW;
 use crate::model::*;
-use crate::schedule::{ActionStage, GamePhase, MarkCells, PlayerCommands};
-
-/// How a picked target is marked.
-pub const SELECTION_MARK: CellMark = CellMark {
-    ground: RenderCell {
-        ch: '·',
-        color: YELLOW,
-        depth: 0,
-    },
-    tint: YELLOW,
-};
+use crate::schedule::{ActionStage, GamePhase, PlayerCommands};
 
 pub struct SelectionPlugin;
 
@@ -39,10 +28,6 @@ impl Plugin for SelectionPlugin {
                         .in_set(ActionStage::Decide),
                 )
                     .in_set(GamePhase::Simulation),
-            )
-            .add_systems(
-                Update,
-                mark_picks.in_set(MarkCells).in_set(GamePhase::Visibility),
             );
     }
 }
@@ -139,22 +124,6 @@ fn ready(command: &MoveCommand, tokens: &Tokens, turn: &TurnState) -> bool {
         && command.target != IVec2::ZERO
         && tokens.count > 0
         && !turn.simulation
-}
-
-/// Marks every picked target.
-pub fn mark_picks(
-    marks: Option<ResMut<CellMarks>>,
-    selections: Query<&Selected>,
-    positions: Query<&Pos>,
-) {
-    let Some(mut marks) = marks else {
-        return;
-    };
-    for selected in &selections {
-        if let Ok(pos) = positions.get(selected.target) {
-            marks.0.push((pos.0, SELECTION_MARK));
-        }
-    }
 }
 
 #[cfg(test)]
