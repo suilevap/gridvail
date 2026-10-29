@@ -44,36 +44,36 @@ figure person
     lantern ¤  x=0.34 y=-0.16 tint=#ffd070
     head    @  x=0.02 y=0.24 noflip
 
-# A guard: a spearman in mail with a red shield. Facing the viewer they
-# show their face with the spear upright beside them; from the side they
-# hold the spear out ahead, which shows where they look. Their mood shows
-# over their head.
+# A guard: a spearman in mail with a red shield. The spear's bright tip
+# always points where they look, so their line of sight reads at a glance
+# whichever way they face: down past their feet toward the viewer, up over
+# their head away from them, or held out level to a side. Facing the viewer
+# they show their face, facing away the back of their head. Their mood
+# shows over their head.
 figure guard
   view front
-    shaft   │  x=-0.34 y=-0.14 shade=0.6
-    shaft   │  x=-0.34 y=0.18 shade=0.6
-    tip     ♠  x=-0.34 y=0.48 tint=#c8d0e0
     legs    Π  y=-0.3 shade=0.55
     mail    Ш  y=-0.02 tint=#a8b0c0
     shield  ♦  x=0.3 y=-0.06 tint=#c83838
+    shaft   │  x=-0.3 y=-0.14 shade=0.6
+    tip     ▾  x=-0.3 y=-0.46 tint=#f0f4ff
     head    ☺  y=0.27
     mood    own y=0.62 tint=#ffd040 only=!?
   view back
+    shaft   │  x=0.3 y=0.16 shade=0.5
+    tip     ▴  x=0.3 y=0.48 tint=#f0f4ff
     shield  ♦  x=-0.3 y=-0.06 tint=#802828
     legs    Π  y=-0.3 shade=0.45
     mail    Ш  y=-0.02 tint=#788090
     head    ●  y=0.27 shade=0.55
-    shaft   │  x=0.34 y=-0.14 shade=0.5
-    shaft   │  x=0.34 y=0.18 shade=0.5
-    tip     ♠  x=0.34 y=0.48 tint=#909aa8
     mood    own y=0.62 tint=#ffd040 only=!?
   view right
     shield  ♦  x=-0.24 y=-0.04 tint=#802828
     legs    Λ  y=-0.3 shade=0.55
     mail    Ш  x=-0.02 y=-0.02 tint=#a8b0c0
     shaft   ─  x=0.2 y=0.02 shade=0.6
-    shaft   ─  x=0.44 y=0.02 shade=0.6
-    tip     ►  x=0.66 y=0.02 tint=#c8d0e0
+    shaft   ─  x=0.42 y=0.02 shade=0.6
+    tip     ▸  x=0.62 y=0.02 tint=#f0f4ff
     head    ☺  x=0.02 y=0.27 noflip
     mood    own y=0.62 tint=#ffd040 only=!? noflip
 
