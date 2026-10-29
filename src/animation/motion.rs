@@ -186,6 +186,14 @@ pub enum Path {
     /// Out to `toward` at once, then shaking back and forth, smaller and
     /// smaller, back to the start: taking a blow.
     Shake { toward: Vec2 },
+    /// Swung in an arc across `toward` (out from the start, in cells), from
+    /// the side opposite `across` (a unit direction) to the side of it,
+    /// straight at `toward` at the middle of the move, and back: a sweep,
+    /// with its contact at the middle.
+    Sweep { toward: Vec2, across: Vec2 },
+    /// Out to `toward` by the middle of the move, then pulled back past the
+    /// start, and back: a hook that drags what it caught along.
+    Hook { toward: Vec2 },
     /// Curved to the left of the direction of travel by up to `bulge` cells
     /// (negative curves right).
     Arc { bulge: f32 },
@@ -231,6 +239,38 @@ fn shake(s: f32) -> f32 {
     (s * 3.0 * std::f32::consts::TAU + std::f32::consts::FRAC_PI_2).sin() * (1.0 - s) * (1.0 - s)
 }
 
+/// How far out a sweep is at progress `s`, and how far round its arc, in
+/// radians from straight ahead: out over the first quarter while swinging,
+/// straight ahead at the middle (the contact), in over the last quarter.
+fn sweep(s: f32) -> (f32, f32) {
+    const HALF_ARC: f32 = 1.2;
+    let s = s.clamp(0.0, 1.0);
+    let ease = |t: f32| {
+        let t = t.clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t)
+    };
+    let out = ease(s / 0.25) * (1.0 - ease((s - 0.75) / 0.25));
+    let angle = HALF_ARC * (2.0 * ease((s - 0.1) / 0.8) - 1.0);
+    (out, angle)
+}
+
+/// How far out a hook is at progress `s`: out to 1 by the middle (the
+/// contact), pulled back to -0.5, then back to 0.
+fn hook(s: f32) -> f32 {
+    const PULL: f32 = 0.5;
+    let s = s.clamp(0.0, 1.0);
+    if s < 0.5 {
+        let t = s / 0.5;
+        1.0 - (1.0 - t) * (1.0 - t)
+    } else if s < 0.8 {
+        let t = (s - 0.5) / 0.3;
+        1.0 - (1.0 + PULL) * t * t * (3.0 - 2.0 * t)
+    } else {
+        let t = (s - 0.8) / 0.2;
+        -PULL * (1.0 - t * t * (3.0 - 2.0 * t))
+    }
+}
+
 impl Path {
     /// A route turning at `corners`.
     pub fn route(corners: &Corners) -> Self {
@@ -270,6 +310,11 @@ impl Path {
             Self::Excursion { toward } => base + toward * arch,
             Self::Thrust { toward } => base + toward * thrust(s),
             Self::Shake { toward } => base + toward * shake(s),
+            Self::Sweep { toward, across } => {
+                let (out, angle) = sweep(s);
+                base + (toward * angle.cos() + across * toward.length() * angle.sin()) * out
+            }
+            Self::Hook { toward } => base + toward * hook(s),
             Self::Arc { bulge } => base + (to - from).normalize_or_zero().perp() * bulge * arch,
             Self::Hermite { m0, m1 } => {
                 let (s2, s3) = (s * s, s * s * s);
@@ -422,6 +467,13 @@ impl MotionState {
                 toward: turn(toward),
             },
             Path::Shake { toward } => Path::Shake {
+                toward: turn(toward),
+            },
+            Path::Sweep { toward, across } => Path::Sweep {
+                toward: turn(toward),
+                across: turn(across),
+            },
+            Path::Hook { toward } => Path::Hook {
                 toward: turn(toward),
             },
             // A rigid turn keeps left on the left.

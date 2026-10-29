@@ -116,6 +116,16 @@ fn main() -> AppExit {
     if let Some(hp) = options.hp {
         app.world_mut().resource_mut::<ActorKinds>().player_mut().hp = hp;
     }
+    if let Some(hp) = options.enemy_hp {
+        app.world_mut()
+            .resource_mut::<ActorKinds>()
+            .others_mut(|kind| kind.hp = hp);
+    }
+    if let Some(factor) = options.slomo {
+        app.world_mut()
+            .resource_mut::<Time<Virtual>>()
+            .set_relative_speed(1.0 / factor);
+    }
     if options.reveal {
         app.insert_resource(RevealAll).add_systems(
             Update,
@@ -206,6 +216,10 @@ struct Options {
     turn: Option<f32>,
     /// The player's hit points.
     hp: Option<i32>,
+    /// Every other actor's hit points.
+    enemy_hp: Option<i32>,
+    /// How many times slower than real time the game runs.
+    slomo: Option<f32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -273,6 +287,8 @@ impl Options {
         let mut intro = None;
         let mut turn = None;
         let mut hp = None;
+        let mut enemy_hp = None;
+        let mut slomo = None;
         parse_options!(source, args;
             "--screenshot": native if capture.is_none() => {
                 capture = Some(
@@ -310,6 +326,26 @@ impl Options {
                         .ok()
                         .filter(|points| *points > 0)
                         .expect("--hp must be a positive whole number"),
+                );
+            },
+            "--enemy-hp": value if enemy_hp.is_none() => {
+                let points = args.next().expect("--enemy-hp requires hit points");
+                enemy_hp = Some(
+                    points
+                        .parse::<i32>()
+                        .ok()
+                        .filter(|points| *points > 0)
+                        .expect("--enemy-hp must be a positive whole number"),
+                );
+            },
+            "--slomo": value if slomo.is_none() => {
+                let factor = args.next().expect("--slomo requires a factor");
+                slomo = Some(
+                    factor
+                        .parse::<f32>()
+                        .ok()
+                        .filter(|factor| *factor >= 1.0)
+                        .expect("--slomo must be a number of at least 1"),
                 );
             },
             "--compass": value if compass.is_none() => {
@@ -424,6 +460,8 @@ impl Options {
             intro,
             turn,
             hp,
+            enemy_hp,
+            slomo,
         }
     }
 }

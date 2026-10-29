@@ -114,6 +114,13 @@ pub enum GestureShape {
     /// A pull back, a fast thrust out to `toward` at the middle of the
     /// gesture (the moment of contact), and back: an attack.
     Thrust { toward: Vec2 },
+    /// Swung in an arc across `toward`, from the side opposite `across` (a
+    /// unit direction) to its side, straight at `toward` at the middle: a
+    /// sweep.
+    Sweep { toward: Vec2, across: Vec2 },
+    /// Out to `toward` by the middle, then pulled back past the start: a
+    /// hook dragging what it caught.
+    Hook { toward: Vec2 },
     /// Knocked out toward `toward`, then shaking back and forth smaller and
     /// smaller: taking a blow.
     Shake { toward: Vec2 },

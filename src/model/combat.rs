@@ -26,8 +26,26 @@ impl Relation {
     }
 }
 
+/// How a weapon or a move is swung: the gesture its user makes, for
+/// showing it. Each reaches the target at the middle of the gesture.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Swing {
+    /// Straight at the target and back, `reach` cells out.
+    Thrust { reach: f32 },
+    /// In an arc across the front, `reach` cells out.
+    Sweep { reach: f32 },
+    /// Out at the target, then pulled back past where it started.
+    Hook { reach: f32 },
+}
+
+impl Default for Swing {
+    fn default() -> Self {
+        Self::Thrust { reach: 0.55 }
+    }
+}
+
 /// One move of a maneuver set: what acting on a picked target does.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Maneuver {
     pub name: String,
     /// Damage of the hit (0: no hit).
@@ -39,11 +57,13 @@ pub struct Maneuver {
     pub follow: bool,
     /// The actor and a `Movable` target trade places.
     pub swap: bool,
+    /// How the move is swung.
+    pub swing: Swing,
 }
 
 /// The moves an actor makes on a picked target, one for each `Relation` of
 /// the second direction to the first (a fighting style, a weapon's moves).
-#[derive(Component, Clone, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 pub struct Maneuvers {
     pub forward: Maneuver,
     pub side: Maneuver,
@@ -100,11 +120,13 @@ impl Default for ImpactDamage {
 /// A weapon an actor strikes with: the cells it covers (facing where it
 /// is aimed), the damage, and how many turns it is wound up before the
 /// strike lands (0: at once).
-#[derive(Component, Clone, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Debug, PartialEq)]
 pub struct Weapon {
     pub area: Area,
     pub damage: i32,
     pub windup: u8,
+    /// How it is swung.
+    pub swing: Swing,
 }
 
 /// Where a wound-up weapon will strike: a direction from its wielder, so

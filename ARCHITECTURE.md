@@ -228,7 +228,8 @@ and renderers must not import it.
   and gestures of different objects can be timed against each other.
 - `choreography/` times one exchange of blows from what the simulation
   reports (`ContextAction`, `Strike`, `Hit`, `Collision`, `Died`), which
-  it settles in one frame: the attacker thrusts at once, its own move
+  it settles in one frame: the attacker swings at once, as the `Swing` of
+  its move or weapon says (thrust, sweep, hook; data), its own move
   held until just after contact; what the blow lands on is held until
   contact, then slides (a knock) or shakes, and what a knocked body runs
   into shakes. The dead leave `Remains`, a copy of their glyph and motion

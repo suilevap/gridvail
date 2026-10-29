@@ -7,7 +7,7 @@
 //! frame it happened in:
 //!
 //! ```text
-//! 0          attacker: pulls back, thrusts           (its own moves held)
+//! 0          attacker: swings as its weapon or move says (its own moves held)
 //! CONTACT    the blow lands: the target's held moves go (a knock slides),
 //!            or it shakes; what a knocked body ran into shakes
 //! after      the dead, left behind as remains, finish their slide and sink
@@ -23,12 +23,10 @@ use crate::model::*;
 use crate::schedule::{ActionStage, GamePhase};
 use crate::simulation::destroy_entities;
 
-/// How long an attacker's thrust takes, in seconds...
-pub const THRUST_SECS: f32 = 0.26;
-/// ...and so when its blow lands: at the middle of the thrust.
-pub const CONTACT: f32 = THRUST_SECS / 2.0;
-/// How far a thrust reaches, in cells.
-const THRUST_REACH: f32 = 0.55;
+/// How long an attacker's swing takes, in seconds...
+pub const SWING_SECS: f32 = 0.3;
+/// ...and so when its blow lands: at the middle of the swing.
+pub const CONTACT: f32 = SWING_SECS / 2.0;
 /// How long taking a blow shakes, in seconds, and how far, in cells.
 const SHAKE_SECS: f32 = 0.3;
 const SHAKE_REACH: f32 = 0.25;
@@ -44,7 +42,7 @@ impl Plugin for ChoreographyPlugin {
             .add_message::<HoldMoves>()
             .add_systems(
                 Update,
-                (thrust_attackers, react_to_blows).in_set(GamePhase::Visibility),
+                (swing_attackers, react_to_blows).in_set(GamePhase::Visibility),
             )
             // While the dead still have their place and motion.
             .add_systems(
@@ -57,32 +55,64 @@ impl Plugin for ChoreographyPlugin {
     }
 }
 
-/// An actor acting on what it picked thrusts at it, its own moves held
-/// until just after the blow lands; a weapon's wielder thrusts the way it
-/// strikes.
-pub fn thrust_attackers(
+/// The gesture of `swing` at a target in grid direction `at`; a sweep
+/// swings toward `across`.
+pub fn swing_gesture(swing: Swing, at: IVec2, across: IVec2) -> GestureShape {
+    let at = at.as_vec2();
+    match swing {
+        Swing::Thrust { reach } => GestureShape::Thrust { toward: at * reach },
+        Swing::Sweep { reach } => GestureShape::Sweep {
+            toward: at * reach,
+            across: across.as_vec2(),
+        },
+        Swing::Hook { reach } => GestureShape::Hook { toward: at * reach },
+    }
+}
+
+/// An actor acting on what it picked swings at it as the move says (a
+/// sideways move sweeps toward its side), its own moves held until just
+/// after the blow lands; a weapon's wielder swings the way it strikes.
+pub fn swing_attackers(
     mut actions: MessageReader<ContextAction>,
     mut strikes: MessageReader<Strike>,
     mut gestures: MessageWriter<Gesture>,
     mut holds: MessageWriter<HoldMoves>,
+    maneuvers: Query<&Maneuvers>,
+    weapons: Query<&Weapon>,
 ) {
-    let thrust = |entity: Entity, dir: IVec2| Gesture {
+    let swing = |entity: Entity, shape: GestureShape| Gesture {
         entity,
-        shape: GestureShape::Thrust {
-            toward: dir.as_vec2() * THRUST_REACH,
-        },
-        secs: THRUST_SECS,
+        shape,
+        secs: SWING_SECS,
         delay: 0.0,
     };
     for action in actions.read() {
-        gestures.write(thrust(action.actor, action.picked));
+        let style = maneuvers.get(action.actor).map_or_else(
+            |_| Swing::default(),
+            |moves| moves.get(Relation::of(action.picked, action.dir)).swing,
+        );
+        let across = if action.dir.perp_dot(action.picked) == 0 {
+            action.picked.perp()
+        } else {
+            action.dir
+        };
+        gestures.write(swing(
+            action.actor,
+            swing_gesture(style, action.picked, across),
+        ));
         holds.write(HoldMoves {
             entity: action.actor,
             secs: CONTACT + FOLLOW_GAP,
         });
     }
     for strike in strikes.read() {
-        gestures.write(thrust(strike.wielder, strike.dir));
+        let style = weapons
+            .get(strike.wielder)
+            .map_or_else(|_| Swing::default(), |weapon| weapon.swing);
+        gestures.write(swing(
+            strike.wielder,
+            swing_gesture(style, strike.dir, strike.dir.perp()),
+        ));
     }
 }
 

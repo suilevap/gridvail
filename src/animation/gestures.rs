@@ -78,6 +78,8 @@ pub fn gesture_path(shape: GestureShape) -> Path {
         GestureShape::Reach { toward } => Path::Excursion { toward },
         GestureShape::Thrust { toward } => Path::Thrust { toward },
         GestureShape::Shake { toward } => Path::Shake { toward },
+        GestureShape::Sweep { toward, across } => Path::Sweep { toward, across },
+        GestureShape::Hook { toward } => Path::Hook { toward },
     }
 }
 
@@ -242,6 +244,28 @@ mod tests {
         assert!(at(0.2) < 0.0, "no pull back");
         assert!((at(0.5) - 1.0).abs() < 1e-4, "contact is not at the middle");
         assert!(at(0.4) < at(0.5) && at(0.6) < at(0.5));
+        assert!(at(1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn a_sweep_swings_from_one_side_to_the_other_through_the_target() {
+        let path = gesture_path(GestureShape::Sweep {
+            toward: Vec2::X,
+            across: Vec2::Y,
+        });
+        let at = |s: f32| path.sample(Vec2::ZERO, Vec2::ZERO, s);
+        assert!(at(0.25).y < -0.3, "does not start on the far side");
+        assert!((at(0.5) - Vec2::X).length() < 1e-4, "not at the target");
+        assert!(at(0.75).y > 0.3, "does not end on the near side");
+        assert!(at(1.0).length() < 1e-4);
+    }
+
+    #[test]
+    fn a_hook_reaches_the_target_then_pulls_back_past_the_start() {
+        let path = gesture_path(GestureShape::Hook { toward: Vec2::X });
+        let at = |s: f32| path.sample(Vec2::ZERO, Vec2::ZERO, s).x;
+        assert!((at(0.5) - 1.0).abs() < 1e-4, "contact is not at the middle");
+        assert!(at(0.8) < -0.4, "no pull back");
         assert!(at(1.0).abs() < 1e-4);
     }
 }

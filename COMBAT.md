@@ -175,8 +175,11 @@ predictable. To look into separately; possible causes, none decided yet:
 The simulation settles a blow in one frame; the animation plays it in
 order (`src/choreography/`):
 
-1. the attacker pulls back and thrusts (a lunge's step or a yank's swap
-   waits until just after contact);
+1. the attacker swings as its weapon or move says in the roster
+   (`swing`): a thrust straight at the target (a spear reaches further),
+   a sweep in an arc across the front (a sideways push sweeps toward its
+   side), or a hook that reaches out and pulls back (a yank); a lunge's
+   step or a yank's swap waits until just after contact;
 2. at contact the target slides (a knock) or shakes away from the blow,
    and what a knocked body runs into shakes too;
 3. a killed target dies after it has been moved, as a blow that does not
@@ -186,6 +189,9 @@ Still to come, each its own step once needed: something that shows the
 weapon (a trail, an arc), hit points shown on enemies, and the
 infrastructure under them (particles, decals, camera shake or hit-stop,
 sound).
+
+To watch it, `--slomo 4` (`?slomo=4`) runs the whole game four times
+slower, and `--hp` / `--enemy-hp` give everyone more hit points.
 
 ## How it is put together
 
