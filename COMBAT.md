@@ -172,8 +172,12 @@ would do, and when anything was hit. The first answers (`src/feedback/`):
   the colours.
 - **Attacks.** The attacker swings at its target; a weapon's wielder
   swings the way it strikes when the strike lands.
-- **Hits.** The target recoils from the blow and flashes white, and the
-  damage it took pops up as an orange number above it for a moment.
+- **Hits.** The target recoils from the blow and strobes red and white.
+  Whatever takes damage and lives shows its hearts above it for a moment
+  (red for each hit point left, grey for each lost); the player's hearts
+  are always in the bottom-left corner. A death leaves a burst (`*`) where
+  it happened. (A first try popped up the damage as a number, which read
+  as unclear: "1" what?)
 
 Still open, from the causes first suspected:
 
@@ -181,8 +185,9 @@ Still open, from the causes first suspected:
   alone, and a pattern shows only once the enemy winds up.
 - **Patterns before the wind-up.** What an enemy's weapon covers is shown
   only once it winds up.
-- **Hit points.** An enemy's hit points show in the HUD only while it is
-  picked.
+- **Hit points while choosing.** An enemy's hearts show after it is hit;
+  while it is picked, its hit points are only in the HUD (the cells around
+  it carry the option marks).
 
 ## How it is put together
 

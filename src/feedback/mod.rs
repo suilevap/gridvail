@@ -10,7 +10,9 @@
 //!   target to is marked, coloured by the outcome;
 //! - attacks: an attacker swings at its target, a weapon's wielder the way
 //!   it strikes, and an aimed weapon's cells are marked;
-//! - hits: the target recoils and flashes, and the damage pops up above it.
+//! - hits: the target recoils and flashes red and white, whatever took
+//!   damage shows its hearts above it for a moment, and a death leaves a
+//!   burst.
 
 mod attacks;
 mod hits;
@@ -25,7 +27,8 @@ pub use selection::*;
 use bevy::prelude::*;
 
 use crate::model::*;
-use crate::schedule::{GamePhase, MarkCells};
+use crate::schedule::{ActionStage, GamePhase, MarkCells};
+use crate::simulation::move_commands;
 
 pub struct FeedbackPlugin;
 
@@ -39,17 +42,32 @@ impl Plugin for FeedbackPlugin {
                     swing_on_actions,
                     swing_on_strikes,
                     recoil_on_hits,
-                    pop_up_damage,
+                    show_health_on_damage,
                     wear_off,
                 )
                     .before(MarkCells)
                     .in_set(GamePhase::Visibility),
             )
+            // While the dead still have a place: they are removed after the
+            // turn's moves.
             .add_systems(
                 Update,
-                // Later marks of a cell win: options over strikes, and a
-                // flash over everything.
-                (mark_strikes, mark_options, mark_picks, mark_hits)
+                burst_on_death
+                    .after(ActionStage::Damage)
+                    .before(move_commands)
+                    .in_set(GamePhase::Simulation),
+            )
+            .add_systems(
+                Update,
+                // Later marks of a cell win: options over strikes, then
+                // hearts, and a flash over everything.
+                (
+                    mark_strikes,
+                    mark_options,
+                    mark_picks,
+                    mark_health,
+                    mark_hits,
+                )
                     .chain()
                     .in_set(MarkCells)
                     .in_set(GamePhase::Visibility),

@@ -104,8 +104,9 @@ next to this file.
   points and weapon or moves, and draws each weapon's pattern as art.
   While an enemy is picked it pulses, and the cell each direction would
   send it to is marked by outcome: green downs it, red leaves you under a
-  strike, cyan neither. Attacks swing, hits recoil and flash, and damage
-  pops up as a number. The player going down plays the map again. `arena.txt` is a map to try it
+  strike, cyan neither. Attacks swing, hits recoil and strobe, whatever
+  takes damage shows its hearts for a moment (yours are always bottom
+  left), and a death leaves a burst. The player going down plays the map again. `arena.txt` is a map to try it
   in. `--turn SECONDS` sets how long a turn waits for the player (1 by
   default), `--hp` the player's hit points.
 - Player-bound `i` direction marker via relative position + rotation.

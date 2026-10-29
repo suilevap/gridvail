@@ -187,7 +187,9 @@ and renderers must not import it.
     marks: a picked target pulses; each option's cell is coloured by
     `combat::preview`'s outcome (green downs the target, red leaves the
     player under a strike, cyan neither); aimed weapons' cells show a red
-    `×`; a hit target flashes; damage pops up as a number above it.
+    `×`; a hit target strobes red and white; whatever takes damage shows
+    its hearts above it for a moment (the player's are in a corner of the
+    HUD); a death leaves a burst.
     Gameplay modules mark nothing themselves.
   - Cells to show the player are listed each frame into `CellMarks` by
     `MarkCells` systems; the frame composer tints whatever stands there,
