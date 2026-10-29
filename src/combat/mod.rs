@@ -2,7 +2,8 @@
 //! one message. See `COMBAT.md` for the design.
 //!
 //! - `perform_maneuvers`: a `ContextAction` (from `selection`) by an actor
-//!   with `Maneuvers` becomes a `Hit` and `Impulse`s;
+//!   with `Maneuvers` becomes a `Hit`, and a `Knock` (with a `Follow`) or a
+//!   `Swap`;
 //! - `ready_weapons` and `strike`: a `UseWeapon` (from the AI) aims a
 //!   `Weapon` (`Telegraph`) and owes its wind-up (`Delay`), with the
 //!   `Strike` `Scheduled` for when it is paid; the strike hits each cell of
@@ -11,7 +12,7 @@
 //!   `collisions_deal_damage` (a knocked body's `Collision`) turn what
 //!   landed into `Damage`, which `damage` takes off `Health`.
 //!
-//! Time (debts, scheduled messages) and physics (impulses, collisions) are
+//! Time (debts, scheduled messages) and physics (knocks, collisions) are
 //! general mechanisms in `simulation`; combat is one of their users.
 //!
 //! Each reads and writes messages and components only, so a new move, a

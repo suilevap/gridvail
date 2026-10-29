@@ -101,10 +101,7 @@ next to this file.
   reaches two cells ahead, so stepping back is no escape. Who is who is
   data: `assets/rules/actors.ron` lists actor kinds by map glyph (any
   lowercase letter without a meaning of its own), their behaviour, hit
-  points and weapon or moves, and draws each weapon's pattern as art. A
-  knock is a push in the physics sense: a knocked enemy run into another
-  passes the motion on, and how hard a collision hurts grows with its
-  speed. The
+  points and weapon or moves, and draws each weapon's pattern as art. The
   player going down plays the map again. `arena.txt` is a map to try it
   in. `--turn SECONDS` sets how long a turn waits for the player (1 by
   default), `--hp` the player's hit points.

@@ -189,14 +189,14 @@ Small modules that share only data and messages (see `ARCHITECTURE.md`):
 - **Time is general.** An actor in `Debt` sits out its turns until paid,
   and any message can wait on that (`Scheduled`). A wind-up is one user; a
   stun or a stagger is a `Delay` with nothing scheduled.
-- **Knockback is physics.** An `Impulse` sets a body moving cell by cell,
-  friction slows it, a blocked one is a `Collision` with the speed it had
-  left, and a `Pushable` body it hits carries the motion on. A knock of 1
-  is a maneuver today; a throw or a shove of a crate is a bigger impulse
-  on the same mechanism.
+- **Knockback rides the simulation's movement.** A `Knock` gives the
+  target a speed and marks it `Knocked`; the same movement passes that move
+  walkers move it, and a knocked body that is blocked is a `Collision`. A
+  lunge's step after the target is a `Follow`, a yank a `Swap`. Pushing
+  enemies on into others, pushing objects by walking into them, and knocks
+  longer than a cell are postponed.
 - **Damage is its own thing** (`damage/`): `Damage` comes off `Health`,
-  whatever sent it. Hits, critical hits and collisions (harder the faster)
-  are separate small systems that each send their share; a hazard, fire or a fall can send
+  whatever sent it. Hits, critical hits and collisions are separate small systems that each send their share; a hazard, fire or a fall can send
   `Damage` too.
 - **Who is who is data.** Actor kinds, by map glyph, name their
   behaviour, hit points and weapon or moves (`assets/rules/actors.ron`),

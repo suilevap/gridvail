@@ -149,14 +149,15 @@ and renderers must not import it.
     `Scheduled` on an entity and is sent when its debt is paid; a message
     type opts in with `add_scheduled_message`. An action with a cast time
     is a delay plus its effect scheduled.
-  - `simulation/physics.rs`, physics for bodies moved outside walking: an
-    `Impulse` sets a body moving at a speed in cells; every moving body
-    takes a cell per sub-step, all together (so one can follow another,
-    and a ring of bodies moves only if one steps on purpose), losing its
-    `Friction` of speed per cell. A forced body that is blocked sends a
-    `Collision` with the speed it had left, and a `Pushable` body it ran
-    into carries that speed on. Walking still has its own resolver (see
-    `PRINCIPLES.md`, Backfill).
+  - `simulation/physics.rs`, bodies moved by more than their own walking,
+    on the simulation's own movement passes: a `Knock` gives a body a
+    `Speed` (after each mover's own step is chosen, so it wins) and marks it
+    `Knocked`; movement, `Friction` and collision resolution then move it
+    like anything that walks, pass after pass until everything settles. A
+    knocked body that is blocked is a `Collision`, and one that has stopped
+    is no longer `Knocked`. A `Follow` steps into a cell on the pass after
+    it is left (walking into a cell just left is blocked in the same pass),
+    and a `Swap` trades two bodies' places, which walking cannot.
   - `model::Area`: a set of cells around an origin, in the frame of a
     facing (what a weapon strikes).
   - `selection/`: a `Selector` moving into something `Selectable` picks it
@@ -166,13 +167,13 @@ and renderers must not import it.
     commands (`MoveCommand::repeat`) so a held key never acts twice.
   - `combat/`: `perform_maneuvers` answers a context action by an actor
     with `Maneuvers` (one move per `Relation` of the second direction to
-    the first) with a `Hit` and `Impulse`s; `ready_weapons` answers a
+    the first) with a `Hit`, and a `Knock` (with a `Follow`) or a `Swap`;
+    `ready_weapons` answers a
     `UseWeapon` by aiming the `Weapon` (`Telegraph`, a direction from the
     wielder), then owing its wind-up with the `Strike` scheduled, and
     `strike` hits every cell of the weapon's `Area`; `hits_deal_damage`,
     `critical_hits` (on `Exposed` targets, which the AI writes) and
-    `collisions_deal_damage` (by the collision's speed) turn what landed
-    into `Damage`.
+    `collisions_deal_damage` turn what landed into `Damage`.
   - `damage/`: `Damage` comes off `Health`; what runs out has `Died` and is
     destroyed, unless it `KeepOnDeath` (the player: the app plays the map
     again).

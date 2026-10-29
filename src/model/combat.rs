@@ -33,11 +33,12 @@ pub struct Maneuver {
     /// Damage of the hit (0: no hit).
     pub hit: i32,
     /// How many cells a `Movable` target is knocked the way of the second
-    /// direction (forward on, sideways aside, back into the actor's cell);
-    /// 0: not at all.
+    /// direction (forward on, sideways aside); 0: not at all.
     pub knock: i32,
     /// The actor steps into the cell the target leaves.
     pub follow: bool,
+    /// The actor and a `Movable` target trade places.
+    pub swap: bool,
 }
 
 /// The moves an actor makes on a picked target, one for each `Relation` of
@@ -86,8 +87,7 @@ impl Default for CriticalHit {
     }
 }
 
-/// Damage a forced `Collision` does to the mover and to what it ran into,
-/// per cell of speed it had left.
+/// Damage a `Collision` does to the knocked body and to what it ran into.
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ImpactDamage(pub i32);
 

@@ -65,6 +65,7 @@ impl ActorKinds {
             hit: spec.hit,
             knock: spec.knock,
             follow: spec.follow,
+            swap: spec.swap,
         };
         let mut kinds = HashMap::default();
         for (&glyph, actor) in &roster.actors {

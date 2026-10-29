@@ -50,11 +50,12 @@ pub enum ActionStage {
     Ongoing,
     /// Actors decide what to do (after `PlayerCommands`).
     Decide,
-    /// Decisions turn into effects: hits, impulses, delays.
+    /// Decisions turn into effects: hits, knocks, delays.
     Effects,
     /// What actions cost in time is owed.
     Costs,
-    /// Bodies set moving move, push and collide.
+    /// Bodies trade places. (Knocked bodies move on the movement passes,
+    /// after this stage, like everything that walks.)
     Movement,
     /// What landed turns into damage.
     Hits,

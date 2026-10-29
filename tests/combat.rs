@@ -267,16 +267,25 @@ fn an_enemy_knocked_into_a_wall_takes_the_impact() {
 }
 
 #[test]
-fn an_enemy_knocked_into_another_hurts_both_and_pushes_it_on() {
-    let mut game = Game::new("XXXXXXX\nX.....X\nX.pee.X\nX.....X\nXXXXXXX\n", 100);
+fn an_enemy_knocked_into_another_hurts_both() {
+    // Guards tough enough to live through the hit, so the knocked one moves
+    // and runs into the other.
+    let mut game = Game::with("XXXXXXX\nX.....X\nX.pee.X\nX.....X\nXXXXXXX\n", |kinds| {
+        kinds.player_mut().hp = 100;
+        kinds.0.get_mut(&'e').unwrap().hp = 4;
+    });
     // On their alert beat, while neither moves: the near one is caught off
-    // guard (1 + 1) and takes the impact (1); the far one takes the impact
-    // and carries the knock on, a cell.
+    // guard (1 + 1) and takes the impact (1), the far one the impact.
     game.press(RIGHT);
     game.press(RIGHT);
-    game.frames(2);
-    assert!(game.enemy_at(IVec2::new(3, 2)).is_none());
-    assert_eq!(game.enemy_at(IVec2::new(5, 2)).expect("pushed on").1, 1);
+    game.frames(4);
+    assert_eq!(game.enemy_at(IVec2::new(3, 2)).expect("stays").1, 1);
+    assert_eq!(game.enemy_at(IVec2::new(4, 2)).expect("stays").1, 3);
+    assert_eq!(
+        game.player_pos(),
+        IVec2::new(2, 2),
+        "a blocked lunge stays put"
+    );
 }
 
 #[test]

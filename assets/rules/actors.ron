@@ -24,13 +24,14 @@
 
     // Moves on a picked target, one for each way the second direction
     // relates to the first: a name, the hit's damage, how many cells it
-    // knocks the target that way, and whether the mover follows into the
-    // cell the target leaves.
+    // knocks the target that way (1 for now: a body moves its whole speed
+    // in one movement pass), whether the mover follows into the cell the
+    // target leaves, and whether the two trade places.
     moves: {
         "blade": (
             forward: (name: "lunge", hit: 1, knock: 1, follow: true),
             side: (name: "push", hit: 1, knock: 1),
-            back: (name: "yank", hit: 1, knock: 1, follow: true),
+            back: (name: "yank", hit: 1, swap: true),
         ),
     },
 

@@ -64,10 +64,10 @@ Changes to the world pass through three kinds of system:
 
 1. **Deciders** (input, AI) write intents: `MoveCommand`, `UseWeapon`,
    `ContextAction`.
-2. **Effect** systems turn intents into requests: `Hit`, `Impulse`,
+2. **Effect** systems turn intents into requests: `Hit`, `Knock`,
    `Delay`, `Damage`.
 3. **Resolvers** apply requests to shared state, and are the only systems
-   that change it: `move_bodies` and movement resolution move things on
+   that change it: movement resolution and `swap_places` move things on
    the grid, `owe` and `pay_debts` keep time, `take_damage` changes
    `Health`.
 
@@ -132,7 +132,7 @@ only it knows, such as whether a direction is a fresh press or held on
 
 ### 11. Steady turns allocate nothing
 
-Buffers are kept and reused (`Local<Bodies>`, `CellMarks`),
+Buffers are kept and reused (`CellMarks`, the resolver's `CommitBuffer`),
 messages carry what happens, and components are inserted or removed only on
 rare transitions. `tests/allocations.rs` guards steady turns.
 
@@ -144,12 +144,23 @@ written by hand (`src/combat/tests.rs`, `src/selection/tests.rs`,
 `GamePlugin` on small ASCII maps (`tests/combat.rs`). A system that cannot
 be tested without half the game is doing too much.
 
+### 13. State lives in components; the simulation's passes are the loop
+
+What a body is doing is a component on it (`Speed`, `Knocked`, `Debt`),
+not a copy in a system's local list, and a system does one step of it per
+pass. When something takes several steps (a body sliding, a strike
+winding up), the simulation's own loop runs the passes: `turn_update` keeps
+them going until everything has settled, and turns wait for that. A system
+that loops over its own copy of the world until done hides that state from
+every other system and duplicates the loop, so it is a sign to stop and
+put the state on the entities.
+
 ## Checklist for a new feature
 
 - What does it read and write? Name the components and messages first.
 - What is it a case of? Is there a general mechanism below it should use
   or extend?
-- Can an existing message carry it (`ContextAction`, `Damage`, `Impulse`,
+- Can an existing message carry it (`ContextAction`, `Damage`, `Knock`,
   `Delay`, `Hit`)? Answer that instead of adding a path.
 - Which stage does each system belong to?
 - Which numbers belong in `assets/rules/`?
@@ -167,35 +178,32 @@ each.
 
 ### Physics: bodies that move, push and collide
 
-**Before, two movement resolvers.** Walking already has the parts of
-physics: `Speed` (a velocity), `Friction`, `Collider`, and a resolver that
-records collisions. Knockback had a second one, with its own rules for
-blocking and its own collision report. Walking also moves a whole `Speed`
-in one jump, so a fast body would pass through what lies between.
+**Today.** Walking already is the physics loop: `Speed` (a velocity),
+`Friction`, `Collider`, a resolver that blocks and records collisions, and
+`turn_update` running passes until every body has settled. It moves a
+whole `Speed` in one jump, though, so a body faster than a cell a pass
+would pass through what lies between.
 
-**General.** One grid physics for every body:
+**General.** Everything that moves bodies uses that one loop, by putting
+state on the bodies, never with a loop of its own:
 
-- a body has a velocity and friction, and moves one cell per sub-step
-  until its velocity is spent, so speed is distance and nothing is skipped;
-- anything changes a body's motion by an `Impulse` (a velocity added):
-  walking is an impulse of one, a knockback one cell, a throw several;
+- motion is a component (`Speed`), changed by messages (`Knock`), with
+  markers for why a body moves (`Knocked`: running into something hurts);
+- one cell per pass, so speed is distance and nothing is skipped;
 - `Mass` (or weight classes) says what moves what: a light body is pushed
   by a walker that bumps it, a heavy one is not;
-- each sub-step resolves every body together (chains and explicit
-  exchanges such as a yank allowed; head-on walkers still blocked, as the
-  original game requires), and every block is a `Collision` message with
-  the speed it happened at;
-- reactions read collisions: impact damage (faster hurts more), momentum
-  passed on to what was hit (billiards, a crate shoved into an enemy),
-  doors that open when bumped, the animation's bump.
+- every block is a message (`Collision`) that reactions read: impact
+  damage, motion passed on to what was hit, doors that open when bumped,
+  the animation's bump.
 
-**Built** (`simulation/physics.rs`): `Impulse`, sub-steps, `Friction`,
-`Collision` with speed, `Pushable` passing motion on, rings that move only
-on purpose. Maneuvers' knockback uses it, and impact damage grows with
-speed. **Not yet:** `Mass`. **Still to absorb:** walking (`movement` and
-the resolution systems) and `CollisionBuffer`. **Next users:** pushing
-crates, throwing. **Also enables** previews (below): planning a sub-step is
-a pure function of the grid and the bodies.
+**Built** (`simulation/physics.rs`): `Knock` gives a body a speed and
+`Knocked`, and the existing passes move it; a knocked body that is blocked
+is a `Collision`; `Follow` steps into a cell on the pass after it is left;
+`Swap` trades two bodies' places (the resolver blocks swaps, as the
+original game requires). **Postponed** to keep this change small: motion
+passed on to what a knocked body runs into, pushing objects by walking into
+them, knocks longer than one cell (they need the cell-per-pass movement),
+`Mass`. **Still to absorb:** `CollisionBuffer` as a message.
 
 ### Time: actions cost turns, and effects can wait
 
@@ -314,8 +322,8 @@ Staggered after an impact, exposed for a turn after a stagger.
 a second direction would do, which is likely part of why fights feel hard
 to predict (`COMBAT.md`).
 
-**General.** Resolvers split into a pure plan and an apply step (physics
-sub-steps, damage). A preview runs the plan for a candidate action without
+**General.** Resolvers split into a pure plan and an apply step (a
+movement pass, damage). A preview runs the plan for a candidate action without
 applying it and marks the result: where bodies would end up, what would be
 hit. Any action that goes through the general mechanisms can then be
 previewed with no code of its own.
@@ -333,7 +341,8 @@ code.
 Data, time, physics and areas are built for the combat systems. What
 remains, in order:
 
-1. **Previews**: on physics' planning, for the predictability issue.
+1. **Previews**: on planning a movement pass, for the predictability
+   issue.
 2. **Backfill into the built mechanisms**: walking into physics, `Tokens`
    into time, statures and spawn constants into data.
 3. **Interactions**: with the doors, plates and hazards backfill.

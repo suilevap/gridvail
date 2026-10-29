@@ -10,7 +10,9 @@ fn app() -> App {
         .add_message::<DebtPaid>()
         .add_message::<Delay>()
         .add_message::<ContextAction>()
-        .add_message::<Impulse>()
+        .add_message::<Knock>()
+        .add_message::<Follow>()
+        .add_message::<Swap>()
         .add_message::<Collision>()
         .add_message::<Damage>()
         .add_plugins(CombatPlugin)
@@ -25,16 +27,17 @@ fn sent<M: Message + Copy>(app: &App) -> Vec<M> {
 }
 
 fn blade() -> Maneuvers {
-    let make = |name: &str, follow| Maneuver {
+    let make = |name: &str, knock, follow, swap| Maneuver {
         name: name.to_string(),
         hit: 1,
-        knock: 1,
+        knock,
         follow,
+        swap,
     };
     Maneuvers {
-        forward: make("lunge", true),
-        side: make("push", false),
-        back: make("yank", true),
+        forward: make("lunge", 1, true, false),
+        side: make("push", 1, false, false),
+        back: make("yank", 0, false, true),
     }
 }
 
@@ -66,19 +69,18 @@ fn a_lunge_hits_knocks_the_target_on_and_follows() {
         }]
     );
     assert_eq!(
-        sent::<Impulse>(&app),
-        vec![
-            Impulse {
-                entity: target,
-                velocity: IVec2::X,
-                forced: true
-            },
-            Impulse {
-                entity: actor,
-                velocity: IVec2::X,
-                forced: false
-            },
-        ]
+        sent::<Knock>(&app),
+        vec![Knock {
+            entity: target,
+            velocity: IVec2::X
+        }]
+    );
+    assert_eq!(
+        sent::<Follow>(&app),
+        vec![Follow {
+            follower: actor,
+            into: IVec2::new(3, 2)
+        }]
     );
 }
 
@@ -86,23 +88,26 @@ fn a_lunge_hits_knocks_the_target_on_and_follows() {
 fn a_push_knocks_the_target_aside_and_stays() {
     let (app, _, target) = maneuver(IVec2::Y);
     assert_eq!(
-        sent::<Impulse>(&app),
-        vec![Impulse {
+        sent::<Knock>(&app),
+        vec![Knock {
             entity: target,
-            velocity: IVec2::Y,
-            forced: true
+            velocity: IVec2::Y
         }]
     );
+    assert!(sent::<Follow>(&app).is_empty());
 }
 
 #[test]
-fn a_yank_pulls_the_target_back_and_the_actor_steps_after_it() {
+fn a_yank_trades_places() {
     let (app, actor, target) = maneuver(IVec2::NEG_X);
-    let impulses: Vec<_> = sent::<Impulse>(&app)
-        .iter()
-        .map(|i| (i.entity, i.velocity))
-        .collect();
-    assert_eq!(impulses, vec![(target, IVec2::NEG_X), (actor, IVec2::X)]);
+    assert_eq!(
+        sent::<Swap>(&app),
+        vec![Swap {
+            a: actor,
+            b: target
+        }]
+    );
+    assert!(sent::<Knock>(&app).is_empty());
 }
 
 #[test]
@@ -130,23 +135,19 @@ fn a_hit_on_an_exposed_target_is_critical() {
 }
 
 #[test]
-fn a_collision_hurts_both_sides_by_its_speed() {
+fn a_collision_hurts_both_sides() {
     let mut app = app();
     let (mover, obstacle) = (
         app.world_mut().spawn_empty().id(),
         app.world_mut().spawn_empty().id(),
     );
-    app.world_mut().write_message(Collision {
-        mover,
-        obstacle,
-        speed: 2,
-    });
+    app.world_mut().write_message(Collision { mover, obstacle });
     app.update();
     let damage: Vec<_> = sent::<Damage>(&app)
         .iter()
         .map(|d| (d.target, d.amount))
         .collect();
-    assert_eq!(damage, vec![(mover, 2), (obstacle, 2)]);
+    assert_eq!(damage, vec![(mover, 1), (obstacle, 1)]);
 }
 
 #[test]

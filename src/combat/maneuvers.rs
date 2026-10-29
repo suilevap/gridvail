@@ -3,15 +3,18 @@ use bevy::prelude::*;
 use crate::model::*;
 
 /// Answers a `ContextAction` by an actor with `Maneuvers`: the move for how
-/// the second direction relates to the first hits the target, knocks it
-/// the way of the second direction and has the actor step after it, as the
-/// move says. It only asks; hits and impulses are carried out elsewhere.
+/// the second direction relates to the first hits the target, and knocks a
+/// `Movable` target the way of the second direction (the actor following
+/// into the cell it leaves) or trades places with it, as the move says. It
+/// only asks; hits and movement are carried out elsewhere.
 pub fn perform_maneuvers(
     mut actions: MessageReader<ContextAction>,
     mut hits: MessageWriter<Hit>,
-    mut impulses: MessageWriter<Impulse>,
+    mut knocks: MessageWriter<Knock>,
+    mut follows: MessageWriter<Follow>,
+    mut swaps: MessageWriter<Swap>,
     actors: Query<&Maneuvers>,
-    movable: Query<(), With<Movable>>,
+    targets: Query<&Pos, With<Movable>>,
 ) {
     for action in actions.read() {
         let Ok(maneuvers) = actors.get(action.actor) else {
@@ -25,20 +28,26 @@ pub fn perform_maneuvers(
                 damage: maneuver.hit,
             });
         }
-        if maneuver.knock <= 0 || !movable.contains(action.target) {
+        let Ok(target_pos) = targets.get(action.target) else {
             continue;
-        }
-        impulses.write(Impulse {
-            entity: action.target,
-            velocity: action.dir * maneuver.knock,
-            forced: true,
-        });
-        if maneuver.follow {
-            impulses.write(Impulse {
-                entity: action.actor,
-                velocity: action.picked,
-                forced: false,
+        };
+        if maneuver.swap {
+            swaps.write(Swap {
+                a: action.actor,
+                b: action.target,
             });
+        }
+        if maneuver.knock > 0 {
+            knocks.write(Knock {
+                entity: action.target,
+                velocity: action.dir * maneuver.knock,
+            });
+            if maneuver.follow {
+                follows.write(Follow {
+                    follower: action.actor,
+                    into: target_pos.0,
+                });
+            }
         }
     }
 }

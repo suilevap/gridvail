@@ -58,6 +58,9 @@ pub struct MoveSpec {
     /// The mover steps into the cell the target leaves.
     #[serde(default)]
     pub follow: bool,
+    /// The mover and the target trade places.
+    #[serde(default)]
+    pub swap: bool,
 }
 
 /// The behaviour an actor runs.
@@ -98,7 +101,7 @@ mod tests {
             "blade": (
                 forward: (name: "lunge", hit: 1, knock: 1, follow: true),
                 side: (name: "push", hit: 1, knock: 1),
-                back: (name: "yank", knock: 1, follow: true),
+                back: (name: "yank", swap: true),
             ),
         },
         actors: {
@@ -117,7 +120,8 @@ mod tests {
             vec![IVec2::new(1, -1), IVec2::new(1, 0), IVec2::new(1, 1)]
         );
         let blade = &roster.moves["blade"];
-        assert_eq!((blade.back.hit, blade.back.knock), (0, 1));
+        assert_eq!((blade.back.hit, blade.back.knock), (0, 0));
+        assert!(blade.back.swap);
         assert!(blade.forward.follow && !blade.side.follow);
         let guard = &roster.actors[&'e'];
         assert_eq!(guard.tree, Some(Tree::Enemy));

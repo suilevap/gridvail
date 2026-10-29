@@ -2,8 +2,8 @@ use bevy::prelude::*;
 use rand::SeedableRng;
 
 use crate::model::{
-    Collision, CollisionBuffer, ControlScheme, Impulse, MapGrid, PortalCrossings, SharedRng, Tile,
-    TokenTimer, TurnPacing, TurnState,
+    Collision, CollisionBuffer, ControlScheme, Follow, Knock, MapGrid, PortalCrossings, SharedRng,
+    Swap, Tile, TokenTimer, TurnPacing, TurnState,
 };
 use crate::schedule::{ActionStage, GamePhase, PlayerCommands, StartupPhase};
 
@@ -33,7 +33,9 @@ impl Plugin for SimulationPlugin {
             .init_resource::<CommitBuffer>()
             .init_resource::<super::room_plans::RoomPlanners>()
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(self.rng_seed)))
-            .add_message::<Impulse>()
+            .add_message::<Knock>()
+            .add_message::<Follow>()
+            .add_message::<Swap>()
             .add_message::<Collision>()
             // A turn's actions, in order: begun ones go on, input is read,
             // actors decide, and the effects play out before the moves.
@@ -55,7 +57,27 @@ impl Plugin for SimulationPlugin {
                     .before(move_commands)
                     .in_set(GamePhase::Simulation),
             )
-            .add_systems(Update, move_bodies.in_set(ActionStage::Movement))
+            // Physics rides the movement passes: knocks start after each
+            // mover's own step is chosen, and what moved is reported once
+            // the pass is resolved.
+            .add_systems(
+                Update,
+                (
+                    swap_places.in_set(ActionStage::Movement),
+                    knock.after(update_direction).before(movement),
+                    (report_collisions, settle_knocked)
+                        .chain()
+                        .after(resolve_collect)
+                        .before(resolve_unmap),
+                    // After friction too, so the step it gives is not
+                    // slowed before the next pass takes it.
+                    follow
+                        .after(resolve_commit)
+                        .after(friction)
+                        .before(turn_portal_crossers),
+                )
+                    .in_set(GamePhase::Simulation),
+            )
             .add_systems(
                 Startup,
                 (size_commit_buffer, tile_system)
