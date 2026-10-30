@@ -202,8 +202,8 @@ next to this file.
   figures instead: a few characters placed together as ASCII art, each in
   its own colour (the player is the `@` of their hat over a cloak `Δ`,
   carrying a lantern `õ`; guards are riflemen `ô` with cross belts `X`,
-  hunters officers with a plume and a sabre), with a front, back and side view picked by the way the
-  actor faces on screen. A guard's bayonet or sabre always points where
+  hunters officers with a plume and a sabre), with a front, back and
+  side view picked by the way the actor faces on screen. A guard's bayonet or sabre always points where
   they look, so their line of sight reads at a glance (the player's
   direction marker is left out: the figure shows it). Figures are defined
   in `assets/rules/figures.txt` (each glyph with its own offset, size, turn
