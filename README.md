@@ -199,10 +199,10 @@ next to this file.
   glyph stands is set in `assets/rules/statures.txt` (walls and closed
   doors by default; any glyph can be listed), and a `Stature` component
   gives one object its own height. People, guards and lamps stand as
-  figures instead: a few dozen small glyphs placed together, each in its
-  own colour (the player is a cloaked lantern-bearer under the `@` of their
-  hat; guards are riflemen in shakos and capes, hunters officers with a
-  plume and sabre), with a front, back and side view picked by the way the
+  figures instead: a few characters placed together as ASCII art, each in
+  its own colour (the player is the `@` of their hat over a cloak `Δ`,
+  carrying a lantern `õ`; guards are riflemen `ô` with cross belts `X`,
+  hunters officers with a plume and a sabre), with a front, back and side view picked by the way the
   actor faces on screen. A guard's bayonet or sabre always points where
   they look, so their line of sight reads at a glance (the player's
   direction marker is left out: the figure shows it). Figures are defined
