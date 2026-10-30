@@ -16,6 +16,7 @@ use bevy::prelude::*;
 
 use crate::ai::AiPlugin;
 use crate::camera::CameraPlugin;
+use crate::choreography::ChoreographyPlugin;
 use crate::combat::CombatPlugin;
 use crate::damage::DamagePlugin;
 use crate::locomotion::LocomotionPlugin;
@@ -68,6 +69,7 @@ impl Plugin for GamePlugin {
             DamagePlugin,
             SelectionPlugin,
             CombatPlugin,
+            ChoreographyPlugin,
             LocomotionPlugin,
             VisionPlugin,
             PresentationPlugin,

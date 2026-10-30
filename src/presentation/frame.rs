@@ -37,10 +37,11 @@ pub fn compose_frame(
     dynamic: Res<DynamicLight>,
     // What is in sight beyond what the player sees (all, or an oval), and
     // what is marked on the floor.
-    (reveal, area, marks): (
+    (reveal, area, marks, ages): (
         Option<Res<RevealAll>>,
         Option<Res<RevealArea>>,
         Option<Res<CellMarks>>,
+        Option<Res<MarkAges>>,
     ),
     viewers: Query<(&Pos, &VisibilityMap, Option<&PlayerView>), With<Player>>,
     glyphs: Query<(
@@ -107,7 +108,7 @@ pub fn compose_frame(
                 index,
                 entity,
                 instance,
-                inverse.apply_point(shown.position),
+                inverse.apply_point(shown.drawn()),
                 shown.lift,
                 shown.height,
                 inverse.quarters,
@@ -126,7 +127,7 @@ pub fn compose_frame(
                         index,
                         entity,
                         0,
-                        shown.position,
+                        shown.drawn(),
                         shown.lift,
                         shown.height,
                         0,
@@ -160,7 +161,7 @@ pub fn compose_frame(
             let Some(index) = buffers.idx(inverse.apply(pos.0)) else {
                 continue;
             };
-            let position = inverse.apply_point(shown.position);
+            let position = inverse.apply_point(shown.drawn());
             draw(
                 &mut buffers,
                 index,
@@ -233,6 +234,18 @@ pub fn compose_frame(
         let Some(world) = grid.idx(cell) else {
             continue;
         };
+        // Planted: nothing before its delay, then growing in.
+        let grown = ages
+            .as_ref()
+            .and_then(|ages| ages.0.get(&cell))
+            .map_or(f32::INFINITY, |age| (age - mark.delay) / MARK_GROWTH_SECS);
+        if grown < 0.0 {
+            continue;
+        }
+        let ground = match MARK_GROWTH.get(grown as usize) {
+            Some(&ch) => RenderCell { ch, ..mark.ground },
+            None => mark.ground,
+        };
         let mut frame = buffers.seen_first[world];
         while frame != RenderBuffers::NO_CELL {
             let index = frame as usize;
@@ -243,7 +256,7 @@ pub fn compose_frame(
                 stood_on = true;
             }
             if !stood_on {
-                buffers.ground[index] = mark.ground;
+                buffers.ground[index] = ground;
             }
             frame = buffers.seen_next[index];
         }

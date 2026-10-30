@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::model::{CellMarks, FrameSize, MapGrid, RenderBuffers, StaticLight};
+use crate::model::{CellMarks, FrameSize, MapGrid, MarkAges, RenderBuffers, StaticLight};
 use crate::schedule::{GamePhase, MarkCells, StartupPhase};
 
 use super::{compose_frame, render_light_layers, DynamicLight};
@@ -12,6 +12,7 @@ impl Plugin for PresentationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<FrameSize>()
             .init_resource::<CellMarks>()
+            .init_resource::<MarkAges>()
             .add_systems(Startup, setup_buffers.in_set(StartupPhase::Presentation))
             .add_systems(
                 Update,
@@ -22,7 +23,7 @@ impl Plugin for PresentationPlugin {
             .add_systems(Update, render_light_layers.in_set(GamePhase::Lighting))
             .add_systems(
                 Update,
-                (resize_frame, compose_frame)
+                (resize_frame, age_cell_marks, compose_frame)
                     .chain()
                     .in_set(GamePhase::Presentation),
             );
@@ -32,6 +33,17 @@ impl Plugin for PresentationPlugin {
 /// Marks are listed afresh every frame.
 fn clear_cell_marks(mut marks: ResMut<CellMarks>) {
     marks.0.clear();
+}
+
+/// Each marked cell ages while it stays marked; one no longer marked is
+/// forgotten, so marking it again plants it again.
+fn age_cell_marks(time: Res<Time>, marks: Res<CellMarks>, mut ages: ResMut<MarkAges>) {
+    let dt = time.delta_secs();
+    let old = std::mem::take(&mut ages.0);
+    for &(cell, _) in &marks.0 {
+        let age = old.get(&cell).map_or(0.0, |age| age + dt);
+        ages.0.insert(cell, age);
+    }
 }
 
 /// The frame is `FrameSize` (change it to resize the frame), independent of

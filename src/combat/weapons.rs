@@ -11,7 +11,11 @@ pub const STRIKE_MARK: CellMark = CellMark {
         depth: 0,
     },
     tint: RED,
+    delay: 0.0,
 };
+/// How long after a weapon's first cell is marked the next one is, in the
+/// order it swings through them.
+pub const STRIKE_MARK_STEP: f32 = 0.12;
 
 /// Readies the weapon of each `UseWeapon`: aims it (`Telegraph`), then
 /// strikes at once, or, with a wind-up, owes the wind-up's turns (`Delay`)
@@ -29,6 +33,7 @@ pub fn ready_weapons(
         };
         let strike = Strike {
             wielder: use_weapon.user,
+            dir: use_weapon.dir,
         };
         let mut user = commands.entity(use_weapon.user);
         user.insert(Telegraph {
@@ -47,21 +52,21 @@ pub fn ready_weapons(
 }
 
 /// A `Strike` hits every cell of the weapon's area, from where its wielder
-/// stands now and the way it is aimed: a hit on whatever there has health,
-/// friend or foe.
+/// stands now and the way it strikes: a hit on whatever there has health,
+/// friend or foe. The weapon is no longer aimed.
 pub fn strike(
     mut commands: Commands,
     grid: Res<MapGrid>,
     mut strikes: MessageReader<Strike>,
     mut hits: MessageWriter<Hit>,
-    wielders: Query<(&Pos, &Weapon, &Telegraph)>,
+    wielders: Query<(&Pos, &Weapon)>,
     health: Query<(), With<Health>>,
 ) {
-    for &Strike { wielder } in strikes.read() {
-        let Ok((pos, weapon, telegraph)) = wielders.get(wielder) else {
+    for &Strike { wielder, dir } in strikes.read() {
+        let Ok((pos, weapon)) = wielders.get(wielder) else {
             continue;
         };
-        for cell in weapon.area.cells(pos.0, telegraph.dir) {
+        for cell in weapon.area.cells(pos.0, dir) {
             let Some(target) = grid.get(grid.safe_pos(cell)) else {
                 continue;
             };
@@ -77,7 +82,8 @@ pub fn strike(
     }
 }
 
-/// Marks every cell an aimed weapon will strike.
+/// Marks every cell an aimed weapon will strike, planted in the order it
+/// swings through them: from the side it swings from, nearer first.
 pub fn mark_strikes(
     grid: Res<MapGrid>,
     marks: Option<ResMut<CellMarks>>,
@@ -87,8 +93,12 @@ pub fn mark_strikes(
         return;
     };
     for (pos, weapon, telegraph) in &wielders {
-        for cell in weapon.area.cells(pos.0, telegraph.dir) {
-            marks.0.push((grid.safe_pos(cell), STRIKE_MARK));
+        let mut order: Vec<_> = (0..weapon.area.0.len()).collect();
+        order.sort_by_key(|&i| (weapon.area.0[i].y, weapon.area.0[i].x));
+        let cells: Vec<_> = weapon.area.cells(pos.0, telegraph.dir).collect();
+        for (rank, &i) in order.iter().enumerate() {
+            let mark = STRIKE_MARK.after(rank as f32 * STRIKE_MARK_STEP);
+            marks.0.push((grid.safe_pos(cells[i]), mark));
         }
     }
 }
