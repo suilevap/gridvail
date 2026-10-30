@@ -18,7 +18,9 @@
 
 use bevy::prelude::*;
 
-use crate::animation::{Flinging, ObjectAnimation, SWING_CONTACT};
+use bevy::platform::collections::HashSet;
+
+use crate::animation::{Flinging, ObjectAnimation, SWING_CONTACT, SWING_WOUND};
 use crate::model::*;
 use crate::schedule::{ActionStage, GamePhase};
 use crate::simulation::destroy_entities;
@@ -37,6 +39,18 @@ const SHAKE_REACH: f32 = 0.25;
 /// How long after the contact an attacker's own move (a lunge's step
 /// after its target, a swap) starts.
 const FOLLOW_GAP: f32 = 0.06;
+/// How long an aimed weapon's wielder takes to wind up (it then holds until
+/// it strikes); the strike plays the rest of the swing, and its blow lands
+/// sooner than a whole swing's.
+const AIM_SECS: f32 = 0.5;
+const RELEASE_SECS: f32 = SWING_SECS * (1.0 - SWING_WOUND);
+pub const RELEASE_CONTACT: f32 = SWING_SECS * (SWING_CONTACT - SWING_WOUND);
+/// How long the player takes to ready a swing at what they picked, and how
+/// far (a thrust's reach: it draws back a share of that).
+const PICK_SECS: f32 = 0.2;
+const PICK_REACH: f32 = 0.4;
+/// How long dropping a wind-up takes to ease back.
+const UNWIND_SECS: f32 = 0.2;
 
 pub struct ChoreographyPlugin;
 
@@ -45,9 +59,13 @@ impl Plugin for ChoreographyPlugin {
         app.add_message::<Gesture>()
             .add_message::<HoldMoves>()
             .add_message::<Fling>()
+            .add_message::<WindUp>()
+            .add_message::<Release>()
             .add_systems(
                 Update,
-                (swing_attackers, react_to_blows).in_set(GamePhase::Visibility),
+                (wind_up, swing_attackers, react_to_blows)
+                    .chain()
+                    .in_set(GamePhase::Visibility),
             )
             // While the dead still have their place and motion.
             .add_systems(
@@ -74,14 +92,61 @@ pub fn swing_gesture(swing: Swing, at: IVec2, across: IVec2) -> GestureShape {
     }
 }
 
+/// Anticipation lasts as long as what it anticipates: a weapon's wielder
+/// winds up its swing when it aims and holds it until the strike; the
+/// player readies a thrust at what they picked while it stays picked.
+/// Either eases back if dropped (the strike and the action play their own
+/// swing, from there).
+#[allow(clippy::type_complexity)]
+pub fn wind_up(
+    mut wind_ups: MessageWriter<WindUp>,
+    mut releases: MessageWriter<Release>,
+    aimed: Query<(Entity, &Weapon, &Telegraph), Changed<Telegraph>>,
+    picks: Query<(Entity, &Selected), Changed<Selected>>,
+    mut dropped_aims: RemovedComponents<Telegraph>,
+    mut dropped_picks: RemovedComponents<Selected>,
+    mut strikes: MessageReader<Strike>,
+) {
+    for (wielder, weapon, telegraph) in &aimed {
+        wind_ups.write(WindUp {
+            entity: wielder,
+            shape: swing_gesture(weapon.swing, telegraph.dir, telegraph.dir.perp()),
+            secs: AIM_SECS,
+        });
+    }
+    for (picker, selected) in &picks {
+        wind_ups.write(WindUp {
+            entity: picker,
+            shape: GestureShape::Thrust {
+                toward: selected.dir.as_vec2() * PICK_REACH,
+            },
+            secs: PICK_SECS,
+        });
+    }
+    let struck: HashSet<Entity> = strikes.read().map(|strike| strike.wielder).collect();
+    for entity in dropped_aims
+        .read()
+        .filter(|entity| !struck.contains(entity))
+        .chain(dropped_picks.read())
+    {
+        releases.write(Release {
+            entity,
+            secs: UNWIND_SECS,
+            strike: false,
+        });
+    }
+}
+
 /// An actor acting on what it picked swings at it as the move says (a
 /// sideways move sweeps toward its side), its own moves held until just
-/// after the blow lands; a weapon's wielder swings the way it strikes.
+/// after the blow lands; a weapon's wielder swings the way it strikes,
+/// releasing the swing it wound up when it aimed.
 pub fn swing_attackers(
     mut actions: MessageReader<ContextAction>,
     mut strikes: MessageReader<Strike>,
     mut gestures: MessageWriter<Gesture>,
     mut holds: MessageWriter<HoldMoves>,
+    mut releases: MessageWriter<Release>,
     maneuvers: Query<&Maneuvers>,
     weapons: Query<&Weapon>,
 ) {
@@ -111,9 +176,18 @@ pub fn swing_attackers(
         });
     }
     for strike in strikes.read() {
-        let style = weapons
-            .get(strike.wielder)
-            .map_or_else(|_| Swing::default(), |weapon| weapon.swing);
+        let Ok(weapon) = weapons.get(strike.wielder) else {
+            continue;
+        };
+        if weapon.windup > 0 {
+            releases.write(Release {
+                entity: strike.wielder,
+                secs: RELEASE_SECS,
+                strike: true,
+            });
+            continue;
+        }
+        let style = weapon.swing;
         gestures.write(swing(
             strike.wielder,
             swing_gesture(style, strike.dir, strike.dir.perp()),
@@ -127,30 +201,48 @@ pub fn swing_attackers(
 pub fn react_to_blows(
     mut hits: MessageReader<Hit>,
     mut collisions: MessageReader<Collision>,
-    mut gestures: MessageWriter<Gesture>,
-    mut holds: MessageWriter<HoldMoves>,
-    mut flings: MessageWriter<Fling>,
+    (mut gestures, mut holds, mut flings): (
+        MessageWriter<Gesture>,
+        MessageWriter<HoldMoves>,
+        MessageWriter<Fling>,
+    ),
+    mut strikes: MessageReader<Strike>,
     positions: Query<&Pos>,
+    weapons: Query<&Weapon>,
 ) {
-    let shake = |entity: Entity, from: IVec2, at: IVec2| Gesture {
+    // A wound-up swing, released, lands sooner than a whole one.
+    let released: HashSet<Entity> = strikes
+        .read()
+        .map(|strike| strike.wielder)
+        .filter(|wielder| weapons.get(*wielder).is_ok_and(|weapon| weapon.windup > 0))
+        .collect();
+    let contact = |source: Entity| {
+        if released.contains(&source) {
+            RELEASE_CONTACT
+        } else {
+            CONTACT
+        }
+    };
+    let shake = |entity: Entity, from: IVec2, at: IVec2, delay: f32| Gesture {
         entity,
         shape: GestureShape::Shake {
             toward: (at - from).clamp(IVec2::NEG_ONE, IVec2::ONE).as_vec2() * SHAKE_REACH,
         },
         secs: SHAKE_SECS,
-        delay: CONTACT,
+        delay,
     };
     for hit in hits.read() {
+        let delay = contact(hit.source);
         holds.write(HoldMoves {
             entity: hit.target,
-            secs: CONTACT,
+            secs: delay,
         });
         flings.write(Fling {
             entity: hit.target,
             secs: FLING_SECS,
         });
         if let (Ok(from), Ok(at)) = (positions.get(hit.source), positions.get(hit.target)) {
-            gestures.write(shake(hit.target, from.0, at.0));
+            gestures.write(shake(hit.target, from.0, at.0, delay));
         }
     }
     for collision in collisions.read() {
@@ -160,7 +252,7 @@ pub fn react_to_blows(
         ) else {
             continue;
         };
-        gestures.write(shake(collision.obstacle, from.0, at.0));
+        gestures.write(shake(collision.obstacle, from.0, at.0, CONTACT));
     }
 }
 

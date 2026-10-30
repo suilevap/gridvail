@@ -185,7 +185,9 @@ and renderers must not import it.
     again).
   - Cells to show the player (strikes, picks) are listed each frame into
     `CellMarks` by `MarkCells` systems; the frame composer tints whatever
-    stands there, or draws a mark on the floor.
+    stands there, or draws a mark on the floor. A mark is planted: it grows
+    in a `delay` after its cell is first marked (`MarkAges`), so a strike's
+    cells appear in the order its weapon swings through them.
   - Who is who comes from data. `content::data::read` reads any RON file
     into any type that derives `Deserialize`, so a new data file is a new
     type, with no parser; `content::art` reads shapes drawn as text art.
@@ -223,7 +225,9 @@ and renderers must not import it.
   delay. On top of the move, an object can make a `Gesture` (a reach, a
   thrust, a shake): an offset out and back that keeps the cell
   (`AnimatedPos::pose`, drawn at `drawn()` but not followed by the camera),
-  started now or after a delay. `HoldMoves` keeps an object's next cell
+  started now or after a delay. A `WindUp` plays a swing up to its
+  wound-up pose and holds it until a `Release` (the rest of the swing, or
+  easing back); a new gesture starts from wherever the pose had got to. `HoldMoves` keeps an object's next cell
   move from starting for a while (the turn waits for it too), so moves
   and gestures of different objects can be timed against each other.
 - `choreography/` times one exchange of blows from what the simulation
@@ -233,7 +237,9 @@ and renderers must not import it.
   held until just after contact; what the blow lands on is held until
   contact, then slides (a knock) or shakes, and what a knocked body runs
   into shakes. The dead leave `Remains`, a copy of their glyph and motion
-  that finishes the slide and sinks. It changes nothing in the simulation.
+  that finishes the slide and sinks. A weapon winds up when it is aimed
+  and releases at the strike; the player winds up on a pick. It changes
+  nothing in the simulation.
 - `presentation/` builds light maps and renderer-neutral composed cell frames.
   Frame cells are in the player's map coordinates; a cell the player sees
   shows the map cell it looks onto (`RenderBuffers::seen`), which behind a

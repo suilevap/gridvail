@@ -6,7 +6,7 @@ use bevy::prelude::*;
 
 use crate::model::*;
 
-use super::{MotionStyle, ObjectAnimation, Path};
+use super::{MotionStyle, ObjectAnimation, Path, SWING_WOUND};
 
 /// Gestures waiting for their delay, each with the seconds still to wait.
 #[derive(Component, Debug, Default)]
@@ -54,13 +54,25 @@ impl Flinging {
 
 /// A gesture being made: an offset over time on top of the object's
 /// motion, so a body can slide and shake at once, and what follows the body
-/// (the camera) is not shaken by it.
+/// (the camera) is not shaken by it. It can stop at a share of its path
+/// and hold there (a wind-up) until released. A new gesture starts from
+/// wherever the last one had got to, blending it out.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Pose {
     path: Option<Path>,
-    elapsed: f32,
-    secs: f32,
+    /// How far along the path, 0 to 1, and how fast, a second.
+    progress: f32,
+    rate: f32,
+    /// Where it stops and holds, until released.
+    hold: Option<f32>,
+    /// The offset it started from, and over what share of the path that
+    /// blends out.
+    from: Vec2,
+    blend: f32,
 }
+
+/// Over what share of a path the pose it started from blends out.
+const BLEND: f32 = 0.3;
 
 impl Pose {
     /// Starts `path` (out and back from zero) over `secs`, in place of any
@@ -68,32 +80,77 @@ impl Pose {
     pub fn start(&mut self, path: Path, secs: f32) {
         *self = Self {
             path: Some(path),
-            elapsed: 0.0,
-            secs: secs.max(f32::EPSILON),
+            rate: 1.0 / secs.max(f32::EPSILON),
+            from: self.offset(),
+            blend: BLEND,
+            ..default()
+        };
+    }
+
+    /// Plays `path` up to its wound-up pose (`SWING_WOUND`) over `secs` and
+    /// holds it there.
+    pub fn wind_up(&mut self, path: Path, secs: f32) {
+        *self = Self {
+            path: Some(path),
+            rate: SWING_WOUND / secs.max(f32::EPSILON),
+            hold: Some(SWING_WOUND),
+            from: self.offset(),
+            blend: BLEND,
+            ..default()
+        };
+    }
+
+    /// Plays the rest of a held path over `secs`; nothing when none is
+    /// held.
+    pub fn release(&mut self, secs: f32) {
+        if let Some(hold) = self.hold.take() {
+            self.rate = (1.0 - hold) / secs.max(f32::EPSILON);
+        }
+    }
+
+    /// Eases from wherever it is back to rest over `secs`.
+    pub fn unwind(&mut self, secs: f32) {
+        let from = self.offset();
+        *self = if from == Vec2::ZERO {
+            Self::default()
+        } else {
+            Self {
+                path: Some(Path::Straight),
+                rate: 1.0 / secs.max(f32::EPSILON),
+                from,
+                blend: 1.0,
+                ..default()
+            }
         };
     }
 
     pub fn advance(&mut self, dt: f32) {
-        if self.path.is_some() {
-            self.elapsed += dt;
-            if self.elapsed >= self.secs {
-                *self = Self::default();
-            }
+        if self.path.is_none() {
+            return;
+        }
+        self.progress += self.rate * dt;
+        if let Some(hold) = self.hold {
+            self.progress = self.progress.min(hold);
+        } else if self.progress >= 1.0 {
+            *self = Self::default();
         }
     }
 
     /// How far the gesture takes the object off its position now.
     pub fn offset(&self) -> Vec2 {
-        self.path.map_or(Vec2::ZERO, |path| {
-            path.sample(Vec2::ZERO, Vec2::ZERO, self.elapsed / self.secs)
-        })
+        let Some(path) = self.path else {
+            return Vec2::ZERO;
+        };
+        let t = (self.progress / self.blend).clamp(0.0, 1.0);
+        let left = 1.0 - t * t * (3.0 - 2.0 * t);
+        path.sample(Vec2::ZERO, Vec2::ZERO, self.progress) + self.from * left
     }
 
+    /// Seconds until it is over; a held pose waits for nobody.
     pub fn remaining(&self) -> f32 {
-        if self.path.is_some() {
-            (self.secs - self.elapsed).max(0.0)
-        } else {
-            0.0
+        match (self.path, self.hold) {
+            (Some(_), None) => (1.0 - self.progress).max(0.0) / self.rate,
+            _ => 0.0,
         }
     }
 }
@@ -110,12 +167,15 @@ pub fn gesture_path(shape: GestureShape) -> Path {
 }
 
 /// Plays each new gesture now, or queues it on its object until its delay
-/// is up; holds an object's moves for as long as the longest hold asked.
+/// is up; winds up and releases; holds an object's moves for as long as
+/// the longest hold asked.
 pub fn take_gestures(
     mut commands: Commands,
     mut gestures: MessageReader<Gesture>,
     mut holds: MessageReader<HoldMoves>,
     mut flings: MessageReader<Fling>,
+    mut wind_ups: MessageReader<WindUp>,
+    mut releases: MessageReader<Release>,
     mut objects: Query<(
         &mut ObjectAnimation,
         Option<&mut PendingGestures>,
@@ -138,6 +198,22 @@ pub fn take_gestures(
             commands
                 .entity(fling.entity)
                 .insert(Flinging::new(fling.secs));
+        }
+    }
+    for wind_up in wind_ups.read() {
+        if let Ok((mut animation, _, _)) = objects.get_mut(wind_up.entity) {
+            animation
+                .pose
+                .wind_up(gesture_path(wind_up.shape), wind_up.secs);
+        }
+    }
+    for release in releases.read() {
+        if let Ok((mut animation, _, _)) = objects.get_mut(release.entity) {
+            if release.strike {
+                animation.pose.release(release.secs);
+            } else {
+                animation.pose.unwind(release.secs);
+            }
         }
     }
     for gesture in gestures.read() {
@@ -277,6 +353,43 @@ mod tests {
             Vec2::new(2.0, 2.0),
             "did not come back"
         );
+    }
+
+    #[test]
+    fn a_wind_up_holds_until_released_then_strikes_and_rests() {
+        let mut pose = Pose::default();
+        let path = gesture_path(GestureShape::Thrust { toward: Vec2::X });
+        pose.wind_up(path, 0.2);
+        for _ in 0..30 {
+            pose.advance(FRAME);
+        }
+        assert!(pose.offset().x < -0.3, "not wound up: {}", pose.offset());
+        assert_eq!(pose.remaining(), 0.0, "a held pose holds up the turn");
+        pose.release(0.2);
+        let mut furthest = f32::MIN;
+        for _ in 0..30 {
+            pose.advance(FRAME);
+            furthest = furthest.max(pose.offset().x);
+        }
+        assert!(furthest > 0.9, "never struck");
+        assert_eq!(pose.offset(), Vec2::ZERO);
+    }
+
+    #[test]
+    fn a_dropped_wind_up_eases_back() {
+        let mut pose = Pose::default();
+        pose.wind_up(gesture_path(GestureShape::Thrust { toward: Vec2::X }), 0.1);
+        for _ in 0..20 {
+            pose.advance(FRAME);
+        }
+        let wound = pose.offset().x;
+        pose.unwind(0.2);
+        pose.advance(FRAME);
+        assert!(pose.offset().x < 0.0 && pose.offset().x > wound - 1e-4);
+        for _ in 0..20 {
+            pose.advance(FRAME);
+        }
+        assert_eq!(pose.offset(), Vec2::ZERO);
     }
 
     #[test]

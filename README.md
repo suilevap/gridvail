@@ -341,7 +341,7 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 358 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 362 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

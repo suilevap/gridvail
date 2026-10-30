@@ -148,6 +148,26 @@ pub struct HoldMoves {
     pub secs: f32,
 }
 
+/// `entity` winds up `shape` (a swing) over `secs` and holds it wound up
+/// until released: an anticipation that lasts as long as it needs to (an
+/// aimed weapon, a picked target).
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct WindUp {
+    pub entity: Entity,
+    pub shape: GestureShape,
+    pub secs: f32,
+}
+
+/// Ends `entity`'s wind-up over `secs`: with `strike`, it plays the rest
+/// of the swing (the strike, the follow-through, settling back), else it
+/// eases back to rest.
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct Release {
+    pub entity: Entity,
+    pub secs: f32,
+    pub strike: bool,
+}
+
 /// `entity`'s next move to a new cell is flung, whatever its own style:
 /// fast from the start, easing in at the end, `secs` a cell (a body
 /// knocked by a blow).

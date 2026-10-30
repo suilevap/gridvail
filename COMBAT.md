@@ -188,6 +188,20 @@ order (`src/choreography/`):
 3. a killed target dies after it has been moved, as a blow that does not
    kill: its remains finish the slide, then sink.
 
+Anticipation lasts as long as what it anticipates:
+
+- **An enemy's wind-up is its telegraph.** When it aims, it eases into
+  its wound-up pose (drawn back to the side a sweep starts from, back for
+  a thrust) and holds it until it strikes; the strike then plays only the
+  fast release, so its blow lands sooner. The pose is relative to the
+  enemy, like its strike, so knocking it moves both.
+- **The marked cells are planted in the order the weapon swings through
+  them**: from the side a sweep starts from, nearer first for a spear,
+  each growing `·`, `+`, `×`.
+- **The player draws back on a pick** and holds it while the target stays
+  picked; the move then swings from there. Dropping a pick or an aim eases
+  the pose back.
+
 Still to come, each its own step once needed: something that shows the
 weapon (a trail, an arc), hit points shown on enemies, and the
 infrastructure under them (particles, decals, camera shake or hit-stop,

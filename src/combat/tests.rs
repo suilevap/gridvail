@@ -1,3 +1,4 @@
+use bevy::ecs::system::RunSystemOnce;
 use bevy::prelude::*;
 
 use super::*;
@@ -206,4 +207,29 @@ fn a_weapon_is_aimed_owes_its_windup_then_strikes_its_area() {
     assert!(struck.contains(&front) && struck.contains(&beside));
     assert!(!struck.contains(&behind));
     assert!(app.world().get::<Telegraph>(wielder).is_none());
+}
+
+#[test]
+fn strike_marks_are_planted_in_the_order_the_weapon_swings() {
+    let mut world = World::new();
+    world.insert_resource(MapGrid::new(8, 8));
+    world.init_resource::<CellMarks>();
+    let sweep = Weapon {
+        area: Area(vec![IVec2::new(1, 1), IVec2::X, IVec2::new(1, -1)]),
+        damage: 1,
+        windup: 1,
+        swing: Swing::default(),
+    };
+    // Facing east, it winds up to the north and swings south.
+    world.spawn((Pos(IVec2::new(3, 3)), sweep, Telegraph { dir: IVec2::X }));
+    world.run_system_once(mark_strikes).unwrap();
+    let mut marks = world.resource::<CellMarks>().0.clone();
+    marks.sort_by(|a, b| a.1.delay.total_cmp(&b.1.delay));
+    let cells: Vec<_> = marks.iter().map(|(cell, _)| *cell).collect();
+    assert_eq!(
+        cells,
+        vec![IVec2::new(4, 2), IVec2::new(4, 3), IVec2::new(4, 4)],
+        "not from the side it swings from to the other"
+    );
+    assert!(marks[0].1.delay < marks[1].1.delay);
 }

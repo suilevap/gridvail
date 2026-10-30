@@ -224,7 +224,7 @@ fn shake(s: f32) -> f32 {
 pub const SWING_CONTACT: f32 = 0.5;
 /// When a swing is wound up, and when its follow-through is over, as
 /// shares of the swing.
-const SWING_WOUND: f32 = 0.38;
+pub const SWING_WOUND: f32 = 0.38;
 const SWING_FOLLOWED: f32 = 0.68;
 
 /// The poses a swing goes through between rest and rest, each as an angle

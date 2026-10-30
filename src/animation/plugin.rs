@@ -56,6 +56,8 @@ impl Plugin for ObjectAnimationPlugin {
             .add_message::<Gesture>()
             .add_message::<HoldMoves>()
             .add_message::<Fling>()
+            .add_message::<WindUp>()
+            .add_message::<Release>()
             .add_observer(start_animation)
             .add_systems(
                 Update,

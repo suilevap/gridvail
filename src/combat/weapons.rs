@@ -11,7 +11,11 @@ pub const STRIKE_MARK: CellMark = CellMark {
         depth: 0,
     },
     tint: RED,
+    delay: 0.0,
 };
+/// How long after a weapon's first cell is marked the next one is, in the
+/// order it swings through them.
+pub const STRIKE_MARK_STEP: f32 = 0.12;
 
 /// Readies the weapon of each `UseWeapon`: aims it (`Telegraph`), then
 /// strikes at once, or, with a wind-up, owes the wind-up's turns (`Delay`)
@@ -78,7 +82,8 @@ pub fn strike(
     }
 }
 
-/// Marks every cell an aimed weapon will strike.
+/// Marks every cell an aimed weapon will strike, planted in the order it
+/// swings through them: from the side it swings from, nearer first.
 pub fn mark_strikes(
     grid: Res<MapGrid>,
     marks: Option<ResMut<CellMarks>>,
@@ -88,8 +93,12 @@ pub fn mark_strikes(
         return;
     };
     for (pos, weapon, telegraph) in &wielders {
-        for cell in weapon.area.cells(pos.0, telegraph.dir) {
-            marks.0.push((grid.safe_pos(cell), STRIKE_MARK));
+        let mut order: Vec<_> = (0..weapon.area.0.len()).collect();
+        order.sort_by_key(|&i| (weapon.area.0[i].y, weapon.area.0[i].x));
+        let cells: Vec<_> = weapon.area.cells(pos.0, telegraph.dir).collect();
+        for (rank, &i) in order.iter().enumerate() {
+            let mark = STRIKE_MARK.after(rank as f32 * STRIKE_MARK_STEP);
+            marks.0.push((grid.safe_pos(cells[i]), mark));
         }
     }
 }
