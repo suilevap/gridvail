@@ -1,9 +1,11 @@
 //! Combat: what attacks do, composed from small systems that each answer
 //! one message. See `COMBAT.md` for the design.
 //!
-//! - `perform_maneuvers`: a `ContextAction` (from `selection`) by an actor
-//!   with `Maneuvers` becomes a `Hit`, and a `Knock` (with a `Follow`) or a
-//!   `Swap`;
+//! - `choose_attacks` and `perform_attacks`: a move by an actor with
+//!   `Maneuvers` whose maneuver for that way from where it faces meets a
+//!   target becomes an `Attack`, which hits what is in its cells in order,
+//!   knocks it the way the swing goes, and moves (`Follow`) and turns
+//!   (`Turn`) the actor as the maneuver says;
 //! - `ready_weapons` and `strike`: a `UseWeapon` (from the AI) aims a
 //!   `Weapon` (`Telegraph`) and owes its wind-up (`Delay`), with the
 //!   `Strike` `Scheduled` for when it is paid; the strike hits each cell of
@@ -39,13 +41,15 @@ impl Plugin for CombatPlugin {
         app.init_resource::<CriticalHit>()
             .init_resource::<ImpactDamage>()
             .add_message::<Hit>()
+            .add_message::<Attack>()
             .add_message::<UseWeapon>()
             .add_scheduled_message::<Strike>()
             .add_systems(
                 Update,
                 (
                     strike.in_set(ActionStage::Ongoing),
-                    (perform_maneuvers, ready_weapons).in_set(ActionStage::Effects),
+                    choose_attacks.in_set(ActionStage::Decide),
+                    (perform_attacks, ready_weapons).in_set(ActionStage::Effects),
                     (hits_deal_damage, critical_hits, collisions_deal_damage)
                         .in_set(ActionStage::Hits),
                 )

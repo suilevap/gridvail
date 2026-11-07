@@ -2,26 +2,31 @@ use bevy::prelude::*;
 
 use super::Area;
 
-/// How a second direction relates to the direction a target was picked in.
+/// Which way a move goes from where its mover faces.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Relation {
-    /// The same direction again: into the target.
+    /// The way it faces.
     Forward,
-    /// Either side.
-    Side,
-    /// Back, away from the target.
+    /// A quarter turn to its left.
+    Left,
+    /// A quarter turn to its right (the side of an `Area`).
+    Right,
+    /// Away from the way it faces.
     Back,
 }
 
 impl Relation {
-    /// How `second` relates to `picked`, both unit grid directions.
-    pub fn of(picked: IVec2, second: IVec2) -> Self {
-        if second == picked {
+    /// How a move `dir` relates to facing `facing`, both unit grid
+    /// directions.
+    pub fn of(facing: IVec2, dir: IVec2) -> Self {
+        if dir == facing {
             Self::Forward
-        } else if second == -picked {
+        } else if dir == -facing {
             Self::Back
+        } else if dir == IVec2::new(-facing.y, facing.x) {
+            Self::Right
         } else {
-            Self::Side
+            Self::Left
         }
     }
 }
@@ -48,7 +53,8 @@ impl Default for Swing {
 /// leaves (an effect's name). Only shown; combat never reads it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SwingLook {
-    pub swing: Swing,
+    /// No swing: the move makes no gesture (a step back).
+    pub swing: Option<Swing>,
     pub streak: Option<String>,
 }
 
@@ -60,7 +66,8 @@ pub struct WeaponLook(pub SwingLook);
 #[derive(Component, Clone, Debug, Default, PartialEq)]
 pub struct ManeuverLooks {
     pub forward: SwingLook,
-    pub side: SwingLook,
+    pub left: SwingLook,
+    pub right: SwingLook,
     pub back: SwingLook,
 }
 
@@ -68,33 +75,54 @@ impl ManeuverLooks {
     pub fn get(&self, relation: Relation) -> &SwingLook {
         match relation {
             Relation::Forward => &self.forward,
-            Relation::Side => &self.side,
+            Relation::Left => &self.left,
+            Relation::Right => &self.right,
             Relation::Back => &self.back,
         }
     }
 }
 
-/// One move of a maneuver set: what acting on a picked target does.
+/// Where a move leaves its mover.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Stance {
+    /// Where it was.
+    #[default]
+    Stay,
+    /// Into the cell the first target it knocks leaves.
+    Follow,
+    /// One step the way of the move.
+    Step,
+}
+
+/// One move of a fighting style: what a move made a given way from where
+/// the mover faces does, when one of its cells holds a target.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Maneuver {
     pub name: String,
-    /// Damage of the hit (0: no hit).
+    /// The cells it plays on, in the mover's frame and in the order its
+    /// swing goes through them.
+    pub area: Area,
+    /// It stops at the first target it hits, instead of going through all.
+    pub stop: bool,
+    /// Damage of each hit (0: no hit).
     pub hit: i32,
-    /// How many cells a `Movable` target is knocked the way of the second
-    /// direction (forward on, sideways aside); 0: not at all.
+    /// How many cells a `Movable` target is knocked the way the swing goes
+    /// through its cell; 0: not at all.
     pub knock: i32,
-    /// The actor steps into the cell the target leaves.
-    pub follow: bool,
-    /// The actor and a `Movable` target trade places.
-    pub swap: bool,
+    /// Where it leaves the mover, and whether the mover turns to face the
+    /// way of the move.
+    pub stance: Stance,
+    pub turn: bool,
 }
 
-/// The moves an actor makes on a picked target, one for each `Relation` of
-/// the second direction to the first (a fighting style, a weapon's moves).
+/// The moves an actor makes when one of them meets a target, one for each
+/// `Relation` of the move to where it faces (a fighting style, a weapon's
+/// moves). A move that meets none is a plain step.
 #[derive(Component, Clone, Debug, PartialEq, Eq)]
 pub struct Maneuvers {
     pub forward: Maneuver,
-    pub side: Maneuver,
+    pub left: Maneuver,
+    pub right: Maneuver,
     pub back: Maneuver,
 }
 
@@ -102,10 +130,21 @@ impl Maneuvers {
     pub fn get(&self, relation: Relation) -> &Maneuver {
         match relation {
             Relation::Forward => &self.forward,
-            Relation::Side => &self.side,
+            Relation::Left => &self.left,
+            Relation::Right => &self.right,
             Relation::Back => &self.back,
         }
     }
+}
+
+/// `actor` makes its maneuver for `relation`: a move `dir` while facing
+/// `facing`, which met a target. Its action for the turn.
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Attack {
+    pub actor: Entity,
+    pub relation: Relation,
+    pub facing: IVec2,
+    pub dir: IVec2,
 }
 
 /// An attack landed on `target`: a maneuver's hit or a weapon's strike.
@@ -183,10 +222,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn relations_follow_the_picked_direction() {
+    fn relations_follow_the_facing() {
         assert_eq!(Relation::of(IVec2::X, IVec2::X), Relation::Forward);
         assert_eq!(Relation::of(IVec2::X, IVec2::NEG_X), Relation::Back);
-        assert_eq!(Relation::of(IVec2::X, IVec2::Y), Relation::Side);
-        assert_eq!(Relation::of(IVec2::X, IVec2::NEG_Y), Relation::Side);
+        // Facing east, south (map y grows down) is to the right.
+        assert_eq!(Relation::of(IVec2::X, IVec2::Y), Relation::Right);
+        assert_eq!(Relation::of(IVec2::X, IVec2::NEG_Y), Relation::Left);
     }
 }

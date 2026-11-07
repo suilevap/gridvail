@@ -11,7 +11,6 @@ fn touch_app() -> (App, Entity) {
         .init_resource::<Pinch>()
         .init_resource::<ControlScheme>()
         .init_resource::<crate::camera::CameraOperator>()
-        .add_message::<CancelIntent>()
         .add_systems(
             PreUpdate,
             (read_swipes, read_pinch).after(bevy::input::InputSystems),
@@ -183,27 +182,13 @@ fn a_second_finger_cancels_the_swipe_until_all_fingers_lift() {
     assert_eq!(step_taken(&mut app, player), Some(IVec2::X));
 }
 
-fn cancels(app: &App) -> usize {
-    let messages = app.world().resource::<Messages<CancelIntent>>();
-    messages.iter_current_update_messages().count()
-}
-
 #[test]
-fn a_tap_asks_to_cancel() {
-    let (mut app, _) = touch_app();
+fn a_tap_takes_no_step() {
+    let (mut app, player) = touch_app();
     touch(&mut app, TouchPhase::Started, 100.0, 100.0);
     touch(&mut app, TouchPhase::Moved, 104.0, 102.0);
     touch(&mut app, TouchPhase::Ended, 104.0, 102.0);
-    assert_eq!(cancels(&app), 1);
-}
-
-#[test]
-fn a_swipe_does_not_cancel() {
-    let (mut app, _) = touch_app();
-    touch(&mut app, TouchPhase::Started, 100.0, 100.0);
-    touch(&mut app, TouchPhase::Moved, 160.0, 100.0);
-    touch(&mut app, TouchPhase::Ended, 160.0, 100.0);
-    assert_eq!(cancels(&app), 0);
+    assert_eq!(step_taken(&mut app, player), None);
 }
 
 #[test]

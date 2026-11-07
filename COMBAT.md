@@ -21,34 +21,48 @@ and the cut taken for the first playable version (MVP). The MVP is in
 - **Extensible.** New tools, enemy types and objects are data plus small
   reaction rules.
 
-## Controls: one turn, one composed move
+## Controls: every move is read from where you face
 
-Within a turn the player composes a move from a short sequence of inputs.
-The turn resolves when the move is complete.
+There is no picking and nothing to cancel. Each move (a swipe, an arrow)
+is one action, read relative to the way the player faces (the marker
+beside the `@`): forward, left, right or back.
 
-- **Swipe or arrow into an enemy selects it.** Selecting is free: it is an
-  extra input dimension, not an action, and spends no turn.
-- **The second direction is the action**, read relative to the selected
-  enemy (see below).
-- **A timeout never acts for the player.** If the turn ends mid-composition,
-  the turn passes like a wait and whatever is in progress carries over to the
-  next turn, as long as it is still valid (the selected enemy is still
-  adjacent and alive). Anything in progress that stops being valid is dropped
-  with a visible fade.
-- **Cancel is always available and free.** On touch, any tap cancels a
-  selection (with nothing selected a tap is a wait). On keyboard, a
-  dedicated key (not Esc, which opens settings); on a gamepad, B / Circle.
+- **The weapon has an attack for each way.** An attack plays when one of
+  its cells holds a target (anything with hit points); it takes the turn.
+- **A move that meets nothing is a plain step**, and the player turns to
+  face it. Being knocked, following through or stepping back does not turn
+  the player; only walking and an attack that turns do.
+- **Every move moves the player** (unless something stops it). The attack
+  is what the move hits on the way, so where a swipe takes the player is
+  always one step that way.
+- **Next to an enemy the player is engaged:** the moves toward it attack.
+  Walking past one can sweep it.
+- **A timeout never acts for the player.** The turn passes like a wait.
 
-## The attack: three outcomes by direction
+## The attacks: one for each way
 
-Every completed attack hits. What the second direction changes is where the
-player and the enemy end up.
+An attack is data (the blade's in `assets/rules/actors.ron`): the cells it
+strikes, drawn as art with digits for the order its swing goes through
+them, its damage, how far it knocks each target (the way the swing travels
+through its cell, plus one cell the way the player steps: the blow
+carries the step), where it leaves the player (stay, follow into the cell
+the first knocked target left, or step the way of the move) and whether
+the player turns to face the move. It hits every target in its cells in
+order, or, for a weapon that `stop`s, only the first.
 
-| Second direction | Name | Player ends | Enemy ends |
-|---|---|---|---|
-| Into the enemy (same direction again) | lunge | the enemy's cell | one cell further on |
-| Sideways (either side) | push | where they were | one cell to that side |
-| Back (away from the enemy) | yank | the enemy's cell | the player's old cell (swap) |
+The blade (`@` faces up; digits are the swing's order):
+
+```text
+forward: lunge     left: sweep left    right: sweep right   back: back off
+   1                  21                  12                   x
+   @                  3@                  @3                   @
+ knocked two on     you step left and   the same, to the     no hit: a step
+ (swing + step);    turn: what is ahead right                back, still
+ you take its cell  goes two left, what                      facing it
+                    is beside goes
+                    back-left, out of
+                    your way
+```
 
 ### Damage
 
@@ -72,34 +86,37 @@ player and the enemy end up.
   cell: the player, another enemy (friendly fire), or nothing.
 - A hit does not interrupt the wind-up.
 
-That makes each outcome a different trade-off against an alert enemy:
+That makes each attack a different trade-off against an alert guard,
+whose sweep covers the row in front of it:
 
 ```text
-lunge (into)        push (sideways)      yank (back)
- . E .               . E .                . E .
- . @ .               . @ .                . @ .
- -> . E .            -> . . E             -> . * .
-    . @*.               . @ *                . E .
-                                             . @ .
- you advance, but    safe; its strike     safe; its strike
- you stand in its    lands beside you     lands behind it
- strike
+lunge (forward)     sweep (right)          back off
+ . . . .             . . . . .              . E .
+ . E . .             . E . . .              . @ .
+ . @ . .             . @ . . .
+ -> . E . .          -> . . . E             -> * * *
+    * * * .             . . . * * *            . @ .
+    . @ . .             . . @ .
+ safe: it flies      you step along the     safe: you step
+ two on, its sweep   row it sweeps          out of its row
+ misses you
 ```
 
-`E` winds up toward `@`; `*` is where its strike lands after the move. A push
-can aim an enemy's strike at a second enemy standing beside the player; a
-yank turns it away.
+`E` winds up toward `@`; `*` is where its sweep lands after the move. A
+sweep can aim an enemy's strike at a second enemy standing beside the
+player.
 
 ## MVP scope
 
 The MVP answers one question: **under the real step timer, on a phone and on
-a keyboard, does select → direction feel fast enough and give choices that
-matter against telegraphed strikes?**
+a keyboard, do moves read from facing feel fast enough and give choices
+that matter against telegraphed strikes?**
 
 In:
 
-1. Dual input: select (free, carries over, any tap cancels), then lunge,
-   push or yank.
+1. Moves read from facing: an attack for each way, when its cells hold a
+   target (the first cut picked a target with one input and attacked
+   with the next: lunge, push or yank; contextual attacks replaced it).
 2. Enemies with 2 HP: critical hits on unaware or `!` enemies, 1 damage and
    displacement in battle, slams for +1 to both sides.
 3. Telegraphed strikes relative to the enemy, with friendly fire.
@@ -108,13 +125,15 @@ In:
 5. An arena map (`assets/maps/arena.txt`, 2–3 enemies, corridors) and a
    step-timer knob (`turn=<seconds>`), so the pressure can be tuned on a
    phone from the preview link.
-6. Scenario tests for each outcome, carry-over and cancel, a moved telegraph,
+6. Scenario tests for each attack, plain walks, a moved telegraph,
    friendly fire, criticals and slams; the agent API exposes HP, the
-   selection and the marked cells.
+   player's facing and the marked cells.
 
 Out, roughly in the order they would follow:
 
-- Outcome preview arrows on the selected enemy.
+- A preview of the attack a move will make, played as its anticipation,
+  with a tap to cancel.
+- Strikes meeting in a cell from opposite directions as a block or parry.
 - Slowdown while a gesture is in progress; the one-stroke L gesture.
 - Momentum: knocked bodies flying several cells, impacts passing force on,
   stagger.
@@ -136,19 +155,20 @@ Out, roughly in the order they would follow:
   step off, or knock the striker so its blow lands elsewhere.
 - **Strike patterns decide the answer.** Each weapon strikes its own cells
   (drawn as art in `assets/rules/actors.ron`). Against a guard's sweep (the
-  row in front) stepping aside does not help and, of the maneuvers, only a
-  yank is safe: a lunge or a push leaves the player in the row the sweep
-  covers once the guard is knocked. Against a spearman's spear (two cells
+  row in front) stepping aside does not help; a lunge (it flies two cells,
+  so its sweep covers the row ahead of the player) and backing off are
+  safe, a sweep is not (it steps the player along the row it sweeps). Against a spearman's spear (two cells
   ahead) stepping back does not help, but stepping aside does. Two kinds
   side by side ask for different answers at once. This answers the first
   playtest: a fight with one enemy that only struck the cell in front was
   no challenge, since any move dodged it.
-- **Marks.** Whatever stands on a cell about to be struck is drawn red, a
-  picked target yellow; an empty marked cell shows a red `×`. Lighting does
-  not change these colours.
-- **Holding a key.** Walking into an enemy with a held key picks it; the
-  same key held on does nothing until it is let go, so a lunge always
-  takes a fresh press.
+- **Marks.** Whatever stands on a cell about to be struck is drawn red; an
+  empty marked cell shows a red `×`. Lighting does not change these
+  colours.
+- **Holding a key.** A key held toward an enemy attacks it each turn, as a
+  key held toward open floor walks.
+- **Facing starts north**, so a swipe is read from somewhere on the first
+  move.
 - **Knobs.** `--turn SECONDS` (or `?turn=` on the web) sets how long a turn
   waits for the player; `--hp N` the player's hit points.
 - **Found while building it.** Enemies see all around them, so one is
@@ -163,9 +183,9 @@ predictable. To look into separately; possible causes, none decided yet:
 
 - **The patterns.** A sweep or a spear may be hard to read from the glyph
   alone, and a pattern shows only once the enemy winds up.
-- **Missing feedback on a pick.** Picking marks the target, but not what
-  each second direction would do: where the target and the player would
-  end up, and which cells would then be struck.
+- **Missing feedback on a move.** Nothing shows which attack a move will
+  make: where the target and the player would end up, and which cells
+  would then be struck.
 - **Missing motion.** Knockbacks, swaps and strikes could animate, so the
   player sees what happened and why. A first step is in: each exchange is
   choreographed (below).
@@ -177,11 +197,12 @@ order (`src/choreography/`):
 
 1. the attacker swings as its weapon or move says in the roster
    (`swing`): a thrust straight at the target (a spear reaches further),
-   a sweep in an arc across the front (a sideways push sweeps toward its
-   side), or a hook that reaches out and pulls back (a yank); every
+   a sweep in an arc across the front, round the way its cells go, or a
+   hook that reaches out and pulls back; a move with no swing (backing
+   off) makes no gesture; every
    swing winds up (eases into a pulled-back or far-side pose), strikes
    fast into the contact, follows through and eases back to rest; a
-   lunge's step or a yank's swap waits until just after contact;
+   lunge's step or a step back waits until just after contact;
 2. at contact the target is flung (fast, slowing to a stop) or shakes
    away from the blow,
    and what a knocked body runs into shakes too;
@@ -196,11 +217,8 @@ Anticipation lasts as long as what it anticipates:
   fast release, so its blow lands sooner. The pose is relative to the
   enemy, like its strike, so knocking it moves both.
 - **The marked cells are planted in the order the weapon swings through
-  them**: from the side a sweep starts from, nearer first for a spear,
-  each growing `·`, `+`, `×`.
-- **The player draws back on a pick** and holds it while the target stays
-  picked; the move then swings from there. Dropping a pick or an aim eases
-  the pose back.
+  them** (the digits of its art), each growing `·`, `+`, `×`. An aim
+  dropped without a strike eases the pose back.
 
 Effects give it weight (`src/effects/`): a swing leaves a streak where
 the weapon passed (a line for a thrust, an arc for a sweep, drawn in the
@@ -217,40 +235,18 @@ enemies, decals that last, camera shake or hit-stop, sound.
 To watch it, `--slomo 4` (`?slomo=4`) runs the whole game four times
 slower, and `--hp` / `--enemy-hp` give everyone more hit points.
 
-## Next: contextual attacks (agreed, not built)
-
-Picking goes away. Every swipe is read relative to the player's facing
-(forward, left, right, back), and the weapon has an attack for each: the
-cells it strikes, drawn as art with digits for the order its swing
-passes through them, its damage, and where it leaves the player (stay,
-step, or follow into the cell a knocked target left; keep facing or turn
-to the swipe). Targets are knocked the way the swing travels through
-their cell. An attack plays only when something stands in its cells;
-otherwise the swipe is a plain move. An entry with no cells always plays
-(the blade's "back off": a step back, still facing forward).
-
-- Next to an enemy, the player is engaged: walking past one can sweep it.
-- Whether a swing hits everything in its cells or stops at the first
-  target is the weapon's trait: some control an area, some reach further
-  but stop.
-- Enemies keep their own AI and targets, but their strikes get an order
-  too: marks plant, blows land and gestures swing in it.
-- Later: a preview of the attack a swipe will make, played as its
-  anticipation, with a tap to cancel; strikes meeting in a cell from
-  opposite directions as a block or parry.
-
 ## How it is put together
 
 Small modules that share only data and messages (see `ARCHITECTURE.md`):
 
-- **Picking is its own thing** (`selection/`): a `Selector` picks
-  `Selectable` things and turns its next move into a `ContextAction`. What
-  that does is up to whoever answers it: maneuvers today; a door, a lever
-  or a tool tomorrow, without touching picking.
-- **Moves are data.** `Maneuvers` hold one move per `Relation` of the
-  second direction to the first (a name, the hit's damage, whether it
-  knocks the target and the actor follows). A new fighting style is a new
-  `@moves` block in the roster.
+- **Facing is an intent.** A `Turn` message turns an actor; the player
+  `FacesItsWalks`, so only its walks and its attacks turn it.
+- **Moves are data.** `Maneuvers` hold one move per `Relation` of a move
+  to the facing (forward, left, right, back): its `Area` (cells in swing
+  order), whether it stops at the first target, damage, knock, `Stance`
+  and turn. `choose_attacks` turns a move that meets a target into an
+  `Attack`; `perform_attacks` answers it. A new fighting style is a new
+  `moves` block in the roster.
 - **Weapons own their strikes.** A `Weapon` (an `Area`, damage, wind-up)
   on any actor answers `UseWeapon`: it aims (`Telegraph`), owes its
   wind-up in turns (`Delay`) with the `Strike` scheduled for when that is
@@ -261,10 +257,10 @@ Small modules that share only data and messages (see `ARCHITECTURE.md`):
   stun or a stagger is a `Delay` with nothing scheduled.
 - **Knockback rides the simulation's movement.** A `Knock` gives the
   target a speed and marks it `Knocked`; the same movement passes that move
-  walkers move it, and a knocked body that is blocked is a `Collision`. A
-  lunge's step after the target is a `Follow`, a yank a `Swap`. Pushing
-  enemies on into others, pushing objects by walking into them, and knocks
-  longer than a cell are postponed.
+  walkers move it, a cell a pass, and a knocked body that is blocked is a
+  `Collision` and stops there. The attacker's step after the target is a
+  `Follow`. Pushing enemies on into others and pushing objects by walking
+  into them are postponed.
 - **Damage is its own thing** (`damage/`): `Damage` comes off `Health`,
   whatever sent it. Hits, critical hits and collisions are separate small systems that each send their share; a hazard, fire or a fall can send
   `Damage` too.
@@ -272,7 +268,7 @@ Small modules that share only data and messages (see `ARCHITECTURE.md`):
   behaviour, hit points and weapon or moves (`assets/rules/actors.ron`),
   read by the one generic RON reader: a new data file needs only a type.
 - **Input is intent.** Keys, swipes and the agent API all write the same
-  `MoveCommand` (and `CancelIntent`); nothing reads devices.
-- Still to come: actions in progress beyond a pick (aiming, with a
-  charge), built on the same pieces; and reactions to impacts and damage
+  `MoveCommand`; nothing reads devices.
+- Still to come: actions in progress (aiming, with a charge), built on the
+  same pieces; and reactions to impacts and damage
   (fire, electricity, falling) as more small systems on those messages.

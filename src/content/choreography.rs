@@ -18,9 +18,6 @@ pub struct ChoreographySpec {
     pub shake_reach: f32,
     /// An aimed weapon's wind-up (then held until it strikes).
     pub aim_secs: f32,
-    /// Readying a thrust at what was picked, and its reach.
-    pub pick_secs: f32,
-    pub pick_reach: f32,
     /// Easing back from a wind-up that was dropped.
     pub unwind_secs: f32,
     /// How much longer than its strike a swing's streak takes to draw.

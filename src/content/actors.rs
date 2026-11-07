@@ -25,7 +25,8 @@ pub struct WeaponSpec {
     /// Turns between aiming and the strike.
     pub windup: u8,
     /// The cells struck, drawn with the wielder `@` facing up and each
-    /// struck cell `x`.
+    /// struck cell a digit in the order the swing goes through them (or
+    /// all `x`).
     pub art: String,
     /// How it is swung (a thrust when not given), and the streak it leaves
     /// (an effect in `assets/effects`; none when not given).
@@ -36,20 +37,39 @@ pub struct WeaponSpec {
 }
 
 impl WeaponSpec {
-    /// The struck cells in the wielder's frame: `x` ahead, `y` to its side.
+    /// The struck cells in the wielder's frame, in order.
     pub fn cells(&self) -> Result<Vec<IVec2>, String> {
-        // Up the art is ahead; right of the wielder is its side.
-        let cells = art::cells(&self.art, '@', 'x')?;
-        Ok(cells.into_iter().map(|c| IVec2::new(-c.y, c.x)).collect())
+        frame_cells(&self.art)
     }
 }
 
-/// One move per way the second direction relates to the first.
+/// The cells of art drawn with `@` facing up, in order, in the frame of a
+/// facing: `x` ahead, `y` to its right side.
+fn frame_cells(drawn: &str) -> Result<Vec<IVec2>, String> {
+    // Up the art is ahead; right of the wielder is its side.
+    let cells = art::ordered(drawn, '@')?;
+    Ok(cells.into_iter().map(|c| IVec2::new(-c.y, c.x)).collect())
+}
+
+/// One move for each way a swipe can go from where the mover faces.
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct MovesSpec {
     pub forward: MoveSpec,
-    pub side: MoveSpec,
+    pub left: MoveSpec,
+    pub right: MoveSpec,
     pub back: MoveSpec,
+}
+
+/// Where a move leaves the mover.
+#[derive(Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StanceSpec {
+    /// Where it was.
+    #[default]
+    Stay,
+    /// Into the cell the first target it knocks leaves.
+    Follow,
+    /// One step the way of the swipe.
+    Step,
 }
 
 #[derive(Deserialize, Clone, Debug, PartialEq)]
@@ -58,22 +78,36 @@ pub struct MoveSpec {
     /// The hit's damage (0: no hit).
     #[serde(default)]
     pub hit: i32,
-    /// How far the target is knocked, in cells, the way of the second
-    /// direction (0: not at all).
+    /// The cells it plays on, drawn as for weapons: it plays only when one
+    /// holds a target, and hits them in order.
+    pub art: String,
+    /// It stops at the first target it hits, instead of going through them
+    /// all.
+    #[serde(default)]
+    pub stop: bool,
+    /// How far each target is knocked, in cells, the way the swing goes
+    /// through its cell (0: not at all).
     #[serde(default)]
     pub knock: i32,
-    /// The mover steps into the cell the target leaves.
+    /// Where it leaves the mover, and whether the mover turns to face the
+    /// way of the swipe.
     #[serde(default)]
-    pub follow: bool,
-    /// The mover and the target trade places.
+    pub stance: StanceSpec,
     #[serde(default)]
-    pub swap: bool,
+    pub turn: bool,
     /// How it is swung (a thrust when not given), and the streak it leaves
     /// (as for weapons).
     #[serde(default)]
     pub swing: Option<SwingSpec>,
     #[serde(default)]
     pub streak: Option<String>,
+}
+
+impl MoveSpec {
+    /// The cells it plays on in the mover's frame, in order.
+    pub fn cells(&self) -> Result<Vec<IVec2>, String> {
+        frame_cells(&self.art)
+    }
 }
 
 /// How a weapon or a move is swung, `reach` cells out: `Thrust` straight
@@ -130,15 +164,28 @@ mod tests {
     const ROSTER: &str = r#"(
         weapons: {
             "sweep": (damage: 1, windup: 2, art: "
-                xxx
+                123
                 .@.
             "),
         },
         moves: {
             "blade": (
-                forward: (name: "lunge", hit: 1, knock: 1, follow: true),
-                side: (name: "push", hit: 1, knock: 1),
-                back: (name: "yank", swap: true),
+                forward: (name: "lunge", hit: 1, knock: 1, stance: Follow, art: "
+                    1
+                    @
+                "),
+                left: (name: "sweep left", hit: 1, knock: 1, turn: true, art: "
+                    21
+                    3@
+                "),
+                right: (name: "sweep right", hit: 1, knock: 1, turn: true, art: "
+                    12
+                    @3
+                "),
+                back: (name: "back off", stance: Step, art: "
+                    x
+                    @
+                "),
             ),
         },
         actors: {
@@ -158,8 +205,14 @@ mod tests {
         );
         let blade = &roster.moves["blade"];
         assert_eq!((blade.back.hit, blade.back.knock), (0, 0));
-        assert!(blade.back.swap);
-        assert!(blade.forward.follow && !blade.side.follow);
+        assert_eq!(blade.back.stance, StanceSpec::Step);
+        assert_eq!(blade.forward.stance, StanceSpec::Follow);
+        assert!(blade.left.turn && !blade.forward.turn);
+        assert_eq!(
+            blade.left.cells().unwrap(),
+            vec![IVec2::X, IVec2::new(1, -1), IVec2::new(0, -1)],
+            "ahead, ahead-left, left"
+        );
         let guard = &roster.actors[&'e'];
         assert_eq!(guard.tree, Some(Tree::Enemy));
         assert_eq!(guard.weapon.as_deref(), Some("sweep"));

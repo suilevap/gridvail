@@ -6,7 +6,7 @@ shape it. New code follows these principles. Existing code that does not
 yet is listed under [Backfill](#backfill), to be brought in line in
 changes of its own, not alongside features.
 
-The combat code (`selection/`, `combat/`, `damage/`,
+The combat code (`combat/`, `damage/`,
 `simulation/time.rs`, `simulation/physics.rs`, `content/data.rs`) follows
 them and is the reference for the examples below; so do the presentation
 of fights (`choreography/`, `effects/`) and its data
@@ -27,8 +27,8 @@ is a second system.
 
 What an entity does comes from the components it has, not from what kind
 of thing it is. A system asks "has `Health`", "is `Movable`", "has a
-`Weapon`", never "is an enemy". A crate that can be pushed is `Movable`; a
-lamp that can be picked is `Selectable`. Neither needs combat code to
+`Weapon`", never "is an enemy". A crate that can be knocked is `Movable`;
+anything with `Health` can be attacked. Neither needs combat code to
 change.
 
 Components are small and hold data only: a few fields, no behaviour. A
@@ -44,13 +44,15 @@ write a message or a component; whoever cares reads it.
 
 - The AI decides to attack and writes `UseWeapon`; the weapon decides how
   (aim, wind-up, strike).
-- Picking turns the second input into a `ContextAction`; maneuvers answer
-  it, and a door or a lever could answer it too, without picking knowing.
+- `choose_attacks` turns a move that meets a target into an `Attack`;
+  `perform_attacks` answers it with hits, knocks, a follow and a turn,
+  and `choreography` answers the same `Attack` with a swing, without
+  either knowing the other.
 - Anything that hurts sends `Damage`; `damage/` does not know combat.
 
-Modules at the same level do not import each other: `selection`, `combat`
-and `damage` share only `model` types. Check with
-`grep -rn "use crate::combat" src/selection src/damage` and the like.
+Modules at the same level do not import each other: `combat` and `damage`
+share only `model` types. Check with
+`grep -rn "use crate::combat" src/damage src/choreography` and the like.
 
 ### 4. Extend by adding, not by editing
 
@@ -65,7 +67,7 @@ look for the message or component that system should have exposed.
 Changes to the world pass through three kinds of system:
 
 1. **Deciders** (input, AI) write intents: `MoveCommand`, `UseWeapon`,
-   `ContextAction`.
+   `Attack`.
 2. **Effect** systems turn intents into requests: `Hit`, `Knock`,
    `Delay`, `Damage`.
 3. **Resolvers** apply requests to shared state, and are the only systems
@@ -124,7 +126,7 @@ change them without touching the system.
 ### 9. Gameplay does not draw
 
 Gameplay systems never set colours or glyphs for the player to see. They
-expose state (a `Telegraph`, a `Selected`) and a presentation system turns
+expose state (a `Telegraph`) and a presentation system turns
 it into marks (`CellMarks`), which the frame composer draws. What only
 shows is kept off gameplay components: how a weapon looks swung is a
 `WeaponLook` beside its `Weapon`, read by `choreography/` alone. That keeps
@@ -132,8 +134,8 @@ what happens apart from how it is shown, so feedback can change freely.
 
 ### 10. Input is intent, from any device
 
-Keys, touch and the agent API all write the same commands (`MoveCommand`,
-`CancelIntent`), and gameplay never reads a device. Each device says what
+Keys, touch and the agent API all write the same commands
+(`MoveCommand`), and gameplay never reads a device. Each device says what
 only it knows, such as whether a direction is a fresh press or held on
 (`MoveCommand::repeat`).
 
@@ -146,7 +148,7 @@ rare transitions. `tests/allocations.rs` guards steady turns.
 ### 12. Each piece is tested alone
 
 A module is tested with `MinimalPlugins`, its own plugin and messages
-written by hand (`src/combat/tests.rs`, `src/selection/tests.rs`,
+written by hand (`src/combat/tests.rs`, `src/choreography/tests.rs`,
 `src/simulation/physics.rs`, `src/simulation/time.rs`). Behaviour across modules is tested through
 `GamePlugin` on small ASCII maps (`tests/combat.rs`). A system that cannot
 be tested without half the game is doing too much.
@@ -167,7 +169,7 @@ put the state on the entities.
 - What does it read and write? Name the components and messages first.
 - What is it a case of? Is there a general mechanism below it should use
   or extend?
-- Can an existing message carry it (`ContextAction`, `Damage`, `Knock`,
+- Can an existing message carry it (`Attack`, `Damage`, `Knock`,
   `Delay`, `Hit`)? Answer that instead of adding a path.
 - Which stage does each system belong to?
 - Which numbers belong in `assets/rules/`?
@@ -187,9 +189,8 @@ each.
 
 **Today.** Walking already is the physics loop: `Speed` (a velocity),
 `Friction`, `Collider`, a resolver that blocks and records collisions, and
-`turn_update` running passes until every body has settled. It moves a
-whole `Speed` in one jump, though, so a body faster than a cell a pass
-would pass through what lies between.
+`turn_update` running passes until every body has settled, a cell a pass
+whatever the speed, so nothing on the way is passed through.
 
 **General.** Everything that moves bodies uses that one loop, by putting
 state on the bodies, never with a loop of its own:
@@ -204,13 +205,13 @@ state on the bodies, never with a loop of its own:
   the animation's bump.
 
 **Built** (`simulation/physics.rs`): `Knock` gives a body a speed and
-`Knocked`, and the existing passes move it; a knocked body that is blocked
-is a `Collision`; `Follow` steps into a cell on the pass after it is left;
+`Knocked`, and the existing passes move it a cell a pass, so a knock of
+two cells is two passes; a knocked body that is blocked is a `Collision`
+and stops there (`stop_collided`); `Follow` steps into a cell on the pass after it is left;
 `Swap` trades two bodies' places (the resolver blocks swaps, as the
 original game requires). **Postponed** to keep this change small: motion
 passed on to what a knocked body runs into, pushing objects by walking into
-them, knocks longer than one cell (they need the cell-per-pass movement),
-`Mass`. **Still to absorb:** `CollisionBuffer` as a message.
+them, `Mass`. **Still to absorb:** `CollisionBuffer` as a message.
 
 ### Time: actions cost turns, and effects can wait
 
@@ -277,7 +278,7 @@ constants in `app/map.rs`.
 **Today.** Every interaction is its own system with its own trigger:
 doors open on a bump by a key holder (`open_doors`), items are picked up on
 entering a cell, plates switch rooms on entering, exits load the next map
-on entering, items drop on destruction, maneuvers answer a `ContextAction`.
+on entering, items drop on destruction, maneuvers answer an `Attack`.
 The README already calls plates "a stand-in trigger until a trigger/action
 system".
 
@@ -290,7 +291,7 @@ come from data, so a lever, a trap or a breakable crate is a new
 combination, not new code.
 
 **Absorbs.** `open_doors`, `pick_up_items`, `press_plates`, `take_exits`,
-`drop_items`; `ContextAction` becomes one of the messages. **First users.**
+`drop_items`; `Attack` becomes one of the messages. **First users.**
 Doors and plates (backfill), then hazards.
 
 ### Areas: sets of cells around a point
@@ -325,8 +326,8 @@ Staggered after an impact, exposed for a turn after a stagger.
 
 ### Previews: what an action would do, before doing it
 
-**Today.** Marks show a wound-up strike and a pick, but nothing shows what
-a second direction would do, which is likely part of why fights feel hard
+**Today.** Marks show a wound-up strike, but nothing shows what a move
+would do (which attack it makes, where bodies end up), which is likely part of why fights feel hard
 to predict (`COMBAT.md`).
 
 **General.** Resolvers split into a pure plan and an apply step (a
@@ -335,7 +336,7 @@ applying it and marks the result: where bodies would end up, what would be
 hit. Any action that goes through the general mechanisms can then be
 previewed with no code of its own.
 
-**First users.** The three maneuvers on a pick.
+**First users.** The player's four attacks, as their anticipation.
 
 ### Not yet
 
@@ -373,8 +374,8 @@ it would help. Each item is its own change.
    `open_doors`). It spends the key, opens the door, frees the grid cell
    and changes the glyph. Split it into a decider (a bump into a door by a
    key holder), a resolver (the door opens and frees its cell) and
-   presentation (the glyph follows the door's state). Opening by
-   `ContextAction` then comes for free; part of
+   presentation (the glyph follows the door's state). Opening by a move
+   into it (an `Acted` reaction) then comes for free; part of
    [interactions](#interactions-something-happens-to-a-thing-and-the-thing-reacts).
    (Principles 1, 5, 9.)
 4. **The AI draws** (`ai::show_mood`). It writes glyph characters and

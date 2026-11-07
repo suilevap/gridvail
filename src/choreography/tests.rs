@@ -4,7 +4,7 @@ fn app() -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .insert_resource(MapGrid::new(8, 8))
-        .add_message::<ContextAction>()
+        .add_message::<Attack>()
         .add_message::<Strike>()
         .add_message::<Hit>()
         .add_message::<Collision>()
@@ -32,7 +32,7 @@ fn guard(app: &mut App, at: IVec2, windup: u8) -> Entity {
                 windup,
             },
             WeaponLook(SwingLook {
-                swing: Swing::Sweep { reach: 0.6 },
+                swing: Some(Swing::Sweep { reach: 0.6 }),
                 streak: Some("swoosh".into()),
             }),
             Bleeds("blood".into()),
@@ -88,39 +88,83 @@ fn a_wound_up_strike_releases_and_streaks_at_once() {
     );
 }
 
+/// Moves that hit what is ahead, sweeping round to the left.
+fn sweeping_moves() -> Maneuvers {
+    let sweep = Maneuver {
+        name: "sweep left".into(),
+        area: Area(vec![IVec2::X, IVec2::new(1, -1), IVec2::NEG_Y]),
+        stop: false,
+        hit: 1,
+        knock: 1,
+        stance: Stance::Stay,
+        turn: true,
+    };
+    Maneuvers {
+        forward: sweep.clone(),
+        left: sweep.clone(),
+        right: sweep.clone(),
+        back: sweep,
+    }
+}
+
 #[test]
-fn a_move_swings_as_it_looks_holds_its_actor_and_leaves_no_streak_unnamed() {
+fn an_attack_swings_round_the_way_its_cells_go_and_holds_its_actor() {
     let mut app = app();
     let actor = app
         .world_mut()
         .spawn((
             Pos(IVec2::new(2, 2)),
+            sweeping_moves(),
             ManeuverLooks {
-                side: SwingLook {
-                    swing: Swing::Sweep { reach: 0.5 },
+                left: SwingLook {
+                    swing: Some(Swing::Sweep { reach: 0.5 }),
                     streak: None,
                 },
                 ..default()
             },
         ))
         .id();
-    let target = app.world_mut().spawn(Pos(IVec2::new(3, 2))).id();
-    app.world_mut().write_message(ContextAction {
+    app.world_mut().write_message(Attack {
         actor,
-        target,
-        picked: IVec2::X,
-        dir: IVec2::Y,
+        relation: Relation::Left,
+        facing: IVec2::X,
+        dir: IVec2::NEG_Y,
     });
     app.update();
     let gestures = sent::<Gesture>(&app);
     assert_eq!(gestures.len(), 1);
     match gestures[0].shape {
-        GestureShape::Sweep { across, .. } => assert_eq!(across, Vec2::Y),
-        shape => panic!("a push swung {shape:?}"),
+        // Facing east, its cells go round to the north.
+        GestureShape::Sweep { across, .. } => assert_eq!(across, Vec2::NEG_Y),
+        shape => panic!("a sweep swung {shape:?}"),
     }
     let holds = sent::<HoldMoves>(&app);
     assert!(holds.iter().any(|hold| hold.entity == actor));
-    assert!(sent::<PlayEffect>(&app).is_empty());
+    assert!(sent::<PlayEffect>(&app).is_empty(), "a streak nobody named");
+}
+
+#[test]
+fn an_attack_that_looks_like_nothing_makes_no_gesture() {
+    let mut app = app();
+    let actor = app
+        .world_mut()
+        .spawn((
+            Pos(IVec2::new(2, 2)),
+            sweeping_moves(),
+            ManeuverLooks::default(),
+        ))
+        .id();
+    app.world_mut().write_message(Attack {
+        actor,
+        relation: Relation::Back,
+        facing: IVec2::X,
+        dir: IVec2::NEG_X,
+    });
+    app.update();
+    assert!(sent::<Gesture>(&app).is_empty());
+    assert!(sent::<HoldMoves>(&app)
+        .iter()
+        .any(|hold| hold.entity == actor));
 }
 
 #[test]

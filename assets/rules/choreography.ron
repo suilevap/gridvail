@@ -14,10 +14,6 @@
     shake_reach: 0.25,
     // An aimed weapon's wind-up, held then until it strikes.
     aim_secs: 0.5,
-    // Readying a thrust at what was picked, and its reach (it draws back a
-    // share of that).
-    pick_secs: 0.2,
-    pick_reach: 0.4,
     // Easing back from a wind-up that was dropped.
     unwind_secs: 0.2,
     // A swing's streak draws over its strike and this many times as long.

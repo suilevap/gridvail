@@ -8,17 +8,19 @@ fn app() -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .insert_resource(MapGrid::new(8, 8))
+        .init_resource::<TurnState>()
         .add_message::<DebtPaid>()
         .add_message::<Delay>()
-        .add_message::<ContextAction>()
         .add_message::<Knock>()
         .add_message::<Follow>()
-        .add_message::<Swap>()
+        .add_message::<Turn>()
         .add_message::<Collision>()
         .add_message::<Damage>()
         .add_plugins(CombatPlugin)
-        // As in the game: what falls due is released before it happens.
-        .configure_sets(Update, TimeSet::Release.before(ActionStage::Ongoing));
+        // As in the game: what falls due is released before it happens, and
+        // actors decide before what they decided plays out.
+        .configure_sets(Update, TimeSet::Release.before(ActionStage::Ongoing))
+        .configure_sets(Update, (ActionStage::Decide, ActionStage::Effects).chain());
     app
 }
 
@@ -28,39 +30,81 @@ fn sent<M: Message + Copy>(app: &App) -> Vec<M> {
 }
 
 fn blade() -> Maneuvers {
-    let make = |name: &str, knock, follow, swap| Maneuver {
+    let make = |name: &str, cells: &[IVec2], hit, stance, turn| Maneuver {
         name: name.to_string(),
-        hit: 1,
-        knock,
-        follow,
-        swap,
+        area: Area(cells.to_vec()),
+        stop: false,
+        hit,
+        knock: 1,
+        stance,
+        turn,
     };
+    let ahead_left = IVec2::new(1, -1);
+    let ahead_right = IVec2::new(1, 1);
     Maneuvers {
-        forward: make("lunge", 1, true, false),
-        side: make("push", 1, false, false),
-        back: make("yank", 0, false, true),
+        forward: make("lunge", &[IVec2::X], 1, Stance::Follow, false),
+        left: make(
+            "sweep left",
+            &[IVec2::X, ahead_left, IVec2::NEG_Y],
+            1,
+            Stance::Step,
+            true,
+        ),
+        right: make(
+            "sweep right",
+            &[IVec2::X, ahead_right, IVec2::Y],
+            1,
+            Stance::Step,
+            true,
+        ),
+        back: Maneuver {
+            knock: 0,
+            ..make("back off", &[IVec2::X], 0, Stance::Step, false)
+        },
     }
 }
 
-/// An actor with the blade moves at (2, 2), a movable target right of it,
-/// and a context action with second direction `dir`.
-fn maneuver(dir: IVec2) -> (App, Entity, Entity) {
-    let mut app = app();
-    let actor = app.world_mut().spawn((blade(), Pos(IVec2::new(2, 2)))).id();
-    let target = app.world_mut().spawn((Movable, Pos(IVec2::new(3, 2)))).id();
-    app.world_mut().write_message(ContextAction {
-        actor,
-        target,
-        picked: IVec2::X,
-        dir,
-    });
-    app.update();
-    (app, actor, target)
+/// A body that can be attacked at `at`.
+fn target(app: &mut App, at: IVec2) -> Entity {
+    let target = app
+        .world_mut()
+        .spawn((Health::full(2), Movable, Pos(at)))
+        .id();
+    app.world_mut().resource_mut::<MapGrid>().set(at, target);
+    target
+}
+
+/// An actor with the blade moves at (2, 2), facing east, moving `dir`.
+fn actor(app: &mut App, dir: IVec2) -> Entity {
+    let at = IVec2::new(2, 2);
+    let actor = app
+        .world_mut()
+        .spawn((
+            blade(),
+            Pos(at),
+            Facing(IVec2::X),
+            Tokens {
+                count: 1,
+                recharge: 1,
+            },
+            MoveCommand {
+                target: dir,
+                relative: true,
+                active: true,
+                repeat: false,
+            },
+        ))
+        .id();
+    app.world_mut().resource_mut::<MapGrid>().set(at, actor);
+    actor
 }
 
 #[test]
-fn a_lunge_hits_knocks_the_target_on_and_follows() {
-    let (app, actor, target) = maneuver(IVec2::X);
+fn a_move_into_something_ahead_lunges_carrying_its_step_and_takes_the_turn() {
+    let mut app = app();
+    let target = target(&mut app, IVec2::new(3, 2));
+    let actor = actor(&mut app, IVec2::X);
+    app.update();
     assert_eq!(
         sent::<Hit>(&app),
         vec![Hit {
@@ -73,8 +117,9 @@ fn a_lunge_hits_knocks_the_target_on_and_follows() {
         sent::<Knock>(&app),
         vec![Knock {
             entity: target,
-            velocity: IVec2::X
-        }]
+            velocity: IVec2::new(2, 0)
+        }],
+        "the swing's push and the step it carries"
     );
     assert_eq!(
         sent::<Follow>(&app),
@@ -83,32 +128,89 @@ fn a_lunge_hits_knocks_the_target_on_and_follows() {
             into: IVec2::new(3, 2)
         }]
     );
+    let command = app.world().get::<MoveCommand>(actor).unwrap();
+    assert_eq!(command.target, IVec2::ZERO, "the move still walks");
 }
 
 #[test]
-fn a_push_knocks_the_target_aside_and_stays() {
-    let (app, _, target) = maneuver(IVec2::Y);
+fn a_move_that_meets_nothing_is_left_to_walk() {
+    let mut app = app();
+    let actor = actor(&mut app, IVec2::X);
+    app.update();
+    assert!(sent::<Attack>(&app).is_empty());
+    assert_eq!(
+        app.world().get::<MoveCommand>(actor).unwrap().target,
+        IVec2::X
+    );
+}
+
+#[test]
+fn a_side_move_sweeps_what_is_ahead_that_way_steps_and_turns() {
+    let mut app = app();
+    let target = target(&mut app, IVec2::new(3, 2));
+    // Facing east, north is to the left.
+    let actor = actor(&mut app, IVec2::NEG_Y);
+    app.update();
     assert_eq!(
         sent::<Knock>(&app),
         vec![Knock {
             entity: target,
-            velocity: IVec2::Y
+            velocity: IVec2::new(0, -2)
         }]
     );
-    assert!(sent::<Follow>(&app).is_empty());
+    assert_eq!(
+        sent::<Follow>(&app),
+        vec![Follow {
+            follower: actor,
+            into: IVec2::new(2, 1)
+        }]
+    );
+    assert_eq!(
+        sent::<Turn>(&app),
+        vec![Turn {
+            entity: actor,
+            dir: IVec2::NEG_Y
+        }]
+    );
 }
 
 #[test]
-fn a_yank_trades_places() {
-    let (app, actor, target) = maneuver(IVec2::NEG_X);
+fn a_sweep_hits_each_target_in_order_unless_it_stops_at_the_first() {
+    for stop in [false, true] {
+        let mut app = app();
+        let ahead = target(&mut app, IVec2::new(3, 2));
+        let beside = target(&mut app, IVec2::new(2, 1));
+        let actor = actor(&mut app, IVec2::NEG_Y);
+        app.world_mut()
+            .get_mut::<Maneuvers>(actor)
+            .unwrap()
+            .left
+            .stop = stop;
+        app.update();
+        let hit: Vec<_> = sent::<Hit>(&app).iter().map(|hit| hit.target).collect();
+        let expected = if stop {
+            vec![ahead]
+        } else {
+            vec![ahead, beside]
+        };
+        assert_eq!(hit, expected, "stop: {stop}");
+    }
+}
+
+#[test]
+fn backing_off_from_something_ahead_steps_back_still_facing_it() {
+    let mut app = app();
+    target(&mut app, IVec2::new(3, 2));
+    let actor = actor(&mut app, IVec2::NEG_X);
+    app.update();
+    assert!(sent::<Hit>(&app).is_empty() && sent::<Turn>(&app).is_empty());
     assert_eq!(
-        sent::<Swap>(&app),
-        vec![Swap {
-            a: actor,
-            b: target
+        sent::<Follow>(&app),
+        vec![Follow {
+            follower: actor,
+            into: IVec2::new(1, 2)
         }]
     );
-    assert!(sent::<Knock>(&app).is_empty());
 }
 
 #[test]
@@ -217,7 +319,7 @@ fn strike_marks_are_planted_in_the_order_the_weapon_swings() {
         damage: 1,
         windup: 1,
     };
-    // Facing east, it winds up to the north and swings south.
+    // Facing east, the area goes from south to north.
     world.spawn((Pos(IVec2::new(3, 3)), sweep, Telegraph { dir: IVec2::X }));
     world.run_system_once(mark_strikes).unwrap();
     let mut marks = world.resource::<CellMarks>().0.clone();
@@ -225,8 +327,8 @@ fn strike_marks_are_planted_in_the_order_the_weapon_swings() {
     let cells: Vec<_> = marks.iter().map(|(cell, _)| *cell).collect();
     assert_eq!(
         cells,
-        vec![IVec2::new(4, 2), IVec2::new(4, 3), IVec2::new(4, 4)],
-        "not from the side it swings from to the other"
+        vec![IVec2::new(4, 4), IVec2::new(4, 3), IVec2::new(4, 2)],
+        "not in the area's order"
     );
     assert!(marks[0].1.delay < marks[1].1.delay);
 }

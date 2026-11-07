@@ -356,6 +356,11 @@ fn hold(app: &mut App, key: KeyCode, frames: usize) -> Vec<(AnimatedPos, Animate
 fn children_ride_on_their_parent_and_swing_around_it() {
     let mut app = boot(Some(MotionStyle::default()));
     let (player, marker) = player_and_marker(&mut app);
+    // Facing the way it will walk, so the marker only rides along.
+    app.world_mut().get_mut::<Facing>(player).unwrap().0 = IVec2::X;
+    for _ in 0..60 {
+        app.update();
+    }
     // At rest the marker sits exactly on its logical cell.
     let marker_cell = app.world().get::<Pos>(marker).unwrap().0;
     assert_eq!(shown(&app, marker).position, marker_cell.as_vec2());

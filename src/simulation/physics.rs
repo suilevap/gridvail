@@ -51,6 +51,16 @@ pub fn report_collisions(
     }
 }
 
+/// A knocked body that ran into something stops there: what is left of its
+/// knock is spent on the impact.
+pub fn stop_collided(mut collisions: MessageReader<Collision>, mut bodies: Query<&mut Speed>) {
+    for collision in collisions.read() {
+        if let Ok(mut speed) = bodies.get_mut(collision.mover) {
+            speed.0 = IVec2::ZERO;
+        }
+    }
+}
+
 /// A knocked body that has stopped is no longer knocked.
 pub fn settle_knocked(mut commands: Commands, knocked: Query<(Entity, &Speed), With<Knocked>>) {
     for (body, speed) in &knocked {
@@ -114,7 +124,7 @@ mod tests {
                 Update,
                 (
                     (knock, swap_places).before(movement),
-                    (report_collisions, settle_knocked)
+                    (report_collisions, stop_collided, settle_knocked)
                         .chain()
                         .after(resolve_collect)
                         .before(turn_update),
@@ -196,6 +206,38 @@ mod tests {
             }]
         );
         assert_eq!(at(&app, a), IVec2::new(1, 1));
+    }
+
+    #[test]
+    fn a_long_knock_goes_a_cell_a_pass_and_stops_where_it_runs_into_something() {
+        let mut app = app();
+        let a = body(&mut app, IVec2::new(1, 1));
+        app.world_mut().write_message(Knock {
+            entity: a,
+            velocity: IVec2::new(2, 0),
+        });
+        app.update();
+        assert_eq!(at(&app, a), IVec2::new(2, 1), "jumped a cell");
+        settle(&mut app);
+        assert_eq!(at(&app, a), IVec2::new(3, 1));
+
+        // Blocked on its second cell, it stops there: what was left of the
+        // knock is spent on the impact.
+        let b = body(&mut app, IVec2::new(1, 3));
+        let w = wall(&mut app, IVec2::new(3, 3));
+        app.world_mut().write_message(Knock {
+            entity: b,
+            velocity: IVec2::new(2, 0),
+        });
+        app.update();
+        app.update();
+        assert!(collisions(&app)
+            .iter()
+            .any(|collision| collision.mover == b && collision.obstacle == w));
+        assert_eq!(app.world().get::<Speed>(b).unwrap().0, IVec2::ZERO);
+        settle(&mut app);
+        assert_eq!(at(&app, b), IVec2::new(2, 3));
+        assert!(app.world().get::<Knocked>(b).is_none(), "still knocked");
     }
 
     #[test]
