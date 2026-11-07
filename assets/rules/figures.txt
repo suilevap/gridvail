@@ -3,7 +3,7 @@
 # `--walls stacked` and `--walls leaning`), in place of their one glyph.
 # Flat renderers draw the glyph as before.
 #
-#   figure NAME
+#   figure NAME [scale=S]
 #   view front|back|left|right
 #   LABEL GLYPH [options]
 #
@@ -12,6 +12,11 @@
 # side. Parts before any `view` line are the front; a side not drawn is the
 # other side mirrored, and a view not drawn shows the front. Parts are drawn
 # back to front, in the order listed.
+#
+# `scale` sizes the whole figure, its parts' places and sizes alike
+# (default 1). The cell font is pixel art: below 1 its glyphs lose pixels
+# at the default zoom, so to make a figure smaller, prefer placing its
+# glyphs closer together.
 #
 # LABEL names the part for the reader. GLYPH is one character, or `own` for
 # the object's own glyph. Options:
@@ -37,25 +42,25 @@
 # that glows where they look.
 figure person
   view front
-    head    @  y=8px tint=#e8e0d0
+    head    @  y=6px tint=#e8e0d0
     lcloak  /  x=-4px y=0px tint=#60a8a0
     cloak   Δ  y=0px tint=#60a8a0
     rcloak  \  x=4px y=0px tint=#60a8a0
-    legs    "  y=-9px tint=#a09080
-    lantern õ  x=8px y=-3px tint=#80f8f0
+    legs    "  y=-7px tint=#a09080
+    lantern õ  x=8px y=-2px tint=#80f8f0
   view back
-    lantern õ  x=-8px y=-3px tint=#409890
-    head    @  y=8px tint=#a8a090
+    lantern õ  x=-8px y=-2px tint=#409890
+    head    @  y=6px tint=#a8a090
     lcloak  /  x=-4px y=0px tint=#407870
     cloak   Δ  y=0px tint=#407870
     rcloak  \  x=4px y=0px tint=#407870
-    legs    "  y=-9px tint=#787068
+    legs    "  y=-7px tint=#787068
   view right
-    head    @  x=0px y=8px tint=#e8e0d0 noflip
+    head    @  x=0px y=6px tint=#e8e0d0 noflip
     cloak   Δ  x=-1px y=0px tint=#60a8a0
     lcloak  /  x=-5px y=0px tint=#60a8a0
     arm     -  x=5px y=1px tint=#60a8a0
-    legs    "  y=-9px tint=#a09080
+    legs    "  y=-7px tint=#a09080
     lantern õ  x=11px y=0px tint=#80f8f0
 
 # A rifleman, for guards: a shako, cross belts, or a pack from behind. The
@@ -67,77 +72,77 @@ figure person
 # Their mood shows over their head.
 figure rifleman
   view front
-    shako   Π  y=14px tint=#7890d0
-    head    v  y=8px tint=#e8d8c0
-    eyes    ¨  y=8px tint=#ff4030
+    shako   Π  y=11px tint=#7890d0
+    head    v  y=6px tint=#e8d8c0
+    eyes    ¨  y=6px tint=#ff4030
     larm    /  x=-5px y=0px tint=#7890d0
     belts   X  y=0px tint=#e0d8c8
     rarm    \  x=5px y=0px tint=#7890d0
-    legs    Λ  y=-7px tint=#9898a0
+    legs    Λ  y=-6px tint=#9898a0
     rifle   |  x=8px y=-1px tint=#c09060
-    bayonet v  x=8px y=-8px tint=#ffffff
-    mood    own y=23px tint=#ffd040 only=!?
+    bayonet v  x=8px y=-6px tint=#ffffff
+    mood    own y=18px tint=#ffd040 only=!?
   view back
-    rifle   |  x=8px y=4px tint=#a07850
-    bayonet ^  x=8px y=11px tint=#ffffff
-    shako   Π  y=14px tint=#5870b0
-    head    ^  y=9px tint=#907060
+    rifle   |  x=8px y=3px tint=#a07850
+    bayonet ^  x=8px y=9px tint=#ffffff
+    shako   Π  y=11px tint=#5870b0
+    head    ^  y=7px tint=#907060
     larm    /  x=-5px y=0px tint=#5870b0
     pack    #  y=0px tint=#b08860
     rarm    \  x=5px y=0px tint=#5870b0
-    legs    Λ  y=-7px tint=#787880
-    mood    own y=23px tint=#ffd040 only=!?
+    legs    Λ  y=-6px tint=#787880
+    mood    own y=18px tint=#ffd040 only=!?
   view right
     pack    #  x=-5px y=0px tint=#b08860
-    shako   Π  y=14px tint=#7890d0
-    peak    -  x=4px y=10px tint=#7890d0
-    head    >  x=1px y=8px tint=#e8d8c0
-    eye     ·  y=10px tint=#ff4030
+    shako   Π  y=11px tint=#7890d0
+    peak    -  x=4px y=8px tint=#7890d0
+    head    >  x=1px y=6px tint=#e8d8c0
+    eye     ·  y=8px tint=#ff4030
     body    [  y=0px tint=#7890d0
     arm     -  x=4px y=1px tint=#7890d0
-    legs    Λ  y=-7px tint=#9898a0
+    legs    Λ  y=-6px tint=#9898a0
     rifle   =  x=9px y=1px tint=#c09060
     barrel  -  x=14px y=1px tint=#c0c8d8
     bayonet >  x=19px y=1px tint=#ffffff
-    mood    own y=23px tint=#ffd040 only=!? noflip
+    mood    own y=18px tint=#ffd040 only=!? noflip
 
 # An officer, for hunters: a red plume, brass frogging and a cape. Their
 # head points where they look and shows their eyes, as a rifleman's does,
 # and so does their sabre.
 figure officer
   view front
-    plume   ,  x=-3px y=20px tint=#e04848
-    shako   Π  y=14px tint=#7890d0
-    head    v  y=8px tint=#e8d8c0
-    eyes    ¨  y=8px tint=#ff4030
+    plume   ,  x=-3px y=16px tint=#e04848
+    shako   Π  y=11px tint=#7890d0
+    head    v  y=6px tint=#e8d8c0
+    eyes    ¨  y=6px tint=#ff4030
     larm    /  x=-5px y=0px tint=#7890d0
     frogs   ≡  y=0px tint=#f0c060
     rarm    \  x=5px y=0px tint=#7890d0
-    legs    Λ  y=-7px tint=#e0d8c8
-    sabre   ↓  x=8px y=-6px tint=#ffffff
-    mood    own y=23px tint=#ffd040 only=!?
+    legs    Λ  y=-6px tint=#e0d8c8
+    sabre   ↓  x=8px y=-5px tint=#ffffff
+    mood    own y=18px tint=#ffd040 only=!?
   view back
-    sabre   ↑  x=8px y=6px tint=#c8ccd8
-    plume   ,  x=-3px y=20px tint=#b03838
-    shako   Π  y=14px tint=#5870b0
-    head    ^  y=9px tint=#907060
+    sabre   ↑  x=8px y=5px tint=#c8ccd8
+    plume   ,  x=-3px y=16px tint=#b03838
+    shako   Π  y=11px tint=#5870b0
+    head    ^  y=7px tint=#907060
     larm    /  x=-5px y=0px tint=#5870b0
     cape    Ш  y=0px tint=#c04040
     rarm    \  x=5px y=0px tint=#5870b0
-    legs    Λ  y=-7px tint=#b0a898
-    mood    own y=23px tint=#ffd040 only=!?
+    legs    Λ  y=-6px tint=#b0a898
+    mood    own y=18px tint=#ffd040 only=!?
   view right
     cape    (  x=-4px y=0px tint=#c04040
-    plume   ,  x=-2px y=20px tint=#e04848
-    shako   Π  y=14px tint=#7890d0
-    peak    -  x=4px y=10px tint=#7890d0
-    head    >  x=1px y=8px tint=#e8d8c0
-    eye     ·  y=10px tint=#ff4030
+    plume   ,  x=-2px y=16px tint=#e04848
+    shako   Π  y=11px tint=#7890d0
+    peak    -  x=4px y=8px tint=#7890d0
+    head    >  x=1px y=6px tint=#e8d8c0
+    eye     ·  y=8px tint=#ff4030
     body    [  y=0px tint=#7890d0
     arm     -  x=4px y=1px tint=#7890d0
-    legs    Λ  y=-7px tint=#e0d8c8
+    legs    Λ  y=-6px tint=#e0d8c8
     sabre   →  x=11px y=1px tint=#ffffff
-    mood    own y=23px tint=#ffd040 only=!? noflip
+    mood    own y=18px tint=#ffd040 only=!? noflip
 
 # A street lamp: a foot, a post, and a lantern under a little roof.
 figure lamp

@@ -31,8 +31,11 @@ def parse(text):
         if not line or line.startswith('#'):
             continue
         if line.startswith('figure '):
-            name, view = line[7:].strip(), 'front'
-            figures[name] = {}
+            words = line[7:].split()
+            name, view = words[0], 'front'
+            figures[name] = {'scale': 1.0}
+            for word in words[1:]:
+                figures[name]['scale'] = float(word.partition('=')[2])
             continue
         if line.startswith('view '):
             view = line[5:].strip()
@@ -77,7 +80,7 @@ def glyph_mask(font, ch):
     return mask.point(lambda v: 255 if v >= 128 else 0)
 
 
-def draw_view(font, parts, mirrored, zoom, own):
+def draw_view(font, parts, mirrored, zoom, own, figure_scale=1.0):
     cells = 3
     size = cells * PX
     image = Image.new('RGB', (size * zoom, size * zoom), (14, 16, 22))
@@ -92,15 +95,15 @@ def draw_view(font, parts, mirrored, zoom, own):
         if part['only'] and own not in part['only']:
             continue
         ch = own if part['glyph'] == 'own' else part['glyph']
-        side = max(round(part['scale'] * PX * zoom), 1)
+        side = max(round(part['scale'] * figure_scale * PX * zoom), 1)
         mask = glyph_mask(font, ch).resize((side, side), Image.NEAREST)
         glyph_flip = 1 if part['noflip'] else flip
         if glyph_flip < 0:
             mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
         if part['turn']:
             mask = mask.rotate(part['turn'] * glyph_flip, Image.NEAREST, expand=True)
-        x = (centre + part['x'] * flip * PX) * zoom - mask.width / 2
-        y = (centre - part['y'] * PX) * zoom - mask.height / 2
+        x = (centre + part['x'] * figure_scale * flip * PX) * zoom - mask.width / 2
+        y = (centre - part['y'] * figure_scale * PX) * zoom - mask.height / 2
         image.paste(Image.new('RGB', mask.size, part['tint']), (round(x), round(y)), mask)
     return image
 
@@ -118,7 +121,8 @@ def main():
     names = args.names or list(figures)
     rows = []
     for name in names:
-        views = [draw_view(font, *parts_for(figures[name], view), args.zoom, args.own)
+        views = [draw_view(font, *parts_for(figures[name], view), args.zoom, args.own,
+                           figures[name]['scale'])
                  for view in VIEWS]
         row = Image.new('RGB', (sum(v.width for v in views) + 8 * (len(views) - 1),
                                 views[0].height + 14), (0, 0, 0))

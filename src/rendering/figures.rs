@@ -145,10 +145,11 @@ fn draw_figures(
                 if color.0 != desired {
                     color.0 = desired;
                 }
-                let offset = Vec2::new(part.offset.x * flip, part.offset.y) * cell;
+                let offset = Vec2::new(part.offset.x * flip, part.offset.y) * shape.scale * cell;
                 let translation = (base + offset).extend(depth + index as f32 * 1e-6);
                 let glyph_flip = if part.no_flip { 1.0 } else { flip };
-                let scale = Vec3::new(glyph_flip * part.scale, part.scale, 1.0) * camera.zoom;
+                let size = part.scale * shape.scale;
+                let scale = Vec3::new(glyph_flip * size, size, 1.0) * camera.zoom;
                 let rotation = Quat::from_rotation_z(part.turn * glyph_flip);
                 if transform.translation != translation
                     || transform.scale != scale

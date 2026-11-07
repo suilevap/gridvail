@@ -99,9 +99,21 @@ impl FigureView {
 
 /// A figure's parts for each way it can be seen, drawn back to front in
 /// the order listed.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FigureShape {
     pub views: HashMap<FigureView, Vec<FigurePart>>,
+    /// How large the whole figure is drawn, its parts' places and sizes
+    /// alike: 1 as its parts say.
+    pub scale: f32,
+}
+
+impl Default for FigureShape {
+    fn default() -> Self {
+        Self {
+            views: HashMap::default(),
+            scale: 1.0,
+        }
+    }
 }
 
 impl FigureShape {

@@ -12,7 +12,8 @@ pub const DEFAULT_PART_SCALE: f32 = 0.5;
 /// are in these, so parts line up with the glyphs' own pixels.
 pub const FONT_PIXELS: f32 = 16.0;
 
-/// Parses figures: a `figure NAME` line, then for each way it can be seen a
+/// Parses figures: a `figure NAME [scale=S]` line (`scale` sizes the whole
+/// figure, its parts' places and sizes alike), then for each way it can be seen a
 /// `view front|back|left|right` line (parts before any are the front), then
 /// a line per part, back to front:
 ///
@@ -35,9 +36,18 @@ pub fn parse_figures(text: &str) -> Result<HashMap<String, FigureShape>, String>
             continue;
         }
         let error = |message: String| format!("line {}: {message}", number + 1);
-        if let Some(name) = line.strip_prefix("figure ") {
-            let name = name.trim().to_string();
-            figures.insert(name.clone(), FigureShape::default());
+        if let Some(rest) = line.strip_prefix("figure ") {
+            let mut words = rest.split_whitespace();
+            let name = words.next().unwrap_or_default().to_string();
+            let mut shape = FigureShape::default();
+            for word in words {
+                shape.scale = word
+                    .strip_prefix("scale=")
+                    .and_then(|value| value.parse::<f32>().ok())
+                    .filter(|scale| scale.is_finite() && *scale > 0.0)
+                    .ok_or_else(|| error(format!("`{word}` is not a figure option")))?;
+            }
+            figures.insert(name.clone(), shape);
             current = Some((name, FigureView::Front));
             continue;
         }
@@ -171,6 +181,15 @@ mod tests {
         assert_eq!(eye.offset, Vec2::new(-3.0, 4.0) / FONT_PIXELS);
         assert_eq!(eye.scale, 1.0 / FONT_PIXELS);
         assert!(parse_figures("figure a\neye █ x=3pt").is_err());
+    }
+
+    #[test]
+    fn a_figure_may_be_scaled_as_a_whole() {
+        let figures = parse_figures("figure a scale=0.75\nfoot ▪\nfigure b\nfoot ▪\n").unwrap();
+        assert_eq!(figures["a"].scale, 0.75);
+        assert_eq!(figures["b"].scale, 1.0);
+        assert!(parse_figures("figure a scale=0\nfoot ▪").is_err());
+        assert!(parse_figures("figure a big\nfoot ▪").is_err());
     }
 
     #[test]
