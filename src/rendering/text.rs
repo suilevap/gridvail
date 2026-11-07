@@ -145,6 +145,7 @@ impl Plugin for TextRendererPlugin {
                     drop_gone_sprites,
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
+                    place_effect_sprites,
                     update_hud,
                     super::settings::draw_settings,
                     super::settings::draw_compass,
@@ -501,6 +502,73 @@ pub(super) fn place_object_sprites(
         if transform.rotation != rotation {
             transform.rotation = rotation;
         }
+    }
+}
+
+/// A text sprite drawing one of the frame's effects (a particle); the
+/// sprites are kept and reused, one for each effect in sight.
+#[derive(Component)]
+struct EffectSprite;
+
+/// Draws the frame's effects above everything else, each at its place
+/// between cells, as much as it shows; sprites left over hide. The
+/// perspective backend does not draw effects yet.
+fn place_effect_sprites(
+    mut commands: Commands,
+    camera: Res<ViewCamera>,
+    buffers: Res<RenderBuffers>,
+    font: Res<CellFont>,
+    extruded_walls: Option<Res<ExtrudedWalls>>,
+    mut sprites: Query<
+        (&mut Text2d, &mut TextColor, &mut Transform, &mut Visibility),
+        With<EffectSprite>,
+    >,
+) {
+    let effects: &[EffectCell] = if extruded_walls.is_some() {
+        &[]
+    } else {
+        &buffers.effects
+    };
+    let place = |effect: &EffectCell| {
+        let color = Color::from(effect.color).with_alpha(effect.alpha);
+        let transform =
+            Transform::from_translation(view_translation(&camera, effect.position) + Vec3::Z * 3.0)
+                .with_rotation(glyph_rotation(&camera))
+                .with_scale(Vec3::splat(camera.zoom));
+        (color, transform)
+    };
+    let mut effects = effects.iter();
+    for (mut text, mut color, mut transform, mut visibility) in &mut sprites {
+        let Some(effect) = effects.next() else {
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
+            continue;
+        };
+        let (desired, placed) = place(effect);
+        if !text.0.starts_with(effect.ch) || text.0.chars().count() != 1 {
+            text.0.clear();
+            text.0.push(effect.ch);
+        }
+        color.0 = desired;
+        *transform = placed;
+        *visibility = Visibility::Visible;
+    }
+    for effect in effects {
+        let (color, transform) = place(effect);
+        commands.spawn((
+            EffectSprite,
+            Text2d::new(effect.ch.to_string()),
+            TextLayout::justify(Justify::Center),
+            TextFont {
+                font: font.0.clone().into(),
+                font_size: FontSize::Px(CELL_FONT_SIZE),
+                ..default()
+            },
+            TextColor(color),
+            transform,
+            Visibility::Visible,
+        ));
     }
 }
 

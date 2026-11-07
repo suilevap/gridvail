@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::model::{CellMarks, FrameSize, MapGrid, MarkAges, RenderBuffers, StaticLight};
 use crate::schedule::{GamePhase, MarkCells, StartupPhase};
 
-use super::{compose_frame, render_light_layers, DynamicLight};
+use super::{compose_effects, compose_frame, render_light_layers, DynamicLight};
 
 /// Light-map processing and composition of a renderer-neutral cell frame.
 pub struct PresentationPlugin;
@@ -23,7 +23,7 @@ impl Plugin for PresentationPlugin {
             .add_systems(Update, render_light_layers.in_set(GamePhase::Lighting))
             .add_systems(
                 Update,
-                (resize_frame, age_cell_marks, compose_frame)
+                (resize_frame, age_cell_marks, compose_frame, compose_effects)
                     .chain()
                     .in_set(GamePhase::Presentation),
             );

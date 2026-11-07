@@ -422,3 +422,33 @@ fn borders_known_background(
             (buffers.seen[index].is_some() || known(neighbour)) && buffers.current[index].depth == 0
         })
 }
+
+/// Lists the particles in sight, at their place in the frame (through a
+/// portal, where the player sees them through it).
+pub fn compose_effects(
+    grid: Res<MapGrid>,
+    particles: Query<&Particle, Without<ParticleDelay>>,
+    mut buffers: ResMut<RenderBuffers>,
+) {
+    buffers.effects.clear();
+    for particle in &particles {
+        let cell = particle.position.round().as_ivec2();
+        let Some(world) = grid.idx(grid.safe_pos(cell)) else {
+            continue;
+        };
+        let mut frame = buffers.seen_first[world];
+        while frame != RenderBuffers::NO_CELL {
+            let index = frame as usize;
+            if let Some(seen) = buffers.seen[index] {
+                let position = seen.transform.inverse().apply_point(particle.position);
+                buffers.effects.push(EffectCell {
+                    position,
+                    ch: particle.ch,
+                    color: particle.color,
+                    alpha: particle.alpha(),
+                });
+            }
+            frame = buffers.seen_next[index];
+        }
+    }
+}

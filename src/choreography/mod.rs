@@ -10,6 +10,7 @@
 //! 0          attacker: swings as its weapon or move says (its own moves held)
 //! CONTACT    the blow lands: the target's held moves go (a knock slides),
 //!            or it shakes; what a knocked body ran into shakes
+//!            and bleeds; a swing's streak marks where its weapon passed
 //! after      the dead, left behind as remains, finish their slide and sink
 //! ```
 //!
@@ -51,6 +52,11 @@ const PICK_SECS: f32 = 0.2;
 const PICK_REACH: f32 = 0.4;
 /// How long dropping a wind-up takes to ease back.
 const UNWIND_SECS: f32 = 0.2;
+/// How long a swing's streak takes to draw: its strike and the start of
+/// its follow-through.
+const STREAK_SECS: f32 = SWING_SECS * (SWING_CONTACT - SWING_WOUND) * 2.0;
+/// How much more blood a killing blow spills.
+const KILL_SPLASH: i32 = 2;
 
 pub struct ChoreographyPlugin;
 
@@ -61,6 +67,8 @@ impl Plugin for ChoreographyPlugin {
             .add_message::<Fling>()
             .add_message::<WindUp>()
             .add_message::<Release>()
+            .add_message::<Splash>()
+            .add_message::<Swoosh>()
             .add_systems(
                 Update,
                 (wind_up, swing_attackers, react_to_blows)
@@ -144,9 +152,12 @@ pub fn wind_up(
 pub fn swing_attackers(
     mut actions: MessageReader<ContextAction>,
     mut strikes: MessageReader<Strike>,
-    mut gestures: MessageWriter<Gesture>,
-    mut holds: MessageWriter<HoldMoves>,
-    mut releases: MessageWriter<Release>,
+    (mut gestures, mut holds, mut releases, mut swooshes): (
+        MessageWriter<Gesture>,
+        MessageWriter<HoldMoves>,
+        MessageWriter<Release>,
+        MessageWriter<Swoosh>,
+    ),
     maneuvers: Query<&Maneuvers>,
     weapons: Query<&Weapon>,
 ) {
@@ -166,10 +177,14 @@ pub fn swing_attackers(
         } else {
             action.dir
         };
-        gestures.write(swing(
-            action.actor,
-            swing_gesture(style, action.picked, across),
-        ));
+        let shape = swing_gesture(style, action.picked, across);
+        gestures.write(swing(action.actor, shape));
+        swooshes.write(Swoosh {
+            entity: action.actor,
+            shape,
+            delay: SWING_SECS * SWING_WOUND,
+            secs: STREAK_SECS,
+        });
         holds.write(HoldMoves {
             entity: action.actor,
             secs: CONTACT + FOLLOW_GAP,
@@ -179,37 +194,54 @@ pub fn swing_attackers(
         let Ok(weapon) = weapons.get(strike.wielder) else {
             continue;
         };
+        let shape = swing_gesture(weapon.swing, strike.dir, strike.dir.perp());
+        let mut streak = Swoosh {
+            entity: strike.wielder,
+            shape,
+            delay: 0.0,
+            secs: STREAK_SECS,
+        };
         if weapon.windup > 0 {
             releases.write(Release {
                 entity: strike.wielder,
                 secs: RELEASE_SECS,
                 strike: true,
             });
-            continue;
+        } else {
+            gestures.write(swing(strike.wielder, shape));
+            streak.delay = SWING_SECS * SWING_WOUND;
         }
-        let style = weapon.swing;
-        gestures.write(swing(
-            strike.wielder,
-            swing_gesture(style, strike.dir, strike.dir.perp()),
-        ));
+        swooshes.write(streak);
     }
 }
 
 /// What a blow lands on moves only once it lands: a knocked target is
-/// flung from the contact, one that stays shakes away from the blow. What a
-/// knocked body runs into shakes at the contact too.
+/// flung from the contact, one that stays shakes away from the blow, and
+/// either bleeds, the way the blow went (more when it was killed). What a
+/// knocked body runs into shakes at the contact too, and the body bleeds.
+/// The killed are gone by now: their remains stand in for them.
+#[allow(clippy::too_many_arguments)]
 pub fn react_to_blows(
     mut hits: MessageReader<Hit>,
     mut collisions: MessageReader<Collision>,
-    (mut gestures, mut holds, mut flings): (
+    (mut gestures, mut holds, mut flings, mut splashes): (
         MessageWriter<Gesture>,
         MessageWriter<HoldMoves>,
         MessageWriter<Fling>,
+        MessageWriter<Splash>,
     ),
     mut strikes: MessageReader<Strike>,
     positions: Query<&Pos>,
     weapons: Query<&Weapon>,
+    remains: Query<(Entity, &Remains)>,
+    shown: Query<&AnimatedPos>,
 ) {
+    let shown_by = |entity: Entity| {
+        remains
+            .iter()
+            .find(|(_, of)| of.0 == entity)
+            .map_or((entity, false), |(remains, _)| (remains, true))
+    };
     // A wound-up swing, released, lands sooner than a whole one.
     let released: HashSet<Entity> = strikes
         .read()
@@ -233,26 +265,49 @@ pub fn react_to_blows(
     };
     for hit in hits.read() {
         let delay = contact(hit.source);
+        let (target, killed) = shown_by(hit.target);
         holds.write(HoldMoves {
-            entity: hit.target,
+            entity: target,
             secs: delay,
         });
         flings.write(Fling {
-            entity: hit.target,
+            entity: target,
             secs: FLING_SECS,
         });
-        if let (Ok(from), Ok(at)) = (positions.get(hit.source), positions.get(hit.target)) {
-            gestures.write(shake(hit.target, from.0, at.0, delay));
-        }
+        let (Ok(from), Ok(at)) = (positions.get(shown_by(hit.source).0), positions.get(target))
+        else {
+            continue;
+        };
+        gestures.write(shake(target, from.0, at.0, delay));
+        // A knocked target is still shown where it was: the blow drove it
+        // the way it is going; one that stays, away from the attacker.
+        let knocked = shown
+            .get(target)
+            .map_or(Vec2::ZERO, |shown| at.0.as_vec2() - shown.position);
+        let toward = if knocked.length() > 0.5 {
+            knocked
+        } else {
+            (at.0 - from.0).as_vec2()
+        };
+        splashes.write(Splash {
+            entity: target,
+            toward,
+            strength: hit.damage + if killed { KILL_SPLASH } else { 0 },
+            delay,
+        });
     }
     for collision in collisions.read() {
-        let (Ok(from), Ok(at)) = (
-            positions.get(collision.mover),
-            positions.get(collision.obstacle),
-        ) else {
+        let (mover, _) = shown_by(collision.mover);
+        let (Ok(from), Ok(at)) = (positions.get(mover), positions.get(collision.obstacle)) else {
             continue;
         };
         gestures.write(shake(collision.obstacle, from.0, at.0, CONTACT));
+        splashes.write(Splash {
+            entity: mover,
+            toward: (at.0 - from.0).as_vec2(),
+            strength: 1,
+            delay: CONTACT,
+        });
     }
 }
 
@@ -270,7 +325,7 @@ pub fn leave_remains(
             continue;
         };
         commands.spawn((
-            Remains,
+            Remains(body),
             Sinking,
             *pos,
             *glyph,
@@ -282,6 +337,7 @@ pub fn leave_remains(
     }
 }
 
-/// What is shown of something that died, until it has sunk.
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct Remains;
+/// What is shown of something that died (the body it was), until it has
+/// sunk.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Remains(pub Entity);

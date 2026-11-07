@@ -5,7 +5,7 @@ The code is arranged from reusable foundations toward the concrete game:
 ```text
 foundation  content  layout  model  schedule
      ↑        ↑        ↑       ↑       ↑
-     simulation  vision  navigation  lighting  animation  presentation
+     simulation  vision  navigation  lighting  animation  effects  presentation
           ↑               ↑                  ↑
           ai  →  locomotion   selection  combat  damage   transition  choreography
              ↑       ↑       ↑
@@ -18,7 +18,9 @@ Arrows point toward dependencies. `selection`, `combat` and `damage` sit
 on `model`, `schedule` and `simulation` and import none of each other; they
 meet only in messages and components. `transition` sits on `simulation`,
 `camera` and `model`. `choreography` sits on `animation`, `model` and
-`schedule` and only reads what the simulation says happened. `camera` sits on top of `animation` (it
+`schedule` and only reads what the simulation says happened; it asks
+`effects` (particles, on `model` and `schedule`) for blood and streaks by
+message. `camera` sits on top of `animation` (it
 eases the view with the same curves) and below `app` and `rendering`.
 `schedule` is the small, neutral contract
 shared by the domain plugins and output backends. `app` is the game composition
@@ -238,8 +240,16 @@ and renderers must not import it.
   contact, then slides (a knock) or shakes, and what a knocked body runs
   into shakes. The dead leave `Remains`, a copy of their glyph and motion
   that finishes the slide and sinks. A weapon winds up when it is aimed
-  and releases at the strike; the player winds up on a pick. It changes
-  nothing in the simulation.
+  and releases at the strike; the player winds up on a pick. A swing asks
+  for a `Swoosh` and a blow for a `Splash` (on the remains, when it
+  killed). It changes nothing in the simulation.
+- `effects/` turns those into `Particle`s: short-lived glyphs off the grid
+  that drift, slow down and fade (blood drops that land and lie a while, a
+  streak along a swing, a flash where a blow lands), with random numbers
+  of their own so the game plays the same without them. The frame lists
+  the ones in sight (`RenderBuffers::effects`, through portals too) and
+  the text renderer draws them above everything else; the 3D-walls
+  renderer does not draw them yet.
 - `presentation/` builds light maps and renderer-neutral composed cell frames.
   Frame cells are in the player's map coordinates; a cell the player sees
   shows the map cell it looks onto (`RenderBuffers::seen`), which behind a
