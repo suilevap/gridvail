@@ -154,6 +154,10 @@ pub struct ActorSpec {
     /// nothing when not given).
     #[serde(default)]
     pub bleeds: Option<String>,
+    /// The figure it is drawn as where height shows
+    /// (`assets/rules/figures.txt`); its glyph if none.
+    #[serde(default)]
+    pub figure: Option<String>,
 }
 
 #[cfg(test)]

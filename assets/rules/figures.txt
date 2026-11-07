@@ -1,0 +1,147 @@
+# Figures: objects drawn as a few small upright glyphs placed together so
+# they read as a shape, by renderers that show height (the text renderer's
+# `--walls stacked` and `--walls leaning`), in place of their one glyph.
+# Flat renderers draw the glyph as before.
+#
+#   figure NAME
+#   view front|back|left|right
+#   LABEL GLYPH [options]
+#
+# A figure has parts for each way it is seen facing on screen: toward the
+# viewer (front, also for objects that face no way), away (back), or to a
+# side. Parts before any `view` line are the front; a side not drawn is the
+# other side mirrored, and a view not drawn shows the front. Parts are drawn
+# back to front, in the order listed.
+#
+# LABEL names the part for the reader. GLYPH is one character, or `own` for
+# the object's own glyph. Options:
+#   x=X y=Y        where the glyph's centre is, from the centre of the
+#                  object's cell, on screen: x to the right, y up
+#   scale=S        the glyph's size, 1 (or 16px) for a whole cell (default
+#                  0.5, the font's own size)
+#   turn=DEGREES   turned counter-clockwise
+#   shade=S        how much of the light it shows, 0 to 1 (default 1)
+#   tint=#rrggbb   a colour the light is multiplied by, instead of a shade
+#   only=GLYPHS    drawn only while the object's glyph is one of these
+#   noflip         where its side is drawn mirrored, the glyph keeps its own
+#                  way round (its place still mirrors), for glyphs read as
+#                  themselves, such as @
+#
+# Lengths (x, y, scale) are in cells, or in font pixels with `px` (a cell
+# is 16 font pixels). The style is ASCII art: every part is a character that
+# reads as itself, at the font's own size, mostly side by side rather than
+# piled up, in a few colours. `tools/figure_preview.py` draws every view of
+# the figures here as the game draws them, for designing without the game.
+
+# The player: the @ of their hat over a teal cloak, carrying a lantern
+# that glows where they look.
+figure person
+  view front
+    head    @  y=8px tint=#e8e0d0
+    lcloak  /  x=-4px y=0px tint=#60a8a0
+    cloak   Δ  y=0px tint=#60a8a0
+    rcloak  \  x=4px y=0px tint=#60a8a0
+    legs    "  y=-9px tint=#a09080
+    lantern õ  x=8px y=-3px tint=#80f8f0
+  view back
+    lantern õ  x=-8px y=-3px tint=#409890
+    head    @  y=8px tint=#a8a090
+    lcloak  /  x=-4px y=0px tint=#407870
+    cloak   Δ  y=0px tint=#407870
+    rcloak  \  x=4px y=0px tint=#407870
+    legs    "  y=-9px tint=#787068
+  view right
+    head    @  x=0px y=8px tint=#e8e0d0 noflip
+    cloak   Δ  x=-1px y=0px tint=#60a8a0
+    lcloak  /  x=-5px y=0px tint=#60a8a0
+    arm     -  x=5px y=1px tint=#60a8a0
+    legs    "  y=-9px tint=#a09080
+    lantern õ  x=11px y=0px tint=#80f8f0
+
+# A rifleman, for guards: a shako, cross belts, or a pack from behind. The
+# shako over their head shows it is a face. Their head is
+# an arrow pointing where they look (v toward the viewer, ^ away, < and >
+# to the sides), with red eyes on the side they face (two toward the
+# viewer, one in profile, none from behind), so their line of sight reads
+# at a glance even without their rifle; their bayonet points the same way.
+# Their mood shows over their head.
+figure rifleman
+  view front
+    shako   Π  y=14px tint=#7890d0
+    head    v  y=8px tint=#e8d8c0
+    eyes    ¨  y=8px tint=#ff4030
+    larm    /  x=-5px y=0px tint=#7890d0
+    belts   X  y=0px tint=#e0d8c8
+    rarm    \  x=5px y=0px tint=#7890d0
+    legs    Λ  y=-7px tint=#9898a0
+    rifle   |  x=8px y=-1px tint=#c09060
+    bayonet v  x=8px y=-8px tint=#ffffff
+    mood    own y=23px tint=#ffd040 only=!?
+  view back
+    rifle   |  x=8px y=4px tint=#a07850
+    bayonet ^  x=8px y=11px tint=#ffffff
+    shako   Π  y=14px tint=#5870b0
+    head    ^  y=9px tint=#907060
+    larm    /  x=-5px y=0px tint=#5870b0
+    pack    #  y=0px tint=#b08860
+    rarm    \  x=5px y=0px tint=#5870b0
+    legs    Λ  y=-7px tint=#787880
+    mood    own y=23px tint=#ffd040 only=!?
+  view right
+    pack    #  x=-5px y=0px tint=#b08860
+    shako   Π  y=14px tint=#7890d0
+    peak    -  x=4px y=10px tint=#7890d0
+    head    >  x=1px y=8px tint=#e8d8c0
+    eye     ·  y=10px tint=#ff4030
+    body    [  y=0px tint=#7890d0
+    arm     -  x=4px y=1px tint=#7890d0
+    legs    Λ  y=-7px tint=#9898a0
+    rifle   =  x=9px y=1px tint=#c09060
+    barrel  -  x=14px y=1px tint=#c0c8d8
+    bayonet >  x=19px y=1px tint=#ffffff
+    mood    own y=23px tint=#ffd040 only=!? noflip
+
+# An officer, for hunters: a red plume, brass frogging and a cape. Their
+# head points where they look and shows their eyes, as a rifleman's does,
+# and so does their sabre.
+figure officer
+  view front
+    plume   ,  x=-3px y=20px tint=#e04848
+    shako   Π  y=14px tint=#7890d0
+    head    v  y=8px tint=#e8d8c0
+    eyes    ¨  y=8px tint=#ff4030
+    larm    /  x=-5px y=0px tint=#7890d0
+    frogs   ≡  y=0px tint=#f0c060
+    rarm    \  x=5px y=0px tint=#7890d0
+    legs    Λ  y=-7px tint=#e0d8c8
+    sabre   ↓  x=8px y=-6px tint=#ffffff
+    mood    own y=23px tint=#ffd040 only=!?
+  view back
+    sabre   ↑  x=8px y=6px tint=#c8ccd8
+    plume   ,  x=-3px y=20px tint=#b03838
+    shako   Π  y=14px tint=#5870b0
+    head    ^  y=9px tint=#907060
+    larm    /  x=-5px y=0px tint=#5870b0
+    cape    Ш  y=0px tint=#c04040
+    rarm    \  x=5px y=0px tint=#5870b0
+    legs    Λ  y=-7px tint=#b0a898
+    mood    own y=23px tint=#ffd040 only=!?
+  view right
+    cape    (  x=-4px y=0px tint=#c04040
+    plume   ,  x=-2px y=20px tint=#e04848
+    shako   Π  y=14px tint=#7890d0
+    peak    -  x=4px y=10px tint=#7890d0
+    head    >  x=1px y=8px tint=#e8d8c0
+    eye     ·  y=10px tint=#ff4030
+    body    [  y=0px tint=#7890d0
+    arm     -  x=4px y=1px tint=#7890d0
+    legs    Λ  y=-7px tint=#e0d8c8
+    sabre   →  x=11px y=1px tint=#ffffff
+    mood    own y=23px tint=#ffd040 only=!? noflip
+
+# A street lamp: a foot, a post, and a lantern under a little roof.
+figure lamp
+    foot    ┴  y=-6px tint=#808088
+    post    │  y=1px tint=#808088
+    lamp    õ  y=8px tint=#ffd880
+    roof    ^  y=14px tint=#c0a060

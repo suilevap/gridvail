@@ -233,7 +233,20 @@ next to this file.
   up off the floor, their glyphs extruded up the screen. How tall each
   glyph stands is set in `assets/rules/statures.txt` (walls and closed
   doors by default; any glyph can be listed), and a `Stature` component
-  gives one object its own height.
+  gives one object its own height. People, guards and lamps stand as
+  figures instead: a few characters placed together as ASCII art, each in
+  its own colour (the player is the `@` of their hat over a cloak `Δ`,
+  carrying a lantern `õ`; guards are riflemen `ô` with cross belts `X`,
+  hunters officers with a plume and a sabre), with a front, back and
+  side view picked by the way the actor faces on screen. A guard's bayonet or sabre always points where
+  they look, so their line of sight reads at a glance (the player's
+  direction marker is left out: the figure shows it). Figures are defined
+  in `assets/rules/figures.txt` (each glyph with its own offset, size, turn
+  and tint, in cells or font pixels), so other objects (boxes, barrels,
+  doors) can be made the same way, and `tools/figure_preview.py OUT.png
+  [NAME...]` draws every view of them as the game does, for designing
+  without running it. `assets/maps/figures.txt` is a small room to look at
+  them in.
 - Light effects (an addition, `--light`): with `smooth`, light blends
   between cells across standing walls, pixel by pixel, instead of one
   colour a cell, and fades from one turn's light to the next over about a

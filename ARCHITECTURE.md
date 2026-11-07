@@ -311,7 +311,21 @@ and renderers must not import it.
   object's glyph at its animated position into a wall map (8 texels per
   cell, height as alpha), and one full-screen shader (`wall_volume.wgsl`)
   extrudes it up the screen, writing the depth the text sprites are sorted
-  by, so what stands hides actors behind it. With smooth light it colours
+  by, so what stands hides actors behind it.
+  Objects with a `Figure` (people, lamps) are drawn as figures instead
+  (`rendering/figures.rs`): a figure (`FigureShape`, by name from
+  `Figures`, loaded from `assets/rules/figures.txt` by `content::figures`)
+  is a few small upright glyphs placed together so they read as a shape
+  (`@` over `/|\` over `/\`), each with its own offset, size, turn and
+  tint, drawn as text sprites in their object's light and draw order. A
+  figure has parts for each way it is seen facing on screen
+  (`FigureView`: toward the viewer, away, either side, a side not drawn
+  being the other mirrored), picked from its `Facing` turned by the view,
+  so which way an actor looks shows however the view is turned (a
+  marker bound to a figure, the player's direction marker, is not drawn). A part can
+  draw the object's own glyph and show only for some glyphs, so state the
+  simulation shows by glyph (a mood, an open door) shows on the figure.
+  Flat renderers draw the glyph. With smooth light it colours
   each pixel from the light map below, blended between cells: a wall in
   its cell's own light is drawn black into the wall map, and takes its
   colour wholly from the light map, so it fades with it.

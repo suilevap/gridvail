@@ -71,12 +71,16 @@
     },
 
     // Actors by map glyph: a name, the behaviour they run (the player runs
-    // none), hit points, their weapon or moves, and what a blow knocks out
-    // of them (an effect in `assets/effects`).
+    // none), hit points, their weapon or moves, what a blow knocks out of
+    // them (an effect in `assets/effects`), and the figure they are drawn as
+    // where height shows (`figures.txt`; their glyph if none).
     actors: {
-        'p': (name: "player", hp: 2, moves: "blade", bleeds: "blood"),
-        'e': (name: "guard", tree: Enemy, hp: 2, weapon: "sweep", bleeds: "blood"),
-        's': (name: "spearman", tree: Enemy, hp: 2, weapon: "spear", bleeds: "blood"),
-        'h': (name: "hunter", tree: Hunter, hp: 2, weapon: "jab", bleeds: "blood"),
+        'p': (name: "player", hp: 2, moves: "blade", bleeds: "blood", figure: "person"),
+        'e': (name: "guard", tree: Enemy, hp: 2, weapon: "sweep", bleeds: "blood",
+            figure: "rifleman"),
+        's': (name: "spearman", tree: Enemy, hp: 2, weapon: "spear", bleeds: "blood",
+            figure: "rifleman"),
+        'h': (name: "hunter", tree: Hunter, hp: 2, weapon: "jab", bleeds: "blood",
+            figure: "officer"),
     },
 )

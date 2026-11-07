@@ -22,13 +22,18 @@ pub struct ActorKind {
     pub weapon: Option<(Weapon, WeaponLook)>,
     pub maneuvers: Option<(Maneuvers, ManeuverLooks)>,
     pub bleeds: Option<String>,
+    /// The figure it is drawn as where height shows, by name.
+    pub figure: Option<String>,
 }
 
 impl ActorKind {
     /// Gives `actor` what this kind is made of beyond its body: health, a
-    /// weapon, moves, a behaviour.
+    /// weapon, moves, a behaviour, a figure.
     pub fn equip(&self, actor: &mut EntityCommands) {
         actor.insert(Health::full(self.hp));
+        if let Some(figure) = &self.figure {
+            actor.insert(Figure::named(figure));
+        }
         if let Some(weapon) = &self.weapon {
             actor.insert(weapon.clone());
         }
@@ -144,6 +149,7 @@ impl ActorKinds {
                     weapon,
                     maneuvers,
                     bleeds: actor.bleeds.clone(),
+                    figure: actor.figure.clone(),
                 },
             );
         }

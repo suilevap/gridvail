@@ -10,6 +10,7 @@
 use bevy::prelude::*;
 
 use super::ActorKinds;
+use crate::content::figures::parse_figures;
 use crate::content::map::{parse_map, parse_next, parse_rooms, portal_links, SpawnKind};
 use crate::content::map::{PortalLink, RoomSpec, SpawnCell};
 use crate::content::statures::parse_statures;
@@ -26,6 +27,7 @@ const WALL_RULE_TEXT: &str = include_str!("../../assets/rules/wall_rule.txt");
 const TRIANGLE_RULE_TEXT: &str = include_str!("../../assets/rules/direction_triangle_rule.txt");
 const V_RULE_TEXT: &str = include_str!("../../assets/rules/direction_v_rule.txt");
 const STATURES_TEXT: &str = include_str!("../../assets/rules/statures.txt");
+const FIGURES_TEXT: &str = include_str!("../../assets/rules/figures.txt");
 
 // The generated table of bundled maps.
 include!(concat!(env!("OUT_DIR"), "/bundled_maps.rs"));
@@ -115,6 +117,7 @@ fn construct_map(
             .into_iter()
             .collect(),
     ));
+    commands.insert_resource(Figures(parse_figures(FIGURES_TEXT).expect("figures")));
     loaded.write(MapLoaded::default());
 }
 
@@ -400,9 +403,12 @@ fn spawn_cell(
             marker('Ω', WHITE),
             light(LightKind::Electricity, 3, 32),
         )),
-        SpawnKind::Light => {
-            commands.spawn((Lamp, marker('i', WHITE), light(LightKind::Fire, 16, 196)))
-        }
+        SpawnKind::Light => commands.spawn((
+            Lamp,
+            marker('i', WHITE),
+            Figure::named("lamp"),
+            light(LightKind::Fire, 16, 196),
+        )),
         SpawnKind::Acid => {
             commands.spawn((AcidPool, marker('▒', WHITE), light(LightKind::Acid, 4, 32)))
         }
