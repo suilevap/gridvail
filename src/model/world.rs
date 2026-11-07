@@ -96,6 +96,20 @@ impl MapGrid {
         IVec2::new(p.x.rem_euclid(self.width), p.y.rem_euclid(self.height))
     }
 
+    /// The shortest step from `from` to `to` on the wrapping map: two cells
+    /// either side of an edge are next to each other.
+    pub fn delta(&self, from: IVec2, to: IVec2) -> IVec2 {
+        let wrap = |delta: i32, size: i32| {
+            if delta.abs() * 2 > size {
+                delta - delta.signum() * size
+            } else {
+                delta
+            }
+        };
+        let delta = to - from;
+        IVec2::new(wrap(delta.x, self.width), wrap(delta.y, self.height))
+    }
+
     pub fn get(&self, p: IVec2) -> Option<Entity> {
         self.idx(p)
             .and_then(|i| self.cells[i].map(|occupant| occupant.entity))

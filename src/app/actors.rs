@@ -19,8 +19,9 @@ pub struct ActorKind {
     pub name: String,
     pub tree: Option<Tree>,
     pub hp: i32,
-    pub weapon: Option<Weapon>,
-    pub maneuvers: Option<Maneuvers>,
+    pub weapon: Option<(Weapon, WeaponLook)>,
+    pub maneuvers: Option<(Maneuvers, ManeuverLooks)>,
+    pub bleeds: Option<String>,
 }
 
 impl ActorKind {
@@ -33,6 +34,9 @@ impl ActorKind {
         }
         if let Some(maneuvers) = &self.maneuvers {
             actor.insert(maneuvers.clone());
+        }
+        if let Some(effect) = &self.bleeds {
+            actor.insert(Bleeds(effect.clone()));
         }
         match self.tree {
             Some(Tree::Enemy) => {
@@ -66,7 +70,10 @@ impl ActorKinds {
             knock: spec.knock,
             follow: spec.follow,
             swap: spec.swap,
-            swing: spec.swing.map(SwingSpec::swing).unwrap_or_default(),
+        };
+        let look_of = |swing: Option<SwingSpec>, streak: &Option<String>| SwingLook {
+            swing: swing.map(SwingSpec::swing).unwrap_or_default(),
+            streak: streak.clone(),
         };
         let mut kinds = HashMap::default();
         for (&glyph, actor) in &roster.actors {
@@ -80,12 +87,14 @@ impl ActorKinds {
                     let cells = spec
                         .cells()
                         .map_err(|error| format!("weapon `{name}`: {error}"))?;
-                    Some(Weapon {
-                        area: Area(cells),
-                        damage: spec.damage,
-                        windup: spec.windup,
-                        swing: spec.swing.map(SwingSpec::swing).unwrap_or_default(),
-                    })
+                    Some((
+                        Weapon {
+                            area: Area(cells),
+                            damage: spec.damage,
+                            windup: spec.windup,
+                        },
+                        WeaponLook(look_of(spec.swing, &spec.streak)),
+                    ))
                 }
             };
             let maneuvers = match actor.moves.as_deref() {
@@ -95,11 +104,18 @@ impl ActorKinds {
                         .moves
                         .get(name)
                         .ok_or_else(|| format!("{} names no known moves `{name}`", actor.name))?;
-                    Some(Maneuvers {
-                        forward: move_of(&spec.forward),
-                        side: move_of(&spec.side),
-                        back: move_of(&spec.back),
-                    })
+                    Some((
+                        Maneuvers {
+                            forward: move_of(&spec.forward),
+                            side: move_of(&spec.side),
+                            back: move_of(&spec.back),
+                        },
+                        ManeuverLooks {
+                            forward: look_of(spec.forward.swing, &spec.forward.streak),
+                            side: look_of(spec.side.swing, &spec.side.streak),
+                            back: look_of(spec.back.swing, &spec.back.streak),
+                        },
+                    ))
                 }
             };
             kinds.insert(
@@ -110,6 +126,7 @@ impl ActorKinds {
                     hp: actor.hp,
                     weapon,
                     maneuvers,
+                    bleeds: actor.bleeds.clone(),
                 },
             );
         }
@@ -162,6 +179,30 @@ mod tests {
                 "{}",
                 kind.name
             );
+        }
+    }
+
+    #[test]
+    fn every_effect_the_roster_names_is_in_assets_effects() {
+        let library = crate::effects::EffectLibrary::bundled().unwrap();
+        for kind in ActorKinds::default().0.values() {
+            let moves = kind.maneuvers.iter().flat_map(|(_, looks)| {
+                [&looks.forward, &looks.side, &looks.back].map(|look| &look.streak)
+            });
+            let named = kind
+                .weapon
+                .iter()
+                .map(|(_, look)| &look.0.streak)
+                .chain(moves)
+                .chain([&kind.bleeds])
+                .flatten();
+            for effect in named {
+                assert!(
+                    library.0.contains_key(effect),
+                    "{} names no effect `{effect}`",
+                    kind.name
+                );
+            }
         }
     }
 }

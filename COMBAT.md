@@ -202,13 +202,42 @@ Anticipation lasts as long as what it anticipates:
   picked; the move then swings from there. Dropping a pick or an aim eases
   the pose back.
 
-Still to come, each its own step once needed: something that shows the
-weapon (a trail, an arc), hit points shown on enemies, and the
-infrastructure under them (particles, decals, camera shake or hit-stop,
-sound).
+Effects give it weight (`src/effects/`): a swing leaves a streak where
+the weapon passed (a line for a thrust, an arc for a sweep, drawn in the
+order it swings), a blow flashes where it lands and splashes blood the
+way it drove the target (more on a kill), and the drops land and lie a
+while before they fade. Effects are data: each is a file in
+`assets/effects` (`swoosh.ron`, `blood.ron`), and the roster names them
+(a weapon's or move's `streak`, an actor's `bleeds`), so a new look (a
+crate's splinters, a robot's sparks) is a new file and a roster line.
+
+Still to come, each its own step once needed: hit points shown on
+enemies, decals that last, camera shake or hit-stop, sound.
 
 To watch it, `--slomo 4` (`?slomo=4`) runs the whole game four times
 slower, and `--hp` / `--enemy-hp` give everyone more hit points.
+
+## Next: contextual attacks (agreed, not built)
+
+Picking goes away. Every swipe is read relative to the player's facing
+(forward, left, right, back), and the weapon has an attack for each: the
+cells it strikes, drawn as art with digits for the order its swing
+passes through them, its damage, and where it leaves the player (stay,
+step, or follow into the cell a knocked target left; keep facing or turn
+to the swipe). Targets are knocked the way the swing travels through
+their cell. An attack plays only when something stands in its cells;
+otherwise the swipe is a plain move. An entry with no cells always plays
+(the blade's "back off": a step back, still facing forward).
+
+- Next to an enemy, the player is engaged: walking past one can sweep it.
+- Whether a swing hits everything in its cells or stops at the first
+  target is the weapon's trait: some control an area, some reach further
+  but stop.
+- Enemies keep their own AI and targets, but their strikes get an order
+  too: marks plant, blows land and gestures swing in it.
+- Later: a preview of the attack a swipe will make, played as its
+  anticipation, with a tap to cancel; strikes meeting in a cell from
+  opposite directions as a block or parry.
 
 ## How it is put together
 

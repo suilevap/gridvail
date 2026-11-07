@@ -143,6 +143,8 @@ pub struct RenderBuffers {
     pub ground: Vec<RenderCell>,
     pub previous_ground: Vec<RenderCell>,
     pub objects: Vec<ObjectCell>,
+    /// Particles in sight, drawn above everything else.
+    pub effects: Vec<super::EffectCell>,
     /// The light each frame cell shows: its map cell's light colour while
     /// seen, dimmed while remembered, black otherwise. Renderers blend it
     /// between cells to light things smoothly.
@@ -172,6 +174,7 @@ impl RenderBuffers {
             ground: vec![RenderCell::default(); n],
             previous_ground: vec![RenderCell::default(); n],
             objects: Vec::with_capacity(n),
+            effects: Vec::new(),
             light: vec![Rgb::BLACK; n],
             seen: vec![None; n],
             seen_first: vec![Self::NO_CELL; n],

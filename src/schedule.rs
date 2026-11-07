@@ -64,6 +64,9 @@ pub enum ActionStage {
     /// Damage is taken, and the dead are marked for removal at the end of
     /// the pass.
     Damage,
+    /// What follows a death while the dead still stand, before they are
+    /// removed (remains left behind).
+    Aftermath,
 }
 
 /// Systems that list cells to mark for the player (`CellMarks`), after the

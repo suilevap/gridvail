@@ -5,7 +5,7 @@ The code is arranged from reusable foundations toward the concrete game:
 ```text
 foundation  content  layout  model  schedule
      ↑        ↑        ↑       ↑       ↑
-     simulation  vision  navigation  lighting  animation  presentation
+     simulation  vision  navigation  lighting  animation  effects  presentation
           ↑               ↑                  ↑
           ai  →  locomotion   selection  combat  damage   transition  choreography
              ↑       ↑       ↑
@@ -17,8 +17,10 @@ foundation  content  layout  model  schedule
 Arrows point toward dependencies. `selection`, `combat` and `damage` sit
 on `model`, `schedule` and `simulation` and import none of each other; they
 meet only in messages and components. `transition` sits on `simulation`,
-`camera` and `model`. `choreography` sits on `animation`, `model` and
-`schedule` and only reads what the simulation says happened. `camera` sits on top of `animation` (it
+`camera` and `model`. `choreography` sits on `animation`, `content`,
+`model` and `schedule` and only reads what the simulation says happened; it asks
+`effects` (particles, on `model`, `content` and `schedule`) for effects by
+name, in a message. `camera` sits on top of `animation` (it
 eases the view with the same curves) and below `app` and `rendering`.
 `schedule` is the small, neutral contract
 shared by the domain plugins and output backends. `app` is the game composition
@@ -143,8 +145,9 @@ and renderers must not import it.
   actions go through `schedule::ActionStage`, in order, within the
   simulation before the moves: `Due` (time passes), `Ongoing` (what fell
   due happens), `PlayerCommands` (input), `Decide`, `Effects`, `Costs`,
-  `Movement`, then, after the movement passes have settled, `Hits` and
-  `Damage`. Each system names its stage, not its neighbours. Death comes
+  `Movement`, then, after the movement passes have settled, `Hits`,
+  `Damage` and `Aftermath` (what follows a death while the dead still
+  stand). Each system names its stage, not its neighbours. Death comes
   after movement, so a lethal blow knocks its target first, like a
   blow that does not kill, and what the body runs into is hurt in the
   same frame.
@@ -232,14 +235,33 @@ and renderers must not import it.
   and gestures of different objects can be timed against each other.
 - `choreography/` times one exchange of blows from what the simulation
   reports (`ContextAction`, `Strike`, `Hit`, `Collision`, `Died`), which
-  it settles in one frame: the attacker swings at once, as the `Swing` of
-  its move or weapon says (thrust, sweep, hook; data), its own move
-  held until just after contact; what the blow lands on is held until
-  contact, then slides (a knock) or shakes, and what a knocked body runs
-  into shakes. The dead leave `Remains`, a copy of their glyph and motion
-  that finishes the slide and sinks. A weapon winds up when it is aimed
-  and releases at the strike; the player winds up on a pick. It changes
-  nothing in the simulation.
+  it settles in one frame, each step its own small system: a weapon winds
+  up when it is aimed and releases at the strike, the player winds up on
+  a pick; each move or strike becomes one `SwingStarts` (how it looks:
+  `WeaponLook`, `ManeuverLooks`, the swing and the streak, kept apart from
+  the gameplay's `Weapon` and `Maneuvers`; and whether it is a wound-up
+  swing released), which the gesture, the streak and the blow's timing
+  each answer; the attacker's own move is held until just after contact.
+  `time_blows` turns each `Hit` into a `BlowLands` (when, on what, which
+  way, across the map's wrapping edge too), which the target's hold,
+  fling, shake and bleeding each answer; what a knocked body runs into
+  shakes, and the body bleeds. The dead leave `Remains` (in
+  `ActionStage::Aftermath`), a copy of their glyph and motion that
+  finishes the slide and sinks and stands in for them. Its timings are
+  data (`assets/rules/choreography.ron`, the `Timing` resource). It
+  changes nothing in the simulation.
+- `effects/` plays effects, which are data: one RON file each in
+  `assets/effects` (`content::effects`), bundled by `build.rs` like the
+  maps, so a new effect is a new file and the roster names it. An effect
+  is emitters, each throwing off `Particle`s (short-lived glyphs off the
+  grid) from a point along the blow or along the swing, with their count
+  (and more per point of strength), speed and drag, life and how long
+  they show before fading, glyphs and colours; one generic system plays
+  any of them, with random numbers of its own so the game plays the same
+  without them; a new map clears them. The frame lists
+  the ones in sight (`RenderBuffers::effects`, through portals too) and
+  the text renderer draws them above everything else; the 3D-walls
+  renderer does not draw them yet.
 - `presentation/` builds light maps and renderer-neutral composed cell frames.
   Frame cells are in the player's map coordinates; a cell the player sees
   shows the map cell it looks onto (`RenderBuffers::seen`), which behind a

@@ -699,3 +699,39 @@ fn portals_show_their_threshold_and_their_walls() {
     assert_eq!(color_of(walls[2]), Some(PORTAL_COLOR));
     assert_eq!(color_of(walls[0]), None, "looked through, not drawn");
 }
+
+#[test]
+fn particles_in_sight_are_listed_where_they_are_and_strokes_keep_their_way() {
+    let mut app = test_app::headless();
+    app.insert_resource(DynamicLight::sized(64))
+        .insert_resource(RenderBuffers::new(8, 8))
+        .insert_resource(RevealAll);
+    let mut view = PlayerView::with_radius(4);
+    view.pos = IVec2::new(1, 1);
+    app.world_mut()
+        .spawn((Player(0), Pos(IVec2::new(1, 1)), view, visibility(&[])));
+    let particle = |position: Vec2, stroke: Option<Vec2>| Particle {
+        position,
+        velocity: Vec2::ZERO,
+        drag: 0.0,
+        age: 0.0,
+        life: 1.0,
+        hold: 1.0,
+        ch: '.',
+        stroke,
+        color: RED,
+        end_color: RED,
+    };
+    app.world_mut()
+        .spawn(particle(Vec2::new(5.3, 4.0), Some(Vec2::Y)));
+    // Not yet appeared, and past the map's edge: neither is drawn.
+    app.world_mut()
+        .spawn((particle(Vec2::new(3.0, 3.0), None), ParticleDelay(0.5)));
+    app.world_mut().spawn(particle(Vec2::new(-1.5, 3.0), None));
+    app.world_mut().run_system_once(compose_frame).unwrap();
+    app.world_mut().run_system_once(compose_effects).unwrap();
+    let effects = &app.world().resource::<RenderBuffers>().effects;
+    assert_eq!(effects.len(), 1);
+    assert_eq!(effects[0].position, Vec2::new(5.3, 4.0));
+    assert_eq!(effects[0].stroke, Some(Vec2::Y));
+}

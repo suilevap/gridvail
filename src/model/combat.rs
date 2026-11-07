@@ -44,8 +44,38 @@ impl Default for Swing {
     }
 }
 
+/// How a weapon or a move looks when swung: the gesture, and the streak it
+/// leaves (an effect's name). Only shown; combat never reads it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SwingLook {
+    pub swing: Swing,
+    pub streak: Option<String>,
+}
+
+/// How an actor's `Weapon` looks swung.
+#[derive(Component, Clone, Debug, Default, PartialEq)]
+pub struct WeaponLook(pub SwingLook);
+
+/// How each of an actor's `Maneuvers` looks swung, by `Relation`.
+#[derive(Component, Clone, Debug, Default, PartialEq)]
+pub struct ManeuverLooks {
+    pub forward: SwingLook,
+    pub side: SwingLook,
+    pub back: SwingLook,
+}
+
+impl ManeuverLooks {
+    pub fn get(&self, relation: Relation) -> &SwingLook {
+        match relation {
+            Relation::Forward => &self.forward,
+            Relation::Side => &self.side,
+            Relation::Back => &self.back,
+        }
+    }
+}
+
 /// One move of a maneuver set: what acting on a picked target does.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Maneuver {
     pub name: String,
     /// Damage of the hit (0: no hit).
@@ -57,13 +87,11 @@ pub struct Maneuver {
     pub follow: bool,
     /// The actor and a `Movable` target trade places.
     pub swap: bool,
-    /// How the move is swung.
-    pub swing: Swing,
 }
 
 /// The moves an actor makes on a picked target, one for each `Relation` of
 /// the second direction to the first (a fighting style, a weapon's moves).
-#[derive(Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
 pub struct Maneuvers {
     pub forward: Maneuver,
     pub side: Maneuver,
@@ -120,13 +148,11 @@ impl Default for ImpactDamage {
 /// A weapon an actor strikes with: the cells it covers (facing where it
 /// is aimed), the damage, and how many turns it is wound up before the
 /// strike lands (0: at once).
-#[derive(Component, Clone, Debug, PartialEq)]
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
 pub struct Weapon {
     pub area: Area,
     pub damage: i32,
     pub windup: u8,
-    /// How it is swung.
-    pub swing: Swing,
 }
 
 /// Where a wound-up weapon will strike: a direction from its wielder, so

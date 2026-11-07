@@ -1,0 +1,26 @@
+// What a blow knocks out of a body that bleeds: a flash where it lands,
+// and drops thrown the way it drove the body, more the harder it hit,
+// that land and lie a while before they fade.
+(
+    emitters: [
+        (
+            count: 1,
+            from: Point(ahead: -0.4, spread: 0.0),
+            life: (0.12, 0.12),
+            glyphs: Pick(['*']),
+            colors: [(255, 240, 200)],
+        ),
+        (
+            count: 0,
+            per_strength: 4.0,
+            from: Point(ahead: 0.0, spread: 1.1),
+            speed: (2.5, 7.0),
+            drag: 6.0,
+            life: (1.5, 3.0),
+            hold: 0.6,
+            glyphs: Pick(['·', '.', ',', '\'']),
+            colors: [(255, 64, 64), (140, 0, 0), (200, 24, 24)],
+            fade_to: (90, 0, 0),
+        ),
+    ],
+)

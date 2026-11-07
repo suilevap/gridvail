@@ -1,0 +1,29 @@
+// How a fight is timed on screen, in seconds (and cells for reaches). The
+// simulation settles a blow at once; these say how it plays out.
+(
+    // A whole swing, from the wind-up to settling back; its blow lands
+    // halfway (the swing's shape in `animation` says where exactly).
+    swing_secs: 0.42,
+    // After the blow lands, before an attacker's own move (a lunge's step
+    // after its target, a yank's swap) starts.
+    follow_gap: 0.06,
+    // A knocked body's slide, a cell: fast, slowing to a stop.
+    fling_secs: 0.22,
+    // Taking a blow: how long it shakes, and how far.
+    shake_secs: 0.3,
+    shake_reach: 0.25,
+    // An aimed weapon's wind-up, held then until it strikes.
+    aim_secs: 0.5,
+    // Readying a thrust at what was picked, and its reach (it draws back a
+    // share of that).
+    pick_secs: 0.2,
+    pick_reach: 0.4,
+    // Easing back from a wind-up that was dropped.
+    unwind_secs: 0.2,
+    // A swing's streak draws over its strike and this many times as long.
+    streak_stretch: 2.0,
+    // A killing blow knocks out this much more than its damage; a knocked
+    // body running into something knocks out this much.
+    kill_strength: 2,
+    impact_strength: 1,
+)

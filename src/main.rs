@@ -23,6 +23,7 @@ use pav_ecs_game_bevy_port::app::{
 };
 use pav_ecs_game_bevy_port::camera::{CameraOperator, PortalTurn};
 use pav_ecs_game_bevy_port::debug_ui::DebugPerformancePlugin;
+use pav_ecs_game_bevy_port::effects::EffectsPlugin;
 use pav_ecs_game_bevy_port::model::{
     AnimatedPos, CompassMode, LightEffects, Player, Pos, RevealAll, SettingsMenu, TokenTimer,
     ViewCamera, Vis, VisibilityMap, WallVolume,
@@ -99,6 +100,7 @@ fn main() -> AppExit {
         .add_plugins(GamePlugin)
         .add_plugins((
             ObjectAnimationPlugin,
+            EffectsPlugin,
             TextRendererPlugin,
             WallVolumePlugin,
             LightEffectsPlugin,

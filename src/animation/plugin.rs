@@ -6,8 +6,9 @@ use crate::model::*;
 use crate::schedule::GamePhase;
 
 use super::{
-    advance_gestures, animate_children, take_gestures, Flinging, HeldMoves, MotionState,
-    MotionStyle, MovePath, ObjectMotion, Path, PendingGestures, Pose, Tween,
+    animate_children, play_pending_gestures, take_flings, take_gestures, take_holds, take_releases,
+    take_wind_ups, wear_off_flings, wear_off_holds, Flinging, HeldMoves, MotionState, MotionStyle,
+    MovePath, ObjectMotion, Path, PendingGestures, Pose, Tween,
 };
 
 /// How long an object takes to rise out of the floor or sink into it.
@@ -63,8 +64,11 @@ impl Plugin for ObjectAnimationPlugin {
                 Update,
                 (
                     bump_blocked_movers,
-                    take_gestures,
-                    advance_gestures,
+                    (take_holds, take_flings),
+                    // A strike releases the wind-up taken this frame, and
+                    // a gesture plays over either.
+                    (take_wind_ups, take_releases, take_gestures).chain(),
+                    (play_pending_gestures, wear_off_holds, wear_off_flings),
                     animate_objects,
                     animate_children,
                     remove_sunk,

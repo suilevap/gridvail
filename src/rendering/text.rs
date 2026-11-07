@@ -145,6 +145,8 @@ impl Plugin for TextRendererPlugin {
                     drop_gone_sprites,
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
+                    spawn_effect_sprites.run_if(effect_sprites_missing),
+                    place_effect_sprites,
                     update_hud,
                     super::settings::draw_settings,
                     super::settings::draw_compass,
@@ -501,6 +503,88 @@ pub(super) fn place_object_sprites(
         if transform.rotation != rotation {
             transform.rotation = rotation;
         }
+    }
+}
+
+/// A text sprite drawing one of the frame's effects (a particle); the
+/// sprites are kept and reused, one for each effect in sight.
+#[derive(Component)]
+struct EffectSprite;
+
+fn effect_sprites_missing(
+    buffers: Res<RenderBuffers>,
+    sprites: Query<(), With<EffectSprite>>,
+) -> bool {
+    buffers.effects.len() > sprites.iter().len()
+}
+
+/// Spawns sprites until there is one for each effect in sight. It is
+/// exclusive and runs only when one is missing, so steady frames do not pay
+/// for a command sync point.
+fn spawn_effect_sprites(world: &mut World) {
+    let font = world.resource::<CellFont>().0.clone();
+    let wanted = world.resource::<RenderBuffers>().effects.len();
+    let have = world
+        .query_filtered::<(), With<EffectSprite>>()
+        .iter(world)
+        .len();
+    for _ in have..wanted {
+        world.spawn((
+            EffectSprite,
+            Text2d::new(String::with_capacity(4)),
+            TextLayout::justify(Justify::Center),
+            TextFont {
+                font: font.clone().into(),
+                font_size: FontSize::Px(CELL_FONT_SIZE),
+                ..default()
+            },
+            TextColor(Color::NONE),
+            Transform::default(),
+            Visibility::Hidden,
+        ));
+    }
+}
+
+/// Draws the frame's effects above everything else, each at its place
+/// between cells, as much as it shows; a stroke is drawn for the nearest
+/// quarter turn of the view and tilted with it, like any glyph. Sprites
+/// left over hide. The perspective backend does not draw effects yet.
+fn place_effect_sprites(
+    camera: Res<ViewCamera>,
+    buffers: Res<RenderBuffers>,
+    extruded_walls: Option<Res<ExtrudedWalls>>,
+    mut sprites: Query<
+        (&mut Text2d, &mut TextColor, &mut Transform, &mut Visibility),
+        With<EffectSprite>,
+    >,
+) {
+    let effects: &[EffectCell] = if extruded_walls.is_some() {
+        &[]
+    } else {
+        &buffers.effects
+    };
+    let quarter = Rot2::radians(-(camera.quarter_turns() as f32) * std::f32::consts::FRAC_PI_2);
+    let mut effects = effects.iter();
+    for (mut text, mut color, mut transform, mut visibility) in &mut sprites {
+        let Some(effect) = effects.next() else {
+            if *visibility != Visibility::Hidden {
+                *visibility = Visibility::Hidden;
+            }
+            continue;
+        };
+        let ch = effect
+            .stroke
+            .map_or(effect.ch, |way| stroke_glyph(quarter * way));
+        if text.0.chars().ne(std::iter::once(ch)) {
+            text.0.clear();
+            text.0.push(ch);
+        }
+        color.0 = Color::from(effect.color).with_alpha(effect.alpha);
+        *transform =
+            Transform::from_translation(view_translation(&camera, effect.position) + Vec3::Z * 3.0)
+                .with_rotation(glyph_rotation(&camera))
+                .with_scale(Vec3::splat(camera.zoom));
+        *visibility = Visibility::Visible;
     }
 }
 

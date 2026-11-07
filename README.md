@@ -101,7 +101,9 @@ next to this file.
   reaches two cells ahead, so stepping back is no escape. Who is who is
   data: `assets/rules/actors.ron` lists actor kinds by map glyph (any
   lowercase letter without a meaning of its own), their behaviour, hit
-  points and weapon or moves, and draws each weapon's pattern as art. The
+  points and weapon or moves, and draws each weapon's pattern as art.
+  Fights show swing streaks and blood: each effect is a file in
+  `assets/effects`, which the roster names, so a new one needs no code. The
   player going down plays the map again. `arena.txt` is a map to try it
   in. `--turn SECONDS` sets how long a turn waits for the player (1 by
   default), `--hp` the player's hit points, `--enemy-hp` everyone else's.
@@ -341,7 +343,7 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 362 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 379 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
