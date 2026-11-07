@@ -62,7 +62,8 @@ pub fn choose_attacks(
 
 /// Carries out each `Attack` as its maneuver says: it hits each target in
 /// its cells in order (only the first, if it stops there), knocks each
-/// `Movable` one the way the swing goes through its cell, leaves the actor
+/// `Movable` one the way the swing goes through its cell, plus the way the
+/// actor steps, if it does (the blow carries its step), leaves the actor
 /// where its stance says, and turns it to face the move if it turns. It
 /// only asks; hits, movement and turning are carried out elsewhere.
 pub fn perform_attacks(
@@ -83,6 +84,10 @@ pub fn perform_attacks(
         };
         let maneuver = maneuvers.get(attack.relation);
         let mut first_knocked = None;
+        let carried = match maneuver.stance {
+            Stance::Stay => IVec2::ZERO,
+            Stance::Follow | Stance::Step => attack.dir,
+        };
         for (cell, travel) in maneuver.area.sweep(pos.0, attack.facing) {
             let cell = grid.safe_pos(cell);
             let Some(target) = grid
@@ -101,7 +106,7 @@ pub fn perform_attacks(
             if maneuver.knock > 0 && movable.contains(target) {
                 knocks.write(Knock {
                     entity: target,
-                    velocity: travel * maneuver.knock,
+                    velocity: travel * maneuver.knock + carried,
                 });
                 first_knocked.get_or_insert(cell);
             }

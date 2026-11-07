@@ -47,14 +47,14 @@ fn blade() -> Maneuvers {
             "sweep left",
             &[IVec2::X, ahead_left, IVec2::NEG_Y],
             1,
-            Stance::Stay,
+            Stance::Step,
             true,
         ),
         right: make(
             "sweep right",
             &[IVec2::X, ahead_right, IVec2::Y],
             1,
-            Stance::Stay,
+            Stance::Step,
             true,
         ),
         back: Maneuver {
@@ -100,7 +100,7 @@ fn actor(app: &mut App, dir: IVec2) -> Entity {
 }
 
 #[test]
-fn a_move_into_something_ahead_lunges_and_takes_the_turn() {
+fn a_move_into_something_ahead_lunges_carrying_its_step_and_takes_the_turn() {
     let mut app = app();
     let target = target(&mut app, IVec2::new(3, 2));
     let actor = actor(&mut app, IVec2::X);
@@ -117,8 +117,9 @@ fn a_move_into_something_ahead_lunges_and_takes_the_turn() {
         sent::<Knock>(&app),
         vec![Knock {
             entity: target,
-            velocity: IVec2::X
-        }]
+            velocity: IVec2::new(2, 0)
+        }],
+        "the swing's push and the step it carries"
     );
     assert_eq!(
         sent::<Follow>(&app),
@@ -144,7 +145,7 @@ fn a_move_that_meets_nothing_is_left_to_walk() {
 }
 
 #[test]
-fn a_side_move_sweeps_what_is_ahead_that_way_and_turns() {
+fn a_side_move_sweeps_what_is_ahead_that_way_steps_and_turns() {
     let mut app = app();
     let target = target(&mut app, IVec2::new(3, 2));
     // Facing east, north is to the left.
@@ -154,10 +155,16 @@ fn a_side_move_sweeps_what_is_ahead_that_way_and_turns() {
         sent::<Knock>(&app),
         vec![Knock {
             entity: target,
-            velocity: IVec2::NEG_Y
+            velocity: IVec2::new(0, -2)
         }]
     );
-    assert!(sent::<Follow>(&app).is_empty());
+    assert_eq!(
+        sent::<Follow>(&app),
+        vec![Follow {
+            follower: actor,
+            into: IVec2::new(2, 1)
+        }]
+    );
     assert_eq!(
         sent::<Turn>(&app),
         vec![Turn {

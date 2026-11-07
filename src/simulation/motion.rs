@@ -46,7 +46,9 @@ pub fn apply_turns(mut turns: MessageReader<Turn>, mut facings: Query<&mut Facin
     }
 }
 
-/// Starts each mover's step. A step into a portal face from its open side
+/// Starts each mover's step: one cell a pass the way of its speed, so a
+/// speed is a distance covered pass by pass and nothing on the way is
+/// passed through. A step into a portal face from its open side
 /// goes to the floor in front of the exit face instead, and is recorded in
 /// `PortalCrossings`; collisions there are resolved like any other step.
 pub fn movement(
@@ -62,8 +64,9 @@ pub fn movement(
         if speed.0 == IVec2::ZERO || *pending != PendingPos::None {
             continue;
         }
-        let mut target = pos.0 + speed.0;
-        if let Some(face) = grid.portal_at(target).filter(|face| face.side == -speed.0) {
+        let step = speed.0.clamp(IVec2::NEG_ONE, IVec2::ONE);
+        let mut target = pos.0 + step;
+        if let Some(face) = grid.portal_at(target).filter(|face| face.side == -step) {
             target = grid.safe_pos(face.through.apply(target));
             crossings.0.push(PortalCrossing {
                 entity,

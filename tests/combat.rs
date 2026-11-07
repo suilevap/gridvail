@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
-use pav_ecs_game_bevy_port::app::{ActorKinds, GamePlugin, MapText};
+use pav_ecs_game_bevy_port::app::{ActorKind, ActorKinds, GamePlugin, MapText};
 use pav_ecs_game_bevy_port::model::*;
 use pav_ecs_game_bevy_port::navigation::PathService;
 use pav_ecs_game_bevy_port::service::{Runner, ServiceSet, Services};
@@ -199,31 +199,34 @@ fn a_lunge_knocks_what_is_ahead_on_and_takes_its_cell() {
     game.until_aware();
     game.press(UP);
     assert_eq!(game.player_pos(), FRONT);
-    let (_, hp, _) = game.enemy_at(FRONT + IVec2::NEG_Y).expect("knocked on");
+    // Knocked on by the swing and by the step it carries: two cells.
+    let (_, hp, _) = game.enemy_at(FRONT + IVec2::NEG_Y * 2).expect("knocked on");
     assert_eq!(hp, 1);
 }
 
 #[test]
-fn a_sweep_knocks_what_is_ahead_aside_and_turns_the_player_to_it() {
+fn a_sweep_knocks_what_is_ahead_aside_and_steps_the_player_that_way() {
     let mut game = Game::new(AHEAD, 100);
     game.until_aware();
     game.press(RIGHT);
     let (pos, _, _, facing) = game.player();
-    assert_eq!(pos, BEHIND, "a sweep moved the player");
-    assert_eq!(facing, IVec2::X);
-    assert_eq!(game.enemy_at(FRONT + IVec2::X).expect("swept right").1, 1);
+    assert_eq!((pos, facing), (BEHIND + IVec2::X, IVec2::X));
+    let swept = FRONT + IVec2::X * 2;
+    assert_eq!(game.enemy_at(swept).expect("swept right").1, 1);
 }
 
 #[test]
-fn a_move_toward_something_beside_sweeps_it_back() {
-    // Facing north, the enemy east of the player is to its right: swept on
-    // round, back toward the south.
+fn a_move_toward_something_beside_sweeps_it_out_of_the_way() {
+    // Facing north, the enemy east of the player is to its right: swept back
+    // round (south) and on the way the player steps (east), it leaves the
+    // cell the player steps into.
     let mut game = Game::new(OPEN, 100);
     game.until_aware();
     game.press(RIGHT);
     let (pos, _, _, facing) = game.player();
-    assert_eq!((pos, facing), (PLAYER, IVec2::X));
-    assert_eq!(game.enemy_at(ENEMY + IVec2::Y).expect("swept back").1, 1);
+    assert_eq!((pos, facing), (ENEMY, IVec2::X));
+    let swept = ENEMY + IVec2::ONE;
+    assert_eq!(game.enemy_at(swept).expect("swept away").1, 1);
 }
 
 #[test]
@@ -339,10 +342,11 @@ fn hit_after(key: KeyCode) -> bool {
 }
 
 #[test]
-fn against_a_sweep_only_backing_off_is_safe() {
-    // A lunge or a sweep leaves the player in the row the guard's sweep
-    // covers once the guard is knocked; backing off leaves it.
-    assert!(hit_after(UP), "lunge");
+fn against_a_sweep_lunging_or_backing_off_is_safe() {
+    // A lunge knocks the guard two cells on, so its sweep covers the row
+    // ahead of the player; a sweep steps the player along the row the
+    // guard's sweep covers; backing off leaves it.
+    assert!(!hit_after(UP), "lunge");
     assert!(hit_after(LEFT), "sweep left");
     assert!(hit_after(RIGHT), "sweep right");
     assert!(!hit_after(DOWN), "back off");
@@ -350,33 +354,41 @@ fn against_a_sweep_only_backing_off_is_safe() {
 
 #[test]
 fn a_knocked_strikers_blow_moves_with_it_and_hits_its_friend() {
-    // `a`, ahead of the player, strikes down at it; `b` stands to its right.
-    // Sweeping `a` right puts `b` under its strike (the sweep stops at `a`).
+    // `a`, ahead of the player, strikes down at it; `b`, a dummy that stays
+    // put, stands two cells to the player's right. Sweeping `a` right (two cells: the swing and the
+    // step) puts `b` under its strike.
     let mut game = Game::with(
         "\
 XXXXXXX
 X.....X
 X..e..X
-X..pe.X
+X..p.dX
 X.....X
 XXXXXXX
 ",
         |kinds| {
             jabbing_guards(kinds);
             kinds.player_mut().hp = 100;
-            let (moves, _) = kinds.player_mut().maneuvers.as_mut().unwrap();
-            moves.right.stop = true;
+            let dummy = ActorKind {
+                name: "dummy".into(),
+                tree: None,
+                hp: 2,
+                weapon: None,
+                maneuvers: None,
+                bleeds: None,
+            };
+            kinds.0.insert('d', dummy);
         },
     );
-    let (a, b) = (IVec2::new(3, 2), IVec2::new(4, 3));
+    let (a, b) = (IVec2::new(3, 2), IVec2::new(5, 3));
     game.until_wound_up(a);
     assert_eq!(game.enemy_at(a).unwrap().2, Some(IVec2::Y));
     let b_before = game.enemy_at(b).unwrap().1;
     game.press(RIGHT);
     // The sweep takes the player's turn, so the next one starts and the
     // strike lands, from where `a` stands now.
-    game.frames(5);
-    assert_eq!(game.enemy_at(IVec2::new(4, 2)).expect("swept right").1, 1);
+    game.next_turn();
+    assert_eq!(game.enemy_at(IVec2::new(5, 2)).expect("swept right").1, 1);
     let b_after = game.enemy_at(b).map_or(0, |(_, hp, _)| hp);
     assert_eq!(b_after, b_before - 1, "its friend was not hit");
 }

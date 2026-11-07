@@ -32,6 +32,9 @@ beside the `@`): forward, left, right or back.
 - **A move that meets nothing is a plain step**, and the player turns to
   face it. Being knocked, following through or stepping back does not turn
   the player; only walking and an attack that turns do.
+- **Every move moves the player** (unless something stops it). The attack
+  is what the move hits on the way, so where a swipe takes the player is
+  always one step that way.
 - **Next to an enemy the player is engaged:** the moves toward it attack.
   Walking past one can sweep it.
 - **A timeout never acts for the player.** The turn passes like a wait.
@@ -41,7 +44,8 @@ beside the `@`): forward, left, right or back.
 An attack is data (the blade's in `assets/rules/actors.ron`): the cells it
 strikes, drawn as art with digits for the order its swing goes through
 them, its damage, how far it knocks each target (the way the swing travels
-through its cell), where it leaves the player (stay, follow into the cell
+through its cell, plus one cell the way the player steps: the blow
+carries the step), where it leaves the player (stay, follow into the cell
 the first knocked target left, or step the way of the move) and whether
 the player turns to face the move. It hits every target in its cells in
 order, or, for a weapon that `stop`s, only the first.
@@ -52,10 +56,12 @@ The blade (`@` faces up; digits are the swing's order):
 forward: lunge     left: sweep left    right: sweep right   back: back off
    1                  21                  12                   x
    @                  3@                  @3                   @
- knocked on;        what is ahead is    the same, to the     no hit: a step
- you take its       swept left, what    right                back, still
- cell               is beside swept                          facing it
-                    back; you turn left
+ knocked two on     you step left and   the same, to the     no hit: a step
+ (swing + step);    turn: what is ahead right                back, still
+ you take its cell  goes two left, what                      facing it
+                    is beside goes
+                    back-left, out of
+                    your way
 ```
 
 ### Damage
@@ -84,13 +90,16 @@ That makes each attack a different trade-off against an alert guard,
 whose sweep covers the row in front of it:
 
 ```text
-lunge (forward)     sweep (right)        back off
- . E .               . E .                . E .
- . @ .               . @ .                . @ .
- -> . E .            -> . . E             -> * * *
-    * @ *               . @ *                . @ .
- you advance into    it lands on you      safe: you step
- its sweep           from beside          out of its row
+lunge (forward)     sweep (right)          back off
+ . . . .             . . . . .              . E .
+ . E . .             . E . . .              . @ .
+ . @ . .             . @ . . .
+ -> . E . .          -> . . . E             -> * * *
+    * * * .             . . . * * *            . @ .
+    . @ . .             . . @ .
+ safe: it flies      you step along the     safe: you step
+ two on, its sweep   row it sweeps          out of its row
+ misses you
 ```
 
 `E` winds up toward `@`; `*` is where its sweep lands after the move. A
@@ -146,9 +155,9 @@ Out, roughly in the order they would follow:
   step off, or knock the striker so its blow lands elsewhere.
 - **Strike patterns decide the answer.** Each weapon strikes its own cells
   (drawn as art in `assets/rules/actors.ron`). Against a guard's sweep (the
-  row in front) stepping aside does not help and, of the attacks, only
-  backing off is safe: a lunge or a sweep leaves the player in the row the
-  sweep covers once the guard is knocked. Against a spearman's spear (two cells
+  row in front) stepping aside does not help; a lunge (it flies two cells,
+  so its sweep covers the row ahead of the player) and backing off are
+  safe, a sweep is not (it steps the player along the row it sweeps). Against a spearman's spear (two cells
   ahead) stepping back does not help, but stepping aside does. Two kinds
   side by side ask for different answers at once. This answers the first
   playtest: a fight with one enemy that only struck the cell in front was
@@ -248,10 +257,10 @@ Small modules that share only data and messages (see `ARCHITECTURE.md`):
   stun or a stagger is a `Delay` with nothing scheduled.
 - **Knockback rides the simulation's movement.** A `Knock` gives the
   target a speed and marks it `Knocked`; the same movement passes that move
-  walkers move it, and a knocked body that is blocked is a `Collision`. A
-  lunge's step after the target and a step back are a `Follow`. Pushing
-  enemies on into others, pushing objects by walking into them, and knocks
-  longer than a cell are postponed.
+  walkers move it, a cell a pass, and a knocked body that is blocked is a
+  `Collision` and stops there. The attacker's step after the target is a
+  `Follow`. Pushing enemies on into others and pushing objects by walking
+  into them are postponed.
 - **Damage is its own thing** (`damage/`): `Damage` comes off `Health`,
   whatever sent it. Hits, critical hits and collisions are separate small systems that each send their share; a hazard, fire or a fall can send
   `Damage` too.

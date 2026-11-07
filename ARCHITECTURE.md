@@ -162,9 +162,9 @@ and renderers must not import it.
     on the simulation's own movement passes: a `Knock` gives a body a
     `Speed` (after each mover's own step is chosen, so it wins) and marks it
     `Knocked`; movement, `Friction` and collision resolution then move it
-    like anything that walks, pass after pass until everything settles. A
-    knocked body that is blocked is a `Collision`, and one that has stopped
-    is no longer `Knocked`. A `Follow` steps into a cell on the pass after
+    like anything that walks, a cell a pass until everything settles. A
+    knocked body that is blocked is a `Collision` and stops there, and one
+    that has stopped is no longer `Knocked`. A `Follow` steps into a cell on the pass after
     it is left (walking into a cell just left is blocked in the same pass),
     and a `Swap` trades two bodies' places, which walking cannot.
   - `model::Area`: cells around an origin, in the frame of a facing and
@@ -180,7 +180,8 @@ and renderers must not import it.
     `Attack` (its action for the turn) instead of a walk.
     `perform_attacks` answers it: a `Hit` for each target in order (only
     the first if it stops there), a `Knock` the way the swing goes through
-    its cell, a `Follow` where its `Stance` leaves the actor, a `Turn` if
+    its cell plus the actor's step (the blow carries it), a `Follow`
+    where its `Stance` leaves the actor, a `Turn` if
     it turns; `ready_weapons` answers a
     `UseWeapon` by aiming the `Weapon` (`Telegraph`, a direction from the
     wielder), then owing its wind-up with the `Strike` scheduled, and

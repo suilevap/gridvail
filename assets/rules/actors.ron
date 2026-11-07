@@ -33,11 +33,13 @@
     // cells (drawn as for weapons, the mover `@` facing up) holds a target;
     // otherwise the swipe is a plain step. It hits each target in its cells
     // in order (only the first, with `stop: true`) for `hit` damage, and
-    // knocks each `knock` cells the way the swing goes through its cell (1
-    // for now: a body moves its whole speed in one movement pass). `stance`
-    // is where it leaves the mover: `Stay`, `Follow` into the cell the first
-    // knocked target leaves, or `Step` the way of the swipe; with `turn` the
-    // mover turns to face the swipe. `swing` and `streak` are how it looks,
+    // knocks each `knock` cells the way the swing goes through its cell,
+    // plus one the way the mover steps, if it does (the blow carries its
+    // step). `stance` is where it leaves the mover: `Stay`, `Follow` into
+    // the cell the first knocked target leaves, or `Step` the way of the
+    // swipe; with `turn` the mover turns to face the swipe. The blade's
+    // moves all move the mover: an attack is a step that hits what it
+    // meets. `swing` and `streak` are how it looks,
     // as for weapons (no swing when not given).
     moves: {
         "blade": (
@@ -47,14 +49,15 @@
                 1
                 @
             "),
-            // Round from ahead to the side, turning to face it: what is
-            // ahead is swept aside, what is beside is swept back.
-            left: (name: "sweep left", hit: 1, knock: 1, turn: true,
+            // Round from ahead to the side, stepping that way and turning
+            // to face it: what is ahead is swept aside, what is beside is
+            // swept back, out of the cell stepped into.
+            left: (name: "sweep left", hit: 1, knock: 1, stance: Step, turn: true,
                 swing: Sweep(reach: 0.55), streak: "swoosh", art: "
                 21
                 3@
             "),
-            right: (name: "sweep right", hit: 1, knock: 1, turn: true,
+            right: (name: "sweep right", hit: 1, knock: 1, stance: Step, turn: true,
                 swing: Sweep(reach: 0.55), streak: "swoosh", art: "
                 12
                 @3

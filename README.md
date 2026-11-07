@@ -85,10 +85,12 @@ next to this file.
   faces (the marker beside the `@`): forward, left, right or back. Each
   has an attack, which plays when one of its cells holds an enemy;
   otherwise the move is a plain step, which turns the player to face it.
-  With the blade, forward **lunges** at what is ahead (it is knocked on,
-  you take its cell), left or right **sweeps** round from ahead to that
-  side, turning you to it (what is ahead is swept aside, what is beside
-  swept back), and back **backs off** from what is ahead (a step back,
+  Every move moves you; the attack is what you hit on the way, and a
+  blow carries your step. With the blade, forward **lunges** at what is
+  ahead (it is knocked two cells on, you take its cell), left or right
+  **sweeps** round from ahead to that side, stepping and turning you that
+  way (what is ahead is swept two cells aside, what is beside swept out
+  of your way), and back **backs off** from what is ahead (a step back,
   still facing it). A sweep hits everything in its cells. A hit
   does 1, 1 more on an enemy that has not noticed you or is on its `!`
   beat (a critical hit). A knocked enemy whose way is blocked stays put,
@@ -99,7 +101,8 @@ next to this file.
   strike is aimed from its wielder, so knocking the enemy moves it. Each
   weapon strikes its own pattern, and the pattern decides which answer is
   safe: a guard's (`e`) sweep covers the row in front, so stepping aside
-  is no escape and, of the attacks, only backing off leaves it; a
+  is no escape, but a lunge (it flies two cells on) or backing off
+  leaves it; a
   spearman's (`s`) spear
   reaches two cells ahead, so stepping back is no escape. Who is who is
   data: `assets/rules/actors.ron` lists actor kinds by map glyph (any
@@ -345,7 +348,7 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 378 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 379 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

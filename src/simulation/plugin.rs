@@ -83,7 +83,7 @@ impl Plugin for SimulationPlugin {
                         .chain()
                         .in_set(ActionStage::Movement),
                     knock.after(update_direction).before(movement),
-                    (report_collisions, settle_knocked)
+                    (report_collisions, stop_collided, settle_knocked)
                         .chain()
                         .after(resolve_collect)
                         .before(resolve_unmap),

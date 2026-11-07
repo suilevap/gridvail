@@ -189,9 +189,8 @@ each.
 
 **Today.** Walking already is the physics loop: `Speed` (a velocity),
 `Friction`, `Collider`, a resolver that blocks and records collisions, and
-`turn_update` running passes until every body has settled. It moves a
-whole `Speed` in one jump, though, so a body faster than a cell a pass
-would pass through what lies between.
+`turn_update` running passes until every body has settled, a cell a pass
+whatever the speed, so nothing on the way is passed through.
 
 **General.** Everything that moves bodies uses that one loop, by putting
 state on the bodies, never with a loop of its own:
@@ -206,13 +205,13 @@ state on the bodies, never with a loop of its own:
   the animation's bump.
 
 **Built** (`simulation/physics.rs`): `Knock` gives a body a speed and
-`Knocked`, and the existing passes move it; a knocked body that is blocked
-is a `Collision`; `Follow` steps into a cell on the pass after it is left;
+`Knocked`, and the existing passes move it a cell a pass, so a knock of
+two cells is two passes; a knocked body that is blocked is a `Collision`
+and stops there (`stop_collided`); `Follow` steps into a cell on the pass after it is left;
 `Swap` trades two bodies' places (the resolver blocks swaps, as the
 original game requires). **Postponed** to keep this change small: motion
 passed on to what a knocked body runs into, pushing objects by walking into
-them, knocks longer than one cell (they need the cell-per-pass movement),
-`Mass`. **Still to absorb:** `CollisionBuffer` as a message.
+them, `Mass`. **Still to absorb:** `CollisionBuffer` as a message.
 
 ### Time: actions cost turns, and effects can wait
 
