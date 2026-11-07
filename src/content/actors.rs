@@ -27,9 +27,12 @@ pub struct WeaponSpec {
     /// The cells struck, drawn with the wielder `@` facing up and each
     /// struck cell `x`.
     pub art: String,
-    /// How it is swung (a thrust when not given).
+    /// How it is swung (a thrust when not given), and the streak it leaves
+    /// (an effect in `assets/effects`; none when not given).
     #[serde(default)]
     pub swing: Option<SwingSpec>,
+    #[serde(default)]
+    pub streak: Option<String>,
 }
 
 impl WeaponSpec {
@@ -65,9 +68,12 @@ pub struct MoveSpec {
     /// The mover and the target trade places.
     #[serde(default)]
     pub swap: bool,
-    /// How it is swung (a thrust when not given).
+    /// How it is swung (a thrust when not given), and the streak it leaves
+    /// (as for weapons).
     #[serde(default)]
     pub swing: Option<SwingSpec>,
+    #[serde(default)]
+    pub streak: Option<String>,
 }
 
 /// How a weapon or a move is swung, `reach` cells out: `Thrust` straight
@@ -110,6 +116,10 @@ pub struct ActorSpec {
     pub weapon: Option<String>,
     #[serde(default)]
     pub moves: Option<String>,
+    /// What a blow knocks out of it (an effect in `assets/effects`;
+    /// nothing when not given).
+    #[serde(default)]
+    pub bleeds: Option<String>,
 }
 
 #[cfg(test)]

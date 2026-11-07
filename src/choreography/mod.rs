@@ -67,8 +67,7 @@ impl Plugin for ChoreographyPlugin {
             .add_message::<Fling>()
             .add_message::<WindUp>()
             .add_message::<Release>()
-            .add_message::<Splash>()
-            .add_message::<Swoosh>()
+            .add_message::<PlayEffect>()
             .add_systems(
                 Update,
                 (wind_up, swing_attackers, react_to_blows)
@@ -152,11 +151,11 @@ pub fn wind_up(
 pub fn swing_attackers(
     mut actions: MessageReader<ContextAction>,
     mut strikes: MessageReader<Strike>,
-    (mut gestures, mut holds, mut releases, mut swooshes): (
+    (mut gestures, mut holds, mut releases, mut effects): (
         MessageWriter<Gesture>,
         MessageWriter<HoldMoves>,
         MessageWriter<Release>,
-        MessageWriter<Swoosh>,
+        MessageWriter<PlayEffect>,
     ),
     maneuvers: Query<&Maneuvers>,
     weapons: Query<&Weapon>,
@@ -167,11 +166,24 @@ pub fn swing_attackers(
         secs: SWING_SECS,
         delay: 0.0,
     };
+    // The streak a swing leaves, if its move or weapon names one.
+    let streak = |effect: &Option<String>, entity: Entity, dir: IVec2, shape, delay| {
+        effect.as_ref().map(|effect| PlayEffect {
+            effect: effect.clone(),
+            entity,
+            toward: dir.as_vec2(),
+            swing: Some(shape),
+            secs: STREAK_SECS,
+            strength: 0,
+            delay,
+        })
+    };
     for action in actions.read() {
-        let style = maneuvers.get(action.actor).map_or_else(
-            |_| Swing::default(),
-            |moves| moves.get(Relation::of(action.picked, action.dir)).swing,
-        );
+        let chosen = maneuvers
+            .get(action.actor)
+            .ok()
+            .map(|moves| moves.get(Relation::of(action.picked, action.dir)));
+        let style = chosen.map_or_else(Swing::default, |chosen| chosen.swing);
         let across = if action.dir.perp_dot(action.picked) == 0 {
             action.picked.perp()
         } else {
@@ -179,12 +191,15 @@ pub fn swing_attackers(
         };
         let shape = swing_gesture(style, action.picked, across);
         gestures.write(swing(action.actor, shape));
-        swooshes.write(Swoosh {
-            entity: action.actor,
-            shape,
-            delay: SWING_SECS * SWING_WOUND,
-            secs: STREAK_SECS,
-        });
+        if let Some(chosen) = chosen {
+            effects.write_batch(streak(
+                &chosen.streak,
+                action.actor,
+                action.picked,
+                shape,
+                SWING_SECS * SWING_WOUND,
+            ));
+        }
         holds.write(HoldMoves {
             entity: action.actor,
             secs: CONTACT + FOLLOW_GAP,
@@ -195,12 +210,7 @@ pub fn swing_attackers(
             continue;
         };
         let shape = swing_gesture(weapon.swing, strike.dir, strike.dir.perp());
-        let mut streak = Swoosh {
-            entity: strike.wielder,
-            shape,
-            delay: 0.0,
-            secs: STREAK_SECS,
-        };
+        let mut delay = 0.0;
         if weapon.windup > 0 {
             releases.write(Release {
                 entity: strike.wielder,
@@ -209,9 +219,15 @@ pub fn swing_attackers(
             });
         } else {
             gestures.write(swing(strike.wielder, shape));
-            streak.delay = SWING_SECS * SWING_WOUND;
+            delay = SWING_SECS * SWING_WOUND;
         }
-        swooshes.write(streak);
+        effects.write_batch(streak(
+            &weapon.streak,
+            strike.wielder,
+            strike.dir,
+            shape,
+            delay,
+        ));
     }
 }
 
@@ -224,14 +240,14 @@ pub fn swing_attackers(
 pub fn react_to_blows(
     mut hits: MessageReader<Hit>,
     mut collisions: MessageReader<Collision>,
-    (mut gestures, mut holds, mut flings, mut splashes): (
+    (mut gestures, mut holds, mut flings, mut effects): (
         MessageWriter<Gesture>,
         MessageWriter<HoldMoves>,
         MessageWriter<Fling>,
-        MessageWriter<Splash>,
+        MessageWriter<PlayEffect>,
     ),
     mut strikes: MessageReader<Strike>,
-    positions: Query<&Pos>,
+    (positions, bleeds): (Query<&Pos>, Query<&Bleeds>),
     weapons: Query<&Weapon>,
     remains: Query<(Entity, &Remains)>,
     shown: Query<&AnimatedPos>,
@@ -254,6 +270,18 @@ pub fn react_to_blows(
         } else {
             CONTACT
         }
+    };
+    // What a blow knocks out of a body, if it bleeds anything.
+    let bleed = |entity: Entity, toward: Vec2, strength: i32, delay: f32| {
+        bleeds.get(entity).ok().map(|bleeds| PlayEffect {
+            effect: bleeds.0.clone(),
+            entity,
+            toward,
+            swing: None,
+            secs: 0.0,
+            strength,
+            delay,
+        })
     };
     let shake = |entity: Entity, from: IVec2, at: IVec2, delay: f32| Gesture {
         entity,
@@ -289,12 +317,8 @@ pub fn react_to_blows(
         } else {
             (at.0 - from.0).as_vec2()
         };
-        splashes.write(Splash {
-            entity: target,
-            toward,
-            strength: hit.damage + if killed { KILL_SPLASH } else { 0 },
-            delay,
-        });
+        let strength = hit.damage + if killed { KILL_SPLASH } else { 0 };
+        effects.write_batch(bleed(target, toward, strength, delay));
     }
     for collision in collisions.read() {
         let (mover, _) = shown_by(collision.mover);
@@ -302,29 +326,33 @@ pub fn react_to_blows(
             continue;
         };
         gestures.write(shake(collision.obstacle, from.0, at.0, CONTACT));
-        splashes.write(Splash {
-            entity: mover,
-            toward: (at.0 - from.0).as_vec2(),
-            strength: 1,
-            delay: CONTACT,
-        });
+        effects.write_batch(bleed(mover, (at.0 - from.0).as_vec2(), 1, CONTACT));
     }
 }
 
 /// What dies (and is removed) leaves its remains to be shown: its glyph,
-/// carrying on the motion it had, held until the blow lands, then sinking
-/// into the floor. Only shown objects (with an animation) leave remains.
+/// carrying on the motion it had (and what it bleeds), held until the blow
+/// lands, then sinking into the floor. Only shown objects (with an animation) leave remains.
 #[allow(clippy::type_complexity)]
 pub fn leave_remains(
     mut commands: Commands,
     mut died: MessageReader<Died>,
-    bodies: Query<(&Pos, &Glyph, &ObjectAnimation, &AnimatedPos), Without<KeepOnDeath>>,
+    bodies: Query<
+        (
+            &Pos,
+            &Glyph,
+            &ObjectAnimation,
+            &AnimatedPos,
+            Option<&Bleeds>,
+        ),
+        Without<KeepOnDeath>,
+    >,
 ) {
     for &Died(body) in died.read() {
-        let Ok((pos, glyph, animation, shown)) = bodies.get(body) else {
+        let Ok((pos, glyph, animation, shown, bleeds)) = bodies.get(body) else {
             continue;
         };
-        commands.spawn((
+        let mut remains = commands.spawn((
             Remains(body),
             Sinking,
             *pos,
@@ -334,6 +362,10 @@ pub fn leave_remains(
             crate::animation::HeldMoves(CONTACT),
             Flinging::new(FLING_SECS),
         ));
+        // The blow that killed it still knocks out what it bleeds.
+        if let Some(bleeds) = bleeds {
+            remains.insert(bleeds.clone());
+        }
     }
 }
 

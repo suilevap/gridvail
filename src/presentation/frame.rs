@@ -444,7 +444,7 @@ pub fn compose_effects(
                 buffers.effects.push(EffectCell {
                     position,
                     ch: particle.ch,
-                    color: particle.color,
+                    color: particle.shown_color(),
                     alpha: particle.alpha(),
                 });
             }

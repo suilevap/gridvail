@@ -206,7 +206,10 @@ Effects give it weight (`src/effects/`): a swing leaves a streak where
 the weapon passed (a line for a thrust, an arc for a sweep, drawn in the
 order it swings), a blow flashes where it lands and splashes blood the
 way it drove the target (more on a kill), and the drops land and lie a
-while before they fade.
+while before they fade. Effects are data: each is a file in
+`assets/effects` (`swoosh.ron`, `blood.ron`), and the roster names them
+(a weapon's or move's `streak`, an actor's `bleeds`), so a new look (a
+crate's splinters, a robot's sparks) is a new file and a roster line.
 
 Still to come, each its own step once needed: hit points shown on
 enemies, decals that last, camera shake or hit-stop, sound.

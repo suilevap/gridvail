@@ -4,20 +4,23 @@
     // cells they cover, drawn with the wielder `@` facing up and each struck
     // cell `x`, and how they are swung (how far, in cells: `Thrust` straight
     // at the target, `Sweep` in an arc across the front, `Hook` out and
-    // pulled back; a thrust when not given).
+    // pulled back; a thrust when not given), and the streak each leaves (an
+    // effect in `assets/effects`; none when not given).
     weapons: {
         // The cell in front.
-        "jab": (damage: 1, windup: 1, swing: Thrust(reach: 0.55), art: "
+        "jab": (damage: 1, windup: 1, swing: Thrust(reach: 0.55), streak: "swoosh", art: "
             x
             @
         "),
         // The whole row in front: stepping aside is no escape.
-        "sweep": (damage: 1, windup: 1, swing: Sweep(reach: 0.6), art: "
+        "sweep": (damage: 1, windup: 1, swing: Sweep(reach: 0.6), streak: "swoosh",
+            art: "
             xxx
             .@.
         "),
         // Two cells straight ahead: stepping back is no escape.
-        "spear": (damage: 1, windup: 1, swing: Thrust(reach: 0.95), art: "
+        "spear": (damage: 1, windup: 1, swing: Thrust(reach: 0.95), streak: "swoosh",
+            art: "
             x
             x
             @
@@ -33,18 +36,21 @@
     moves: {
         "blade": (
             forward: (name: "lunge", hit: 1, knock: 1, follow: true,
-                swing: Thrust(reach: 0.6)),
-            side: (name: "push", hit: 1, knock: 1, swing: Sweep(reach: 0.55)),
-            back: (name: "yank", hit: 1, swap: true, swing: Hook(reach: 0.55)),
+                swing: Thrust(reach: 0.6), streak: "swoosh"),
+            side: (name: "push", hit: 1, knock: 1, swing: Sweep(reach: 0.55),
+                streak: "swoosh"),
+            back: (name: "yank", hit: 1, swap: true, swing: Hook(reach: 0.55),
+                streak: "swoosh"),
         ),
     },
 
     // Actors by map glyph: a name, the behaviour they run (the player runs
-    // none), hit points, and their weapon or moves.
+    // none), hit points, their weapon or moves, and what a blow knocks out
+    // of them (an effect in `assets/effects`).
     actors: {
-        'p': (name: "player", hp: 2, moves: "blade"),
-        'e': (name: "guard", tree: Enemy, hp: 2, weapon: "sweep"),
-        's': (name: "spearman", tree: Enemy, hp: 2, weapon: "spear"),
-        'h': (name: "hunter", tree: Hunter, hp: 2, weapon: "jab"),
+        'p': (name: "player", hp: 2, moves: "blade", bleeds: "blood"),
+        'e': (name: "guard", tree: Enemy, hp: 2, weapon: "sweep", bleeds: "blood"),
+        's': (name: "spearman", tree: Enemy, hp: 2, weapon: "spear", bleeds: "blood"),
+        'h': (name: "hunter", tree: Hunter, hp: 2, weapon: "jab", bleeds: "blood"),
     },
 )

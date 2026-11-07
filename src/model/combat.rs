@@ -57,8 +57,9 @@ pub struct Maneuver {
     pub follow: bool,
     /// The actor and a `Movable` target trade places.
     pub swap: bool,
-    /// How the move is swung.
+    /// How the move is swung, and the streak it leaves (an effect's name).
     pub swing: Swing,
+    pub streak: Option<String>,
 }
 
 /// The moves an actor makes on a picked target, one for each `Relation` of
@@ -125,8 +126,9 @@ pub struct Weapon {
     pub area: Area,
     pub damage: i32,
     pub windup: u8,
-    /// How it is swung.
+    /// How it is swung, and the streak it leaves (an effect's name).
     pub swing: Swing,
+    pub streak: Option<String>,
 }
 
 /// Where a wound-up weapon will strike: a direction from its wielder, so

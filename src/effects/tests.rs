@@ -30,25 +30,63 @@ fn particles(app: &mut App) -> Vec<Particle> {
     query.iter(app.world()).copied().collect()
 }
 
+fn request(effect: &str, entity: Entity) -> PlayEffect {
+    PlayEffect {
+        effect: effect.to_string(),
+        entity,
+        toward: Vec2::X,
+        swing: None,
+        secs: 0.0,
+        strength: 1,
+        delay: 0.0,
+    }
+}
+
 #[test]
-fn a_splash_throws_drops_the_way_the_blow_went_that_lie_then_fade() {
+fn every_bundled_effect_reads() {
+    let library = EffectLibrary::bundled().unwrap();
+    assert!(library.0.contains_key("blood") && library.0.contains_key("swoosh"));
+}
+
+#[test]
+fn a_new_effect_is_only_data() {
+    let library = EffectLibrary::read([(
+        "dust",
+        "(emitters: [(count: 3, from: Point(ahead: 0.0, spread: 3.14), \
+          speed: (1.0, 2.0), life: (0.5, 0.5), glyphs: Pick(['.']), \
+          colors: [(120, 120, 120)])])",
+    )])
+    .unwrap();
+    let mut app = app();
+    app.insert_resource(library);
+    let crate_ = app.world_mut().spawn(Pos(IVec2::new(4, 4))).id();
+    app.world_mut().write_message(request("dust", crate_));
+    frames(&mut app, 2);
+    let dust = particles(&mut app);
+    assert_eq!(dust.len(), 3);
+    assert!(dust.iter().all(|mote| mote.ch == '.'));
+    frames(&mut app, 40);
+    assert!(particles(&mut app).is_empty(), "the dust never settled");
+}
+
+#[test]
+fn blood_is_thrown_the_way_the_blow_went_and_lies_then_fades() {
     let mut app = app();
     let target = app.world_mut().spawn(Pos(IVec2::new(4, 4))).id();
-    app.world_mut().write_message(Splash {
-        entity: target,
-        toward: Vec2::X,
+    app.world_mut().write_message(PlayEffect {
         strength: 2,
         delay: 0.1,
+        ..request("blood", target)
     });
     frames(&mut app, 2);
     assert!(
         particles(&mut app).is_empty(),
-        "splashed before the blow landed"
+        "bled before the blow landed"
     );
-    frames(&mut app, 30);
+    frames(&mut app, 50);
     let drops: Vec<_> = particles(&mut app)
         .into_iter()
-        .filter(|drop| drop.ch != SPARK_GLYPH)
+        .filter(|drop| drop.ch != '*')
         .collect();
     assert_eq!(drops.len(), 8);
     assert!(
@@ -67,29 +105,48 @@ fn a_splash_throws_drops_the_way_the_blow_went_that_lie_then_fade() {
 fn a_sweep_streaks_from_the_side_it_starts_on_to_the_other() {
     let mut app = app();
     let wielder = app.world_mut().spawn(Pos(IVec2::new(4, 4))).id();
-    app.world_mut().write_message(Swoosh {
-        entity: wielder,
-        shape: GestureShape::Sweep {
+    app.world_mut().write_message(PlayEffect {
+        swing: Some(GestureShape::Sweep {
             toward: Vec2::X,
             across: Vec2::Y,
-        },
-        delay: 0.0,
+        }),
         secs: 0.2,
+        ..request("swoosh", wielder)
     });
     frames(&mut app, 2);
     let first = particles(&mut app);
     assert!(!first.is_empty());
-    assert!(first.iter().all(|streak| streak.position.y < 4.0));
+    assert!(first.iter().all(|stroke| stroke.position.y < 4.0));
     frames(&mut app, 12);
     assert!(particles(&mut app)
         .iter()
-        .any(|streak| streak.position.y > 4.0));
+        .any(|stroke| stroke.position.y > 4.0));
 }
 
 #[test]
-fn a_streak_is_drawn_the_way_it_goes() {
-    assert_eq!(streak_glyph(Vec2::X), '-');
-    assert_eq!(streak_glyph(Vec2::NEG_Y), '|');
-    assert_eq!(streak_glyph(Vec2::new(1.0, 1.0)), '\\');
-    assert_eq!(streak_glyph(Vec2::new(1.0, -1.0)), '/');
+fn strokes_are_drawn_the_way_they_go() {
+    assert_eq!(stroke(Vec2::X), '-');
+    assert_eq!(stroke(Vec2::NEG_Y), '|');
+    assert_eq!(stroke(Vec2::new(1.0, 1.0)), '\\');
+    assert_eq!(stroke(Vec2::new(1.0, -1.0)), '/');
+}
+
+#[test]
+fn a_particle_holds_then_fades_and_turns_colour() {
+    let mut particle = Particle {
+        position: Vec2::ZERO,
+        velocity: Vec2::ZERO,
+        drag: 0.0,
+        age: 0.0,
+        life: 1.0,
+        hold: 0.5,
+        ch: '.',
+        color: Rgb::new(200, 0, 0),
+        end_color: Rgb::new(100, 0, 0),
+    };
+    particle.age = 0.4;
+    assert_eq!(particle.alpha(), 1.0);
+    particle.age = 0.75;
+    assert!((particle.alpha() - 0.5).abs() < 1e-4);
+    assert_eq!(particle.shown_color(), Rgb::new(125, 0, 0));
 }

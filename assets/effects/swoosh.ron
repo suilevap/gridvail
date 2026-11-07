@@ -1,0 +1,17 @@
+// The streak a blade leaves where it passes: strokes drawn one after
+// another along the swing (a line for a thrust, an arc for a sweep), each
+// drifting on a little and fading fast.
+(
+    emitters: [
+        (
+            count: 9,
+            from: Along(near: 0.3, far: 1.0, arc: 1.2),
+            speed: (0.6, 0.6),
+            drag: 4.0,
+            life: (0.22, 0.22),
+            hold: 0.2,
+            glyphs: Along,
+            colors: [(220, 230, 255)],
+        ),
+    ],
+)

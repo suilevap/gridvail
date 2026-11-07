@@ -21,6 +21,7 @@ pub struct ActorKind {
     pub hp: i32,
     pub weapon: Option<Weapon>,
     pub maneuvers: Option<Maneuvers>,
+    pub bleeds: Option<String>,
 }
 
 impl ActorKind {
@@ -33,6 +34,9 @@ impl ActorKind {
         }
         if let Some(maneuvers) = &self.maneuvers {
             actor.insert(maneuvers.clone());
+        }
+        if let Some(effect) = &self.bleeds {
+            actor.insert(Bleeds(effect.clone()));
         }
         match self.tree {
             Some(Tree::Enemy) => {
@@ -67,6 +71,7 @@ impl ActorKinds {
             follow: spec.follow,
             swap: spec.swap,
             swing: spec.swing.map(SwingSpec::swing).unwrap_or_default(),
+            streak: spec.streak.clone(),
         };
         let mut kinds = HashMap::default();
         for (&glyph, actor) in &roster.actors {
@@ -85,6 +90,7 @@ impl ActorKinds {
                         damage: spec.damage,
                         windup: spec.windup,
                         swing: spec.swing.map(SwingSpec::swing).unwrap_or_default(),
+                        streak: spec.streak.clone(),
                     })
                 }
             };
@@ -110,6 +116,7 @@ impl ActorKinds {
                     hp: actor.hp,
                     weapon,
                     maneuvers,
+                    bleeds: actor.bleeds.clone(),
                 },
             );
         }
@@ -162,6 +169,30 @@ mod tests {
                 "{}",
                 kind.name
             );
+        }
+    }
+
+    #[test]
+    fn every_effect_the_roster_names_is_in_assets_effects() {
+        let library = crate::effects::EffectLibrary::bundled().unwrap();
+        for kind in ActorKinds::default().0.values() {
+            let moves = kind.maneuvers.iter().flat_map(|moves| {
+                [&moves.forward, &moves.side, &moves.back].map(|chosen| &chosen.streak)
+            });
+            let named = kind
+                .weapon
+                .iter()
+                .map(|weapon| &weapon.streak)
+                .chain(moves)
+                .chain([&kind.bleeds])
+                .flatten();
+            for effect in named {
+                assert!(
+                    library.0.contains_key(effect),
+                    "{} names no effect `{effect}`",
+                    kind.name
+                );
+            }
         }
     }
 }

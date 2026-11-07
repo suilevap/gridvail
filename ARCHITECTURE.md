@@ -19,8 +19,8 @@ on `model`, `schedule` and `simulation` and import none of each other; they
 meet only in messages and components. `transition` sits on `simulation`,
 `camera` and `model`. `choreography` sits on `animation`, `model` and
 `schedule` and only reads what the simulation says happened; it asks
-`effects` (particles, on `model` and `schedule`) for blood and streaks by
-message. `camera` sits on top of `animation` (it
+`effects` (particles, on `model`, `content` and `schedule`) for effects by
+name, in a message. `camera` sits on top of `animation` (it
 eases the view with the same curves) and below `app` and `rendering`.
 `schedule` is the small, neutral contract
 shared by the domain plugins and output backends. `app` is the game composition
@@ -240,13 +240,19 @@ and renderers must not import it.
   contact, then slides (a knock) or shakes, and what a knocked body runs
   into shakes. The dead leave `Remains`, a copy of their glyph and motion
   that finishes the slide and sinks. A weapon winds up when it is aimed
-  and releases at the strike; the player winds up on a pick. A swing asks
-  for a `Swoosh` and a blow for a `Splash` (on the remains, when it
-  killed). It changes nothing in the simulation.
-- `effects/` turns those into `Particle`s: short-lived glyphs off the grid
-  that drift, slow down and fade (blood drops that land and lie a while, a
-  streak along a swing, a flash where a blow lands), with random numbers
-  of their own so the game plays the same without them. The frame lists
+  and releases at the strike; the player winds up on a pick. A swing plays
+  the streak its move or weapon names, a blow what its target `Bleeds`
+  (on the remains, when it killed), each a `PlayEffect`. It changes
+  nothing in the simulation.
+- `effects/` plays effects, which are data: one RON file each in
+  `assets/effects` (`content::effects`), bundled by `build.rs` like the
+  maps, so a new effect is a new file and the roster names it. An effect
+  is emitters, each throwing off `Particle`s (short-lived glyphs off the
+  grid) from a point along the blow or along the swing, with their count
+  (and more per point of strength), speed and drag, life and how long
+  they show before fading, glyphs and colours; one generic system plays
+  any of them, with random numbers of its own so the game plays the same
+  without them. The frame lists
   the ones in sight (`RenderBuffers::effects`, through portals too) and
   the text renderer draws them above everything else; the 3D-walls
   renderer does not draw them yet.
