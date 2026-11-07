@@ -4,7 +4,7 @@
 //! one glyph.
 //!
 //! Each part is a text sprite like any object's, in the same font and the
-//! light its object is in, at its own offset, size and turn from the
+//! light its object is in (or, marked, wholly in its mark's colour), at its own offset, size and turn from the
 //! object's shown position. Which parts are drawn follows the way the
 //! object faces as seen on screen (`FigureView`): toward the viewer, away,
 //! or to either side, so it stays right as the view turns. Parts share
@@ -95,6 +95,13 @@ fn draw_figures(
                 + Vec2::Y * object.lift * cell;
             let depth = 1.5 - base.dot(lean) / 16384.0 + object.cell.depth as f32 * 1e-5;
             let light = Color::from(object.cell.color).to_linear();
+            // An object not in its cell's own light has been given a colour
+            // that means something (a combat mark: picked, about to be
+            // struck; a portal's): the whole figure takes it, its parts'
+            // tints left out, so it reads as clearly as a glyph would.
+            let marked = buffers
+                .idx(object.pos)
+                .is_some_and(|index| buffers.light[index] != object.cell.color);
             for (index, part) in parts.iter().enumerate().take(u8::MAX as usize) {
                 if !part.shown_for(object.cell.ch) {
                     continue;
@@ -135,7 +142,11 @@ fn draw_figures(
                     text.0.clear();
                     text.0.push_str(glyph);
                 }
-                let tint = Color::from(part.tint).to_linear();
+                let tint = if marked {
+                    LinearRgba::WHITE
+                } else {
+                    Color::from(part.tint).to_linear()
+                };
                 let desired = Color::LinearRgba(LinearRgba::new(
                     light.red * tint.red,
                     light.green * tint.green,

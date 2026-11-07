@@ -547,10 +547,11 @@ pub fn slam_impacts(
     }
 }
 
-/// What dies (and is removed) leaves its remains to be shown: its glyph,
-/// carrying on the motion it had (and what it bleeds), held until the blow
-/// lands and flung, then sinking into the floor. Only shown objects (with
-/// an animation) leave remains.
+/// What dies (and is removed) leaves its remains to be shown: its glyph
+/// (and its figure, if drawn as one, turned the way it faced), carrying on
+/// the motion it had (and what it bleeds), held until the blow lands and
+/// flung, then sinking into the floor. Only shown objects (with an
+/// animation) leave remains.
 #[allow(clippy::type_complexity)]
 pub fn leave_remains(
     timing: Res<Timing>,
@@ -564,12 +565,13 @@ pub fn leave_remains(
             &ObjectAnimation,
             &AnimatedPos,
             Option<&Bleeds>,
+            (Option<&Figure>, Option<&Facing>),
         ),
         Without<KeepOnDeath>,
     >,
 ) {
     for &Died(body) in died.read() {
-        let Ok((pos, glyph, animation, shown, bleeds)) = bodies.get(body) else {
+        let Ok((pos, glyph, animation, shown, bleeds, (figure, facing))) = bodies.get(body) else {
             continue;
         };
         let mut remains = commands.spawn((
@@ -582,6 +584,9 @@ pub fn leave_remains(
         ));
         if let Some(bleeds) = bleeds {
             remains.insert(bleeds.clone());
+        }
+        if let Some(figure) = figure {
+            remains.insert((figure.clone(), facing.copied().unwrap_or_default()));
         }
         let remains = remains.id();
         holds.write(HoldMoves {
