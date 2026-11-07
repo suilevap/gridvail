@@ -7,7 +7,8 @@ use super::{GestureShape, Rgb};
 /// drifts at `velocity` (cells a second), slowed by `drag` (the share of
 /// its speed lost a second, as a rate), turns from `color` to `end_color`
 /// over its `life`, and shows fully for the share `hold` of it, then fades
-/// out.
+/// out. It is drawn as `ch`, or, a stroke, as a line the way of `stroke`
+/// (picked where it is drawn, so a turned view turns it).
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct Particle {
     pub position: Vec2,
@@ -17,6 +18,7 @@ pub struct Particle {
     pub life: f32,
     pub hold: f32,
     pub ch: char,
+    pub stroke: Option<Vec2>,
     pub color: Rgb,
     pub end_color: Rgb,
 }
@@ -73,11 +75,25 @@ pub struct PlayEffect {
 pub struct Bleeds(pub String);
 
 /// One particle as the frame shows it: where (in frame cells, between
-/// cells), what, and how much of it shows.
+/// cells), what (`ch`, or a stroke the way of `stroke`, in frame cells),
+/// and how much of it shows.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EffectCell {
     pub position: Vec2,
     pub ch: char,
+    pub stroke: Option<Vec2>,
     pub color: Rgb,
     pub alpha: f32,
+}
+
+/// The line drawn for a stroke going `way` on screen, with y growing down
+/// the screen (`-`, `\`, `|`, `/`).
+pub fn stroke_glyph(way: Vec2) -> char {
+    let angle = way.y.atan2(way.x).rem_euclid(std::f32::consts::PI);
+    match (angle / std::f32::consts::FRAC_PI_4).round() as i32 {
+        1 => '\\',
+        2 => '|',
+        3 => '/',
+        _ => '-',
+    }
 }

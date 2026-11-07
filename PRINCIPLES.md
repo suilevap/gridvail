@@ -401,3 +401,13 @@ it would help. Each item is its own change.
     keys, orders and strolls are filled by one `perceive` system.
     Perception per sense, each filling its own part, would let new senses
     (hearing, smell) be added alone. (Principles 1, 2.)
+11. **Presentation delays counted down in several places**
+    (`animation`'s `PendingGestures`, `HeldMoves` and `Flinging`;
+    `effects`' `ParticleDelay`). Each counts seconds down on its own. One
+    "after this many seconds" mechanism for shown things, as `Scheduled`
+    is for turns, would let any of them wait the same way. (Principle 7.)
+12. **Effect names are strings** (`PlayEffect`, `Bleeds`, `SwingLook`).
+    A misspelled name in a roster other than the bundled one (which a test
+    checks) shows only as a warning in play, and each request clones its
+    name. Resolve names to handles when the roster is read, with
+    [prefabs](#data-one-format-and-prefabs). (Principles 8, 11.)

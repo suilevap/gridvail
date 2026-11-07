@@ -25,6 +25,8 @@ pub struct ChoreographySpec {
     pub unwind_secs: f32,
     /// How much longer than its strike a swing's streak takes to draw.
     pub streak_stretch: f32,
-    /// How much more a killing blow knocks out of a body than its damage.
+    /// How much more a killing blow knocks out of a body than its damage,
+    /// and how much a knocked body running into something knocks out.
     pub kill_strength: i32,
+    pub impact_strength: i32,
 }

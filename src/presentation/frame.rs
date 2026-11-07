@@ -424,7 +424,8 @@ fn borders_known_background(
 }
 
 /// Lists the particles in sight, at their place in the frame (through a
-/// portal, where the player sees them through it).
+/// portal, where the player sees them through it, turned with it). None
+/// off the map: sight never shows past its edge.
 pub fn compose_effects(
     grid: Res<MapGrid>,
     particles: Query<&Particle, Without<ParticleDelay>>,
@@ -433,17 +434,18 @@ pub fn compose_effects(
     buffers.effects.clear();
     for particle in &particles {
         let cell = particle.position.round().as_ivec2();
-        let Some(world) = grid.idx(grid.safe_pos(cell)) else {
+        let Some(world) = grid.idx(cell) else {
             continue;
         };
         let mut frame = buffers.seen_first[world];
         while frame != RenderBuffers::NO_CELL {
             let index = frame as usize;
             if let Some(seen) = buffers.seen[index] {
-                let position = seen.transform.inverse().apply_point(particle.position);
+                let inverse = seen.transform.inverse();
                 buffers.effects.push(EffectCell {
-                    position,
+                    position: inverse.apply_point(particle.position),
                     ch: particle.ch,
+                    stroke: particle.stroke.map(|way| inverse.turn_vec(way)),
                     color: particle.shown_color(),
                     alpha: particle.alpha(),
                 });

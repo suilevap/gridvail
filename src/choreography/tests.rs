@@ -3,6 +3,7 @@ use super::*;
 fn app() -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
+        .insert_resource(MapGrid::new(8, 8))
         .add_message::<ContextAction>()
         .add_message::<Strike>()
         .add_message::<Hit>()
@@ -167,6 +168,20 @@ fn a_released_strike_lands_sooner_than_a_whole_swing() {
         sent::<BlowLands>(&app)[0].contact,
         timing(&app).release_contact()
     );
+}
+
+#[test]
+fn a_blow_across_the_map_edge_drives_its_target_on_across_it() {
+    let mut app = app();
+    let attacker = app.world_mut().spawn(Pos(IVec2::new(0, 2))).id();
+    let target = guard(&mut app, IVec2::new(7, 2), 1);
+    app.world_mut().write_message(Hit {
+        source: attacker,
+        target,
+        damage: 1,
+    });
+    app.update();
+    assert_eq!(sent::<BlowLands>(&app)[0].toward, Vec2::NEG_X);
 }
 
 #[test]

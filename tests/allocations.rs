@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use bevy::time::TimeUpdateStrategy;
 use pav_ecs_game_bevy_port::animation::ObjectAnimationPlugin;
 use pav_ecs_game_bevy_port::app::GamePlugin;
+use pav_ecs_game_bevy_port::effects::EffectsPlugin;
 use pav_ecs_game_bevy_port::model::{Player, Speed};
 use pav_ecs_game_bevy_port::rendering::TextRendererPlugin;
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -75,7 +76,12 @@ fn boot() -> App {
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(
             16,
         )))
-        .add_plugins((GamePlugin, ObjectAnimationPlugin, TextRendererPlugin));
+        .add_plugins((
+            GamePlugin,
+            ObjectAnimationPlugin,
+            EffectsPlugin,
+            TextRendererPlugin,
+        ));
     single_threaded(&mut app);
     for _ in 0..256 {
         app.update();

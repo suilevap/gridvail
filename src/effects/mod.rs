@@ -24,14 +24,18 @@ impl Plugin for EffectsPlugin {
     fn build(&self, app: &mut App) {
         let library = EffectLibrary::bundled().unwrap_or_else(|error| panic!("{error}"));
         app.add_message::<PlayEffect>()
+            .add_message::<MapLoaded>()
             .insert_resource(library)
             .insert_resource(EffectRng(StdRng::seed_from_u64(0x5eed)))
             .add_systems(
                 Update,
                 (play_effects, reveal_particles, advance_particles)
                     .chain()
+                    // Effects start where things are shown; one started
+                    // the frame a move does may start a frame behind it.
                     .in_set(GamePhase::Animation),
-            );
+            )
+            .add_systems(Update, clear_particles.in_set(GamePhase::Simulation));
     }
 }
 
@@ -97,18 +101,6 @@ pub fn along_swing(swing: GestureShape, (near, far, arc): (f32, f32, f32), t: f3
     }
 }
 
-/// The stroke drawn for something going `way` (map y grows down the
-/// screen).
-pub fn stroke(way: Vec2) -> char {
-    let angle = way.y.atan2(way.x).rem_euclid(std::f32::consts::PI);
-    match (angle / std::f32::consts::FRAC_PI_4).round() as i32 {
-        1 => '\\',
-        2 => '|',
-        3 => '/',
-        _ => '-',
-    }
-}
-
 /// The particles one emitter throws off for `request`, from `at`: each
 /// with the seconds until it appears.
 pub fn emit(
@@ -148,12 +140,12 @@ pub fn emit(
                 (at + point, way, t * request.secs)
             }
         };
-        let ch = match &emitter.glyphs {
+        let (ch, stroke) = match &emitter.glyphs {
             GlyphSpec::Pick(glyphs) if !glyphs.is_empty() => {
-                glyphs[rng.random_range(0..glyphs.len())]
+                (glyphs[rng.random_range(0..glyphs.len())], None)
             }
             GlyphSpec::Pick(_) => continue,
-            GlyphSpec::Along => stroke(way),
+            GlyphSpec::Along => (stroke_glyph(way), Some(way)),
         };
         let Some(&color) = emitter
             .colors
@@ -171,6 +163,7 @@ pub fn emit(
                 life: pick(rng, emitter.life),
                 hold: emitter.hold,
                 ch,
+                stroke,
                 color,
                 end_color: emitter.fade_to.map_or(color, rgb),
             },
@@ -208,6 +201,21 @@ pub fn play_effects(
                 }
             }
         }
+    }
+}
+
+/// A new map (or the same one played again) starts with no particles:
+/// none left lying, none still to appear.
+pub fn clear_particles(
+    mut commands: Commands,
+    mut loaded: MessageReader<MapLoaded>,
+    particles: Query<Entity, With<Particle>>,
+) {
+    if loaded.read().count() == 0 {
+        return;
+    }
+    for particle in &particles {
+        commands.entity(particle).despawn();
     }
 }
 

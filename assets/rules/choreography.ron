@@ -22,6 +22,8 @@
     unwind_secs: 0.2,
     // A swing's streak draws over its strike and this many times as long.
     streak_stretch: 2.0,
-    // A killing blow knocks out this much more than its damage.
+    // A killing blow knocks out this much more than its damage; a knocked
+    // body running into something knocks out this much.
     kill_strength: 2,
+    impact_strength: 1,
 )

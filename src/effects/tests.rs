@@ -125,10 +125,31 @@ fn a_sweep_streaks_from_the_side_it_starts_on_to_the_other() {
 
 #[test]
 fn strokes_are_drawn_the_way_they_go() {
-    assert_eq!(stroke(Vec2::X), '-');
-    assert_eq!(stroke(Vec2::NEG_Y), '|');
-    assert_eq!(stroke(Vec2::new(1.0, 1.0)), '\\');
-    assert_eq!(stroke(Vec2::new(1.0, -1.0)), '/');
+    assert_eq!(stroke_glyph(Vec2::X), '-');
+    assert_eq!(stroke_glyph(Vec2::NEG_Y), '|');
+    assert_eq!(stroke_glyph(Vec2::new(1.0, 1.0)), '\\');
+    assert_eq!(stroke_glyph(Vec2::new(1.0, -1.0)), '/');
+}
+
+#[test]
+fn a_new_map_clears_every_particle() {
+    let mut app = app();
+    let target = app.world_mut().spawn(Pos(IVec2::new(4, 4))).id();
+    app.world_mut().write_message(PlayEffect {
+        delay: 0.5,
+        ..request("blood", target)
+    });
+    app.world_mut().write_message(request("blood", target));
+    frames(&mut app, 2);
+    assert!(!particles(&mut app).is_empty());
+    app.world_mut().write_message(MapLoaded::default());
+    frames(&mut app, 2);
+    let mut all = app.world_mut().query::<&Particle>();
+    assert_eq!(
+        all.iter(app.world()).count(),
+        0,
+        "a particle outlived its map"
+    );
 }
 
 #[test]
@@ -141,6 +162,7 @@ fn a_particle_holds_then_fades_and_turns_colour() {
         life: 1.0,
         hold: 0.5,
         ch: '.',
+        stroke: None,
         color: Rgb::new(200, 0, 0),
         end_color: Rgb::new(100, 0, 0),
     };

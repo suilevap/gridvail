@@ -17,8 +17,8 @@ foundation  content  layout  model  schedule
 Arrows point toward dependencies. `selection`, `combat` and `damage` sit
 on `model`, `schedule` and `simulation` and import none of each other; they
 meet only in messages and components. `transition` sits on `simulation`,
-`camera` and `model`. `choreography` sits on `animation`, `model` and
-`schedule` and only reads what the simulation says happened; it asks
+`camera` and `model`. `choreography` sits on `animation`, `content`,
+`model` and `schedule` and only reads what the simulation says happened; it asks
 `effects` (particles, on `model`, `content` and `schedule`) for effects by
 name, in a message. `camera` sits on top of `animation` (it
 eases the view with the same curves) and below `app` and `rendering`.
@@ -237,12 +237,14 @@ and renderers must not import it.
   reports (`ContextAction`, `Strike`, `Hit`, `Collision`, `Died`), which
   it settles in one frame, each step its own small system: a weapon winds
   up when it is aimed and releases at the strike, the player winds up on
-  a pick; the attacker swings at once as its look says (`WeaponLook`,
-  `ManeuverLooks`: the swing and the streak, kept apart from the
-  gameplay's `Weapon` and `Maneuvers`), its own move held until just
-  after contact, and leaves its streak. `time_blows` turns each `Hit`
-  into a `BlowLands` (when, on what, which way), which the target's
-  hold, shake and bleeding each answer; what a knocked body runs into
+  a pick; each move or strike becomes one `SwingStarts` (how it looks:
+  `WeaponLook`, `ManeuverLooks`, the swing and the streak, kept apart from
+  the gameplay's `Weapon` and `Maneuvers`; and whether it is a wound-up
+  swing released), which the gesture, the streak and the blow's timing
+  each answer; the attacker's own move is held until just after contact.
+  `time_blows` turns each `Hit` into a `BlowLands` (when, on what, which
+  way, across the map's wrapping edge too), which the target's hold,
+  fling, shake and bleeding each answer; what a knocked body runs into
   shakes, and the body bleeds. The dead leave `Remains` (in
   `ActionStage::Aftermath`), a copy of their glyph and motion that
   finishes the slide and sinks and stands in for them. Its timings are
@@ -256,7 +258,7 @@ and renderers must not import it.
   (and more per point of strength), speed and drag, life and how long
   they show before fading, glyphs and colours; one generic system plays
   any of them, with random numbers of its own so the game plays the same
-  without them. The frame lists
+  without them; a new map clears them. The frame lists
   the ones in sight (`RenderBuffers::effects`, through portals too) and
   the text renderer draws them above everything else; the 3D-walls
   renderer does not draw them yet.

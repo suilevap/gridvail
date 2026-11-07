@@ -145,6 +145,7 @@ impl Plugin for TextRendererPlugin {
                     drop_gone_sprites,
                     spawn_object_sprites.run_if(object_sprites_missing),
                     place_object_sprites,
+                    spawn_effect_sprites.run_if(effect_sprites_missing),
                     place_effect_sprites,
                     update_hud,
                     super::settings::draw_settings,
@@ -510,14 +511,47 @@ pub(super) fn place_object_sprites(
 #[derive(Component)]
 struct EffectSprite;
 
+fn effect_sprites_missing(
+    buffers: Res<RenderBuffers>,
+    sprites: Query<(), With<EffectSprite>>,
+) -> bool {
+    buffers.effects.len() > sprites.iter().len()
+}
+
+/// Spawns sprites until there is one for each effect in sight. It is
+/// exclusive and runs only when one is missing, so steady frames do not pay
+/// for a command sync point.
+fn spawn_effect_sprites(world: &mut World) {
+    let font = world.resource::<CellFont>().0.clone();
+    let wanted = world.resource::<RenderBuffers>().effects.len();
+    let have = world
+        .query_filtered::<(), With<EffectSprite>>()
+        .iter(world)
+        .len();
+    for _ in have..wanted {
+        world.spawn((
+            EffectSprite,
+            Text2d::new(String::with_capacity(4)),
+            TextLayout::justify(Justify::Center),
+            TextFont {
+                font: font.clone().into(),
+                font_size: FontSize::Px(CELL_FONT_SIZE),
+                ..default()
+            },
+            TextColor(Color::NONE),
+            Transform::default(),
+            Visibility::Hidden,
+        ));
+    }
+}
+
 /// Draws the frame's effects above everything else, each at its place
-/// between cells, as much as it shows; sprites left over hide. The
-/// perspective backend does not draw effects yet.
+/// between cells, as much as it shows; a stroke is drawn for the nearest
+/// quarter turn of the view and tilted with it, like any glyph. Sprites
+/// left over hide. The perspective backend does not draw effects yet.
 fn place_effect_sprites(
-    mut commands: Commands,
     camera: Res<ViewCamera>,
     buffers: Res<RenderBuffers>,
-    font: Res<CellFont>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
     mut sprites: Query<
         (&mut Text2d, &mut TextColor, &mut Transform, &mut Visibility),
@@ -529,14 +563,7 @@ fn place_effect_sprites(
     } else {
         &buffers.effects
     };
-    let place = |effect: &EffectCell| {
-        let color = Color::from(effect.color).with_alpha(effect.alpha);
-        let transform =
-            Transform::from_translation(view_translation(&camera, effect.position) + Vec3::Z * 3.0)
-                .with_rotation(glyph_rotation(&camera))
-                .with_scale(Vec3::splat(camera.zoom));
-        (color, transform)
-    };
+    let quarter = Rot2::radians(-(camera.quarter_turns() as f32) * std::f32::consts::FRAC_PI_2);
     let mut effects = effects.iter();
     for (mut text, mut color, mut transform, mut visibility) in &mut sprites {
         let Some(effect) = effects.next() else {
@@ -545,30 +572,19 @@ fn place_effect_sprites(
             }
             continue;
         };
-        let (desired, placed) = place(effect);
-        if !text.0.starts_with(effect.ch) || text.0.chars().count() != 1 {
+        let ch = effect
+            .stroke
+            .map_or(effect.ch, |way| stroke_glyph(quarter * way));
+        if text.0.chars().ne(std::iter::once(ch)) {
             text.0.clear();
-            text.0.push(effect.ch);
+            text.0.push(ch);
         }
-        color.0 = desired;
-        *transform = placed;
+        color.0 = Color::from(effect.color).with_alpha(effect.alpha);
+        *transform =
+            Transform::from_translation(view_translation(&camera, effect.position) + Vec3::Z * 3.0)
+                .with_rotation(glyph_rotation(&camera))
+                .with_scale(Vec3::splat(camera.zoom));
         *visibility = Visibility::Visible;
-    }
-    for effect in effects {
-        let (color, transform) = place(effect);
-        commands.spawn((
-            EffectSprite,
-            Text2d::new(effect.ch.to_string()),
-            TextLayout::justify(Justify::Center),
-            TextFont {
-                font: font.0.clone().into(),
-                font_size: FontSize::Px(CELL_FONT_SIZE),
-                ..default()
-            },
-            TextColor(color),
-            transform,
-            Visibility::Visible,
-        ));
     }
 }
 
