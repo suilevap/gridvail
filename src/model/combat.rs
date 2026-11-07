@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::Area;
+use super::{Area, EffectId};
 
 /// Which way a move goes from where its mover faces.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -50,16 +50,16 @@ impl Default for Swing {
 }
 
 /// How a weapon or a move looks when swung: the gesture, and the streak it
-/// leaves (an effect's name). Only shown; combat never reads it.
-#[derive(Clone, Debug, Default, PartialEq)]
+/// leaves (an effect). Only shown; combat never reads it.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SwingLook {
     /// No swing: the move makes no gesture (a step back).
     pub swing: Option<Swing>,
-    pub streak: Option<String>,
+    pub streak: Option<EffectId>,
 }
 
 /// How an actor's `Weapon` looks swung.
-#[derive(Component, Clone, Debug, Default, PartialEq)]
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq)]
 pub struct WeaponLook(pub SwingLook);
 
 /// How each of an actor's `Maneuvers` looks swung, by `Relation`.

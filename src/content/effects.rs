@@ -5,6 +5,21 @@
 
 use serde::Deserialize;
 
+use crate::model::EffectId;
+
+include!(concat!(env!("OUT_DIR"), "/bundled_effects.rs"));
+
+/// The id of the bundled effect called `name`: its place among the files
+/// in `assets/effects`, in name order. A name nobody wrote is an error, so
+/// data naming one fails when it is read.
+pub fn bundled_id(name: &str) -> Result<EffectId, String> {
+    BUNDLED_EFFECTS
+        .iter()
+        .position(|(file, _)| *file == name)
+        .map(|place| EffectId(place as u16))
+        .ok_or_else(|| format!("no effect called `{name}` in assets/effects"))
+}
+
 /// One effect: every emitter plays when it is asked for.
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct EffectSpec {

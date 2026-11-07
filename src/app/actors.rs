@@ -9,6 +9,7 @@ use crate::ai::{enemy_tree, hunter_tree};
 pub use crate::content::actors::Tree;
 use crate::content::actors::{MoveSpec, Roster, StanceSpec, SwingSpec};
 use crate::content::data;
+use crate::content::effects::bundled_id;
 use crate::model::*;
 
 const ROSTER_TEXT: &str = include_str!("../../assets/rules/actors.ron");
@@ -21,7 +22,7 @@ pub struct ActorKind {
     pub hp: i32,
     pub weapon: Option<(Weapon, WeaponLook)>,
     pub maneuvers: Option<(Maneuvers, ManeuverLooks)>,
-    pub bleeds: Option<String>,
+    pub bleeds: Option<EffectId>,
 }
 
 impl ActorKind {
@@ -35,8 +36,8 @@ impl ActorKind {
         if let Some(maneuvers) = &self.maneuvers {
             actor.insert(maneuvers.clone());
         }
-        if let Some(effect) = &self.bleeds {
-            actor.insert(Bleeds(effect.clone()));
+        if let Some(effect) = self.bleeds {
+            actor.insert(Bleeds(effect));
         }
         match self.tree {
             Some(Tree::Enemy) => {
@@ -82,10 +83,16 @@ impl ActorKinds {
                 turn: spec.turn,
             })
         };
-        let look_of = |swing: Option<SwingSpec>, streak: &Option<String>| SwingLook {
-            swing: swing.map(SwingSpec::swing),
-            streak: streak.clone(),
-        };
+        // Effects are named in data and played by id: a name nobody wrote
+        // fails here, when the roster is read.
+        let effect = |name: &Option<String>| name.as_deref().map(bundled_id).transpose();
+        let look_of =
+            |swing: Option<SwingSpec>, streak: &Option<String>| -> Result<SwingLook, String> {
+                Ok(SwingLook {
+                    swing: swing.map(SwingSpec::swing),
+                    streak: effect(streak)?,
+                })
+            };
         let mut kinds = HashMap::default();
         for (&glyph, actor) in &roster.actors {
             let weapon = match actor.weapon.as_deref() {
@@ -107,7 +114,7 @@ impl ActorKinds {
                         // A weapon is swung, a thrust when not said.
                         WeaponLook(SwingLook {
                             swing: Some(spec.swing.map(SwingSpec::swing).unwrap_or_default()),
-                            ..look_of(None, &spec.streak)
+                            ..look_of(None, &spec.streak)?
                         }),
                     ))
                 }
@@ -127,10 +134,10 @@ impl ActorKinds {
                             back: move_of(&spec.back)?,
                         },
                         ManeuverLooks {
-                            forward: look_of(spec.forward.swing, &spec.forward.streak),
-                            left: look_of(spec.left.swing, &spec.left.streak),
-                            right: look_of(spec.right.swing, &spec.right.streak),
-                            back: look_of(spec.back.swing, &spec.back.streak),
+                            forward: look_of(spec.forward.swing, &spec.forward.streak)?,
+                            left: look_of(spec.left.swing, &spec.left.streak)?,
+                            right: look_of(spec.right.swing, &spec.right.streak)?,
+                            back: look_of(spec.back.swing, &spec.back.streak)?,
                         },
                     ))
                 }
@@ -143,7 +150,7 @@ impl ActorKinds {
                     hp: actor.hp,
                     weapon,
                     maneuvers,
-                    bleeds: actor.bleeds.clone(),
+                    bleeds: effect(&actor.bleeds)?,
                 },
             );
         }
@@ -200,26 +207,16 @@ mod tests {
     }
 
     #[test]
-    fn every_effect_the_roster_names_is_in_assets_effects() {
+    fn effects_are_named_in_data_and_resolved_when_the_roster_is_read() {
         let library = crate::effects::EffectLibrary::bundled().unwrap();
-        for kind in ActorKinds::default().0.values() {
-            let moves = kind.maneuvers.iter().flat_map(|(_, looks)| {
-                [&looks.forward, &looks.left, &looks.right, &looks.back].map(|look| &look.streak)
-            });
-            let named = kind
-                .weapon
-                .iter()
-                .map(|(_, look)| &look.0.streak)
-                .chain(moves)
-                .chain([&kind.bleeds])
-                .flatten();
-            for effect in named {
-                assert!(
-                    library.0.contains_key(effect),
-                    "{} names no effect `{effect}`",
-                    kind.name
-                );
-            }
-        }
+        let guard = ActorKinds::default().get('e').clone();
+        assert_eq!(guard.bleeds, library.id("blood"));
+        let (_, look) = guard.weapon.unwrap();
+        assert_eq!(look.0.streak, library.id("swoosh"));
+
+        let mut roster: Roster = data::read("actors.ron", ROSTER_TEXT).unwrap();
+        roster.actors.get_mut(&'e').unwrap().bleeds = Some("bloood".into());
+        let error = ActorKinds::from_roster(&roster).unwrap_err();
+        assert!(error.contains("bloood"), "{error}");
     }
 }
