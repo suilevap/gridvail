@@ -19,7 +19,7 @@ fn sent<M: Message + Clone>(app: &App) -> Vec<M> {
 }
 
 fn timing(app: &App) -> Timing {
-    *app.world().resource::<Timing>()
+    app.world().resource::<Timing>().clone()
 }
 
 fn guard(app: &mut App, at: IVec2, windup: u8) -> Entity {
@@ -226,6 +226,34 @@ fn a_blow_across_the_map_edge_drives_its_target_on_across_it() {
     });
     app.update();
     assert_eq!(sent::<BlowLands>(&app)[0].toward, Vec2::NEG_X);
+}
+
+#[test]
+fn a_slam_plays_after_the_blow_where_the_body_meets_what_it_hit() {
+    let mut app = app();
+    let mover = guard(&mut app, IVec2::new(2, 2), 1);
+    let wall = app.world_mut().spawn(Pos(IVec2::new(3, 2))).id();
+    app.world_mut().write_message(Collision {
+        mover,
+        obstacle: wall,
+    });
+    app.update();
+    let timing = timing(&app);
+    assert!(timing.impact() > timing.contact(), "not after the blow");
+    let played = sent::<PlayEffect>(&app);
+    let slam = played
+        .iter()
+        .find(|effect| Some(&effect.effect) == timing.0.impact_effect.as_ref())
+        .expect("no slam");
+    assert_eq!((slam.entity, slam.toward), (mover, Vec2::X));
+    assert_eq!(slam.delay, timing.impact());
+    assert!(
+        played.iter().any(|effect| effect.effect == "blood"),
+        "no blood"
+    );
+    assert!(sent::<Gesture>(&app)
+        .iter()
+        .any(|shake| shake.entity == wall && shake.delay == timing.impact()));
 }
 
 #[test]

@@ -57,6 +57,7 @@ impl Plugin for ChoreographyPlugin {
                         bleed_struck,
                         shake_obstacles,
                         bleed_impacts,
+                        slam_impacts,
                     ),
                 )
                     .chain()
@@ -73,7 +74,7 @@ impl Plugin for ChoreographyPlugin {
 
 /// How fights are timed on screen: the bundled timings by default; change
 /// it (or insert another) to retime them.
-#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+#[derive(Resource, Clone, Debug, PartialEq)]
 pub struct Timing(pub ChoreographySpec);
 
 impl Default for Timing {
@@ -107,6 +108,12 @@ impl Timing {
 
     pub fn streak_secs(&self) -> f32 {
         self.release_contact() * self.0.streak_stretch
+    }
+
+    /// When a knocked body's slam into something plays: a moment after the
+    /// blow, so it reads as a hit of its own.
+    pub fn impact(&self) -> f32 {
+        self.contact() + self.0.impact_gap
     }
 
     /// When a swing's blow lands, from when it starts.
@@ -450,7 +457,15 @@ pub fn bleed_struck(
     }
 }
 
-/// What a knocked body runs into shakes when the blow lands.
+/// What shows `entity`: its remains, if it died, else itself.
+fn shown_body(remains: &Query<(Entity, &Remains)>, entity: Entity) -> Entity {
+    remains
+        .iter()
+        .find(|(_, of)| of.0 == entity)
+        .map_or(entity, |(remains, _)| remains)
+}
+
+/// What a knocked body runs into shakes when it slams into it.
 pub fn shake_obstacles(
     timing: Res<Timing>,
     grid: Res<MapGrid>,
@@ -466,12 +481,12 @@ pub fn shake_obstacles(
             continue;
         };
         let toward = grid.delta(from.0, at.0).as_vec2();
-        gestures.write(shake(collision.obstacle, toward, timing.contact(), &timing));
+        gestures.write(shake(collision.obstacle, toward, timing.impact(), &timing));
     }
 }
 
-/// A knocked body bleeds what it `Bleeds` where it runs into something (its
-/// remains, if that killed it).
+/// A knocked body bleeds what it `Bleeds` where it slams into something
+/// (its remains, if that killed it).
 pub fn bleed_impacts(
     timing: Res<Timing>,
     grid: Res<MapGrid>,
@@ -481,10 +496,7 @@ pub fn bleed_impacts(
     (positions, bleeds): (Query<&Pos>, Query<&Bleeds>),
 ) {
     for collision in collisions.read() {
-        let mover = remains
-            .iter()
-            .find(|(_, of)| of.0 == collision.mover)
-            .map_or(collision.mover, |(remains, _)| remains);
+        let mover = shown_body(&remains, collision.mover);
         let (Ok(from), Ok(at), Ok(bleeds)) = (
             positions.get(mover),
             positions.get(collision.obstacle),
@@ -499,7 +511,38 @@ pub fn bleed_impacts(
             swing: None,
             secs: 0.0,
             strength: timing.0.impact_strength,
-            delay: timing.contact(),
+            delay: timing.impact(),
+        });
+    }
+}
+
+/// A knocked body slamming into something plays the slam effect (the
+/// timing's `impact_effect`) where they meet, so the slam's own damage
+/// shows as a hit of its own.
+pub fn slam_impacts(
+    timing: Res<Timing>,
+    grid: Res<MapGrid>,
+    mut collisions: MessageReader<Collision>,
+    mut effects: MessageWriter<PlayEffect>,
+    remains: Query<(Entity, &Remains)>,
+    positions: Query<&Pos>,
+) {
+    let Some(effect) = &timing.0.impact_effect else {
+        return;
+    };
+    for collision in collisions.read() {
+        let mover = shown_body(&remains, collision.mover);
+        let (Ok(from), Ok(at)) = (positions.get(mover), positions.get(collision.obstacle)) else {
+            continue;
+        };
+        effects.write(PlayEffect {
+            effect: effect.clone(),
+            entity: mover,
+            toward: grid.delta(from.0, at.0).as_vec2(),
+            swing: None,
+            secs: 0.0,
+            strength: timing.0.impact_strength,
+            delay: timing.impact(),
         });
     }
 }
