@@ -249,7 +249,8 @@ and renderers must not import it.
   `time_blows` turns each `Hit` into a `BlowLands` (when, on what, which
   way, across the map's wrapping edge too), which the target's hold,
   fling, shake and bleeding each answer; what a knocked body runs into
-  shakes, and the body bleeds. The dead leave `Remains` (in
+  shakes, the body bleeds, and the slam effect the timing names plays
+  where they meet, a moment after the blow (`slam_impacts`). The dead leave `Remains` (in
   `ActionStage::Aftermath`), a copy of their glyph and motion that
   finishes the slide and sinks and stands in for them. Its timings are
   data (`assets/rules/choreography.ron`, the `Timing` resource). It

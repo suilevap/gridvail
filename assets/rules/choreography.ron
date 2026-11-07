@@ -5,7 +5,7 @@
     // halfway (the swing's shape in `animation` says where exactly).
     swing_secs: 0.42,
     // After the blow lands, before an attacker's own move (a lunge's step
-    // after its target, a yank's swap) starts.
+    // after its target, a step) starts.
     follow_gap: 0.06,
     // A knocked body's slide, a cell: fast, slowing to a stop.
     fling_secs: 0.22,
@@ -22,4 +22,9 @@
     // body running into something knocks out this much.
     kill_strength: 2,
     impact_strength: 1,
+    // A knocked body's slam into a wall or another body plays this long
+    // after the blow lands, so it reads as a hit of its own (it does
+    // damage of its own), with this effect where they meet.
+    impact_gap: 0.08,
+    impact_effect: "slam",
 )
