@@ -104,7 +104,9 @@ next to this file.
   points and weapon or moves, and draws each weapon's pattern as art. The
   player going down plays the map again. `arena.txt` is a map to try it
   in. `--turn SECONDS` sets how long a turn waits for the player (1 by
-  default), `--hp` the player's hit points.
+  default), `--hp` the player's hit points, `--enemy-hp` everyone else's.
+  `--slomo FACTOR` runs the whole game that many times slower, to watch a
+  fight's choreography.
 - Player-bound `i` direction marker via relative position + rotation.
 - Wall autotiling from `wall_rule.txt`, direction glyphs from the three
   direction rules (the file's Y-down inversion is inherited verbatim).
@@ -325,6 +327,7 @@ cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
 cargo run -- --map assets/maps/arena.txt   # combat: pick an enemy, then lunge, push or yank
 cargo run -- --map assets/maps/arena.txt --turn 1.5 --hp 1  # a slower turn, one hit to go down
+cargo run -- --map assets/maps/arena.txt --slomo 4 --hp 9 --enemy-hp 9  # watch blows land, slowly
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
 cargo run -- --map assets/maps/portals.txt --enemy-portals  # enemies walk through portals too
 cargo run -- --map assets/maps/portals.txt --portal-view north  # keep north up through turning portals
@@ -338,7 +341,7 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 352 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 362 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

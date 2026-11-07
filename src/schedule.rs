@@ -38,8 +38,9 @@ pub enum GamePhase {
 pub struct PlayerCommands;
 
 /// The stages a turn's actions go through within `GamePhase::Simulation`,
-/// in order, before the turn's moves. Each system names the stage it
-/// belongs to, not the systems around it.
+/// in order: up to `Movement` before the movement pass, `Hits` and `Damage`
+/// after it. Each system names the stage it belongs to, not the systems
+/// around it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActionStage {
     /// Time passes: owed turns are paid off, and what was scheduled for
@@ -57,9 +58,11 @@ pub enum ActionStage {
     /// Bodies trade places. (Knocked bodies move on the movement passes,
     /// after this stage, like everything that walks.)
     Movement,
-    /// What landed turns into damage.
+    /// What landed turns into damage, once the movement pass has moved
+    /// everything (knocks and collisions included).
     Hits,
-    /// Damage is taken.
+    /// Damage is taken, and the dead are marked for removal at the end of
+    /// the pass.
     Damage,
 }
 

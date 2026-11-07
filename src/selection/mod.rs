@@ -22,6 +22,7 @@ pub const SELECTION_MARK: CellMark = CellMark {
         depth: 0,
     },
     tint: YELLOW,
+    delay: 0.0,
 };
 
 pub struct SelectionPlugin;

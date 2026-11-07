@@ -261,12 +261,32 @@ pub fn is_hex_pos(p: IVec2) -> bool {
 
 /// How a marked cell is drawn: whatever stands there in `tint`, or, when
 /// nothing does, the floor as `ground`. Both keep their own colours (light
-/// does not change them).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// does not change them). A mark is planted: `delay` seconds after its
+/// cell is first marked it grows in (`MARK_GROWTH`), so the cells of one
+/// mark can appear in an order.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CellMark {
     pub ground: RenderCell,
     pub tint: Rgb,
+    pub delay: f32,
 }
+
+impl CellMark {
+    /// The same mark, planted `delay` seconds after its cell is marked.
+    pub const fn after(self, delay: f32) -> Self {
+        Self { delay, ..self }
+    }
+}
+
+/// The glyphs an empty marked cell grows through before its own, and how
+/// long each shows, in seconds.
+pub const MARK_GROWTH: [char; 2] = ['·', '+'];
+pub const MARK_GROWTH_SECS: f32 = 0.06;
+
+/// How long each marked cell has been marked, in seconds, kept while it
+/// stays marked.
+#[derive(Resource, Debug, Default)]
+pub struct MarkAges(pub bevy::platform::collections::HashMap<IVec2, f32>);
 
 /// Cells marked for the player to see (where a strike lands, what is
 /// picked), drawn where the player sees them. Cleared every frame before

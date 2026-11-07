@@ -7,14 +7,14 @@ use flatbt_bevy::prelude::Behavior;
 
 use crate::ai::{enemy_tree, hunter_tree};
 pub use crate::content::actors::Tree;
-use crate::content::actors::{MoveSpec, Roster};
+use crate::content::actors::{MoveSpec, Roster, SwingSpec};
 use crate::content::data;
 use crate::model::*;
 
 const ROSTER_TEXT: &str = include_str!("../../assets/rules/actors.ron");
 
 /// One kind of actor: its stats and what it fights with.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ActorKind {
     pub name: String,
     pub tree: Option<Tree>,
@@ -53,7 +53,7 @@ impl ActorKind {
 
 /// Every kind of actor, by map glyph. The bundled roster by default; change
 /// it (or insert another) before the map is built to change who is who.
-#[derive(Resource, Clone, Debug, PartialEq, Eq)]
+#[derive(Resource, Clone, Debug, PartialEq)]
 pub struct ActorKinds(pub HashMap<char, ActorKind>);
 
 impl ActorKinds {
@@ -66,6 +66,7 @@ impl ActorKinds {
             knock: spec.knock,
             follow: spec.follow,
             swap: spec.swap,
+            swing: spec.swing.map(SwingSpec::swing).unwrap_or_default(),
         };
         let mut kinds = HashMap::default();
         for (&glyph, actor) in &roster.actors {
@@ -83,6 +84,7 @@ impl ActorKinds {
                         area: Area(cells),
                         damage: spec.damage,
                         windup: spec.windup,
+                        swing: spec.swing.map(SwingSpec::swing).unwrap_or_default(),
                     })
                 }
             };
@@ -127,6 +129,13 @@ impl ActorKinds {
         self.0
             .get_mut(&'p')
             .expect("the roster has the player, `p`")
+    }
+
+    /// Changes every kind but the player's.
+    pub fn others_mut(&mut self, mut change: impl FnMut(&mut ActorKind)) {
+        for (_, kind) in self.0.iter_mut().filter(|(glyph, _)| **glyph != 'p') {
+            change(kind);
+        }
     }
 }
 

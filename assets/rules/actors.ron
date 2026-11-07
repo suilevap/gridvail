@@ -1,21 +1,23 @@
 // Who is who on a map, and what they fight with.
 (
-    // Weapons: damage, turns wound up between aiming and the strike, and the
+    // Weapons: damage, turns wound up between aiming and the strike, the
     // cells they cover, drawn with the wielder `@` facing up and each struck
-    // cell `x`.
+    // cell `x`, and how they are swung (how far, in cells: `Thrust` straight
+    // at the target, `Sweep` in an arc across the front, `Hook` out and
+    // pulled back; a thrust when not given).
     weapons: {
         // The cell in front.
-        "jab": (damage: 1, windup: 1, art: "
+        "jab": (damage: 1, windup: 1, swing: Thrust(reach: 0.55), art: "
             x
             @
         "),
         // The whole row in front: stepping aside is no escape.
-        "sweep": (damage: 1, windup: 1, art: "
+        "sweep": (damage: 1, windup: 1, swing: Sweep(reach: 0.6), art: "
             xxx
             .@.
         "),
         // Two cells straight ahead: stepping back is no escape.
-        "spear": (damage: 1, windup: 1, art: "
+        "spear": (damage: 1, windup: 1, swing: Thrust(reach: 0.95), art: "
             x
             x
             @
@@ -26,12 +28,14 @@
     // relates to the first: a name, the hit's damage, how many cells it
     // knocks the target that way (1 for now: a body moves its whole speed
     // in one movement pass), whether the mover follows into the cell the
-    // target leaves, and whether the two trade places.
+    // target leaves, whether the two trade places, and how it is swung (as
+    // for weapons; a sideways sweep swings toward the second direction).
     moves: {
         "blade": (
-            forward: (name: "lunge", hit: 1, knock: 1, follow: true),
-            side: (name: "push", hit: 1, knock: 1),
-            back: (name: "yank", hit: 1, swap: true),
+            forward: (name: "lunge", hit: 1, knock: 1, follow: true,
+                swing: Thrust(reach: 0.6)),
+            side: (name: "push", hit: 1, knock: 1, swing: Sweep(reach: 0.55)),
+            back: (name: "yank", hit: 1, swap: true, swing: Hook(reach: 0.55)),
         ),
     },
 

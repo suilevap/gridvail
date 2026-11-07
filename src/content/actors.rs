@@ -9,8 +9,9 @@ use bevy::math::IVec2;
 use serde::Deserialize;
 
 use super::art;
+use crate::model::Swing;
 
-#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct Roster {
     pub weapons: BTreeMap<String, WeaponSpec>,
     pub moves: BTreeMap<String, MovesSpec>,
@@ -18,7 +19,7 @@ pub struct Roster {
     pub actors: BTreeMap<char, ActorSpec>,
 }
 
-#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct WeaponSpec {
     pub damage: i32,
     /// Turns between aiming and the strike.
@@ -26,6 +27,9 @@ pub struct WeaponSpec {
     /// The cells struck, drawn with the wielder `@` facing up and each
     /// struck cell `x`.
     pub art: String,
+    /// How it is swung (a thrust when not given).
+    #[serde(default)]
+    pub swing: Option<SwingSpec>,
 }
 
 impl WeaponSpec {
@@ -38,14 +42,14 @@ impl WeaponSpec {
 }
 
 /// One move per way the second direction relates to the first.
-#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct MovesSpec {
     pub forward: MoveSpec,
     pub side: MoveSpec,
     pub back: MoveSpec,
 }
 
-#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct MoveSpec {
     pub name: String,
     /// The hit's damage (0: no hit).
@@ -61,6 +65,29 @@ pub struct MoveSpec {
     /// The mover and the target trade places.
     #[serde(default)]
     pub swap: bool,
+    /// How it is swung (a thrust when not given).
+    #[serde(default)]
+    pub swing: Option<SwingSpec>,
+}
+
+/// How a weapon or a move is swung, `reach` cells out: `Thrust` straight
+/// at the target, `Sweep` in an arc across the front, `Hook` out and
+/// pulled back.
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq)]
+pub enum SwingSpec {
+    Thrust { reach: f32 },
+    Sweep { reach: f32 },
+    Hook { reach: f32 },
+}
+
+impl SwingSpec {
+    pub fn swing(self) -> Swing {
+        match self {
+            Self::Thrust { reach } => Swing::Thrust { reach },
+            Self::Sweep { reach } => Swing::Sweep { reach },
+            Self::Hook { reach } => Swing::Hook { reach },
+        }
+    }
 }
 
 /// The behaviour an actor runs.

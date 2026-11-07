@@ -7,6 +7,7 @@ pub mod ai;
 pub mod animation;
 pub mod app;
 pub mod camera;
+pub mod choreography;
 pub mod combat;
 pub mod content;
 pub mod damage;
