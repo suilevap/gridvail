@@ -2,12 +2,12 @@
 //! moments, on top of a simulation that settles it all in one frame.
 //!
 //! The simulation stays instant and only says what happened
-//! (`ContextAction`, `Strike`, `Hit`, `Collision`, `Died`). These systems
+//! (`Attack`, `Strike`, `Hit`, `Collision`, `Died`). These systems
 //! turn that into a timeline for the animation step and effects, measured
 //! from the frame it happened in:
 //!
 //! ```text
-//! before     an aimed weapon winds up and holds; a picker draws back
+//! before     an aimed weapon winds up and holds
 //! 0          the attacker swings as its look says (`SwingStarts`; its own
 //!            moves held), leaving its streak
 //! contact    the blow lands (`BlowLands`): the target's held moves go (a
@@ -47,12 +47,7 @@ impl Plugin for ChoreographyPlugin {
             .add_systems(
                 Update,
                 (
-                    (
-                        wind_up_aims,
-                        wind_up_picks,
-                        unwind_dropped_aims,
-                        unwind_dropped_picks,
-                    ),
+                    (wind_up_aims, unwind_dropped_aims),
                     (start_maneuver_swings, start_weapon_swings, hold_attackers),
                     (play_swings, streak_swings, time_blows),
                     (
@@ -169,22 +164,15 @@ pub fn swing_gesture(swing: Swing, at: IVec2, across: IVec2) -> GestureShape {
     }
 }
 
-/// How an actor's move on a picked target looks, and its gesture: a
-/// sideways move sweeps toward its side.
-pub fn maneuver_swing(looks: &ManeuverLooks, action: &ContextAction) -> (SwingLook, GestureShape) {
-    let look = looks.get(Relation::of(action.picked, action.dir)).clone();
-    let across = if action.dir.perp_dot(action.picked) == 0 {
-        action.picked.perp()
-    } else {
-        action.dir
+/// The gesture of a swing as it `looks`, through `area` from facing
+/// `facing`: a sweep goes the way the area's cells go round. None when it
+/// makes no gesture.
+pub fn area_swing(look: &SwingLook, area: &Area, facing: IVec2) -> Option<GestureShape> {
+    let across = match area.across(facing) {
+        IVec2::ZERO => facing.perp(),
+        across => across,
     };
-    let shape = swing_gesture(look.swing, action.picked, across);
-    (look, shape)
-}
-
-/// A weapon's gesture as it strikes toward `dir`.
-pub fn weapon_swing(look: &WeaponLook, dir: IVec2) -> GestureShape {
-    swing_gesture(look.0.swing, dir, dir.perp())
+    look.swing.map(|swing| swing_gesture(swing, facing, across))
 }
 
 /// A weapon's wielder winds up its swing when it aims, and holds it until
@@ -192,31 +180,16 @@ pub fn weapon_swing(look: &WeaponLook, dir: IVec2) -> GestureShape {
 pub fn wind_up_aims(
     timing: Res<Timing>,
     mut wind_ups: MessageWriter<WindUp>,
-    aimed: Query<(Entity, &WeaponLook, &Telegraph), Changed<Telegraph>>,
+    aimed: Query<(Entity, &Weapon, &WeaponLook, &Telegraph), Changed<Telegraph>>,
 ) {
-    for (wielder, look, telegraph) in &aimed {
+    for (wielder, weapon, look, telegraph) in &aimed {
+        let Some(shape) = area_swing(&look.0, &weapon.area, telegraph.dir) else {
+            continue;
+        };
         wind_ups.write(WindUp {
             entity: wielder,
-            shape: weapon_swing(look, telegraph.dir),
+            shape,
             secs: timing.0.aim_secs,
-        });
-    }
-}
-
-/// A picker draws back at what it picked, and holds it while it stays
-/// picked.
-pub fn wind_up_picks(
-    timing: Res<Timing>,
-    mut wind_ups: MessageWriter<WindUp>,
-    picks: Query<(Entity, &Selected), Changed<Selected>>,
-) {
-    for (picker, selected) in &picks {
-        wind_ups.write(WindUp {
-            entity: picker,
-            shape: GestureShape::Thrust {
-                toward: selected.dir.as_vec2() * timing.0.pick_reach,
-            },
-            secs: timing.0.pick_secs,
         });
     }
 }
@@ -238,37 +211,26 @@ pub fn unwind_dropped_aims(
     }
 }
 
-/// A dropped pick eases back (acting on it swings from there instead).
-pub fn unwind_dropped_picks(
-    timing: Res<Timing>,
-    mut releases: MessageWriter<Release>,
-    mut dropped: RemovedComponents<Selected>,
-) {
-    for entity in dropped.read() {
-        releases.write(Release {
-            entity,
-            secs: timing.0.unwind_secs,
-            strike: false,
-        });
-    }
-}
-
-/// An actor acting on what it picked swings at it, whole, as its move
-/// looks.
+/// An attacker swings, whole, as its maneuver looks, through the
+/// maneuver's cells.
 pub fn start_maneuver_swings(
-    mut actions: MessageReader<ContextAction>,
+    mut attacks: MessageReader<Attack>,
     mut swings: MessageWriter<SwingStarts>,
-    looks: Query<&ManeuverLooks>,
+    actors: Query<(&Maneuvers, &ManeuverLooks)>,
 ) {
-    for action in actions.read() {
-        let Ok(looks) = looks.get(action.actor) else {
+    for attack in attacks.read() {
+        let Ok((maneuvers, looks)) = actors.get(attack.actor) else {
             continue;
         };
-        let (look, shape) = maneuver_swing(looks, action);
+        let look = looks.get(attack.relation);
+        let area = &maneuvers.get(attack.relation).area;
+        let Some(shape) = area_swing(look, area, attack.facing) else {
+            continue;
+        };
         swings.write(SwingStarts {
-            entity: action.actor,
-            dir: action.picked,
-            look,
+            entity: attack.actor,
+            dir: attack.facing,
+            look: look.clone(),
             shape,
             released: false,
         });
@@ -286,26 +248,29 @@ pub fn start_weapon_swings(
         let Ok((weapon, look)) = weapons.get(strike.wielder) else {
             continue;
         };
+        let Some(shape) = area_swing(&look.0, &weapon.area, strike.dir) else {
+            continue;
+        };
         swings.write(SwingStarts {
             entity: strike.wielder,
             dir: strike.dir,
             look: look.0.clone(),
-            shape: weapon_swing(look, strike.dir),
+            shape,
             released: weapon.windup > 0,
         });
     }
 }
 
-/// An actor acting on what it picked keeps its own moves (a lunge's step, a
-/// swap) until just after its blow lands.
+/// An attacker keeps its own moves (a lunge's step, a step back) until
+/// just after its blow lands.
 pub fn hold_attackers(
     timing: Res<Timing>,
-    mut actions: MessageReader<ContextAction>,
+    mut attacks: MessageReader<Attack>,
     mut holds: MessageWriter<HoldMoves>,
 ) {
-    for action in actions.read() {
+    for attack in attacks.read() {
         holds.write(HoldMoves {
-            entity: action.actor,
+            entity: attack.actor,
             secs: timing.contact() + timing.0.follow_gap,
         });
     }

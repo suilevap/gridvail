@@ -30,9 +30,45 @@ pub fn cells(art: &str, origin: char, mark: char) -> Result<Vec<IVec2>, String> 
     Ok(cells)
 }
 
+/// The cells of a shape in the order it is gone through, as offsets from
+/// the one cell marked `origin`: each marked with a digit, `1` first, or
+/// all with `x`, in the order they read (the art may not mix the two).
+pub fn ordered(art: &str, origin: char) -> Result<Vec<IVec2>, String> {
+    let digits: Vec<(char, IVec2)> = ('1'..='9')
+        .filter_map(|digit| {
+            cells(art, origin, digit)
+                .ok()
+                .map(|cells| cells.into_iter().map(move |cell| (digit, cell)))
+        })
+        .flatten()
+        .collect();
+    let crosses = cells(art, origin, 'x');
+    match (digits.is_empty(), crosses) {
+        (true, crosses) => crosses.map_err(|_| "the art marks no cell (`1`-`9` or `x`)".into()),
+        (false, Ok(_)) => Err("the art mixes digits with `x`".into()),
+        (false, Err(_)) => {
+            if let Some(origin_error) = cells(art, origin, digits[0].0).err() {
+                return Err(origin_error);
+            }
+            Ok(digits.into_iter().map(|(_, cell)| cell).collect())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn digits_give_the_order_and_crosses_the_reading_order() {
+        assert_eq!(
+            ordered("\n21\n3@\n", '@').unwrap(),
+            vec![IVec2::new(0, -1), IVec2::new(-1, -1), IVec2::new(-1, 0)]
+        );
+        assert_eq!(ordered("x\n@", '@').unwrap(), vec![IVec2::new(0, -1)]);
+        assert!(ordered("1x\n@.", '@').is_err());
+        assert!(ordered("@", '@').is_err());
+    }
 
     #[test]
     fn cells_are_offsets_from_the_origin() {

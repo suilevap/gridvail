@@ -22,7 +22,6 @@ pub mod navigation;
 pub mod presentation;
 pub mod rendering;
 pub mod schedule;
-pub mod selection;
 pub mod service;
 pub mod simulation;
 pub mod touch;

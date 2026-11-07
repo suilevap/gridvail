@@ -7,14 +7,14 @@ foundation  content  layout  model  schedule
      ↑        ↑        ↑       ↑       ↑
      simulation  vision  navigation  lighting  animation  effects  presentation
           ↑               ↑                  ↑
-          ai  →  locomotion   selection  combat  damage   transition  choreography
+          ai  →  locomotion   combat  damage   transition  choreography
              ↑       ↑       ↑
                     app       rendering  agent_api  debug_ui
                       \         |         /         /
                          main
 ```
 
-Arrows point toward dependencies. `selection`, `combat` and `damage` sit
+Arrows point toward dependencies. `combat` and `damage` sit
 on `model`, `schedule` and `simulation` and import none of each other; they
 meet only in messages and components. `transition` sits on `simulation`,
 `camera` and `model`. `choreography` sits on `animation`, `content`,
@@ -167,17 +167,21 @@ and renderers must not import it.
     is no longer `Knocked`. A `Follow` steps into a cell on the pass after
     it is left (walking into a cell just left is blocked in the same pass),
     and a `Swap` trades two bodies' places, which walking cannot.
-  - `model::Area`: a set of cells around an origin, in the frame of a
-    facing (what a weapon strikes).
-  - `selection/`: a `Selector` moving into something `Selectable` picks it
-    (`Selected`), free; its next fresh move is a `ContextAction`, its
-    action for the turn, which anything may answer; a `CancelIntent` (a
-    tap, `C`, the agent API) drops the pick. Input layers mark held-on
-    commands (`MoveCommand::repeat`) so a held key never acts twice.
-  - `combat/`: `perform_maneuvers` answers a context action by an actor
-    with `Maneuvers` (one move per `Relation` of the second direction to
-    the first) with a `Hit`, and a `Knock` (with a `Follow`) or a `Swap`;
-    `ready_weapons` answers a
+  - `model::Area`: cells around an origin, in the frame of a facing and
+    in the order a swing goes through them (what a weapon or a move
+    strikes); `Area::sweep` gives the way the swing travels at each.
+  - Facing is an intent: a `Turn` message, made by `apply_turns`. The
+    player `FacesItsWalks`: a walk it is about to make turns it
+    (`face_walks`), but being knocked, following or stepping back does
+    not; other actors face the way they move.
+  - `combat/`: `choose_attacks` reads a move by an actor with `Maneuvers`
+    from where it faces (`Relation`: forward, left, right, back); when the
+    maneuver for that way has a target in its `Area`, the move becomes an
+    `Attack` (its action for the turn) instead of a walk.
+    `perform_attacks` answers it: a `Hit` for each target in order (only
+    the first if it stops there), a `Knock` the way the swing goes through
+    its cell, a `Follow` where its `Stance` leaves the actor, a `Turn` if
+    it turns; `ready_weapons` answers a
     `UseWeapon` by aiming the `Weapon` (`Telegraph`, a direction from the
     wielder), then owing its wind-up with the `Strike` scheduled, and
     `strike` hits every cell of the weapon's `Area`; `hits_deal_damage`,
@@ -186,7 +190,7 @@ and renderers must not import it.
   - `damage/`: `Damage` comes off `Health`; what runs out has `Died` and is
     destroyed, unless it `KeepOnDeath` (the player: the app plays the map
     again).
-  - Cells to show the player (strikes, picks) are listed each frame into
+  - Cells to show the player (strikes) are listed each frame into
     `CellMarks` by `MarkCells` systems; the frame composer tints whatever
     stands there, or draws a mark on the floor. A mark is planted: it grows
     in a `delay` after its cell is first marked (`MarkAges`), so a strike's
@@ -234,10 +238,9 @@ and renderers must not import it.
   move from starting for a while (the turn waits for it too), so moves
   and gestures of different objects can be timed against each other.
 - `choreography/` times one exchange of blows from what the simulation
-  reports (`ContextAction`, `Strike`, `Hit`, `Collision`, `Died`), which
+  reports (`Attack`, `Strike`, `Hit`, `Collision`, `Died`), which
   it settles in one frame, each step its own small system: a weapon winds
-  up when it is aimed and releases at the strike, the player winds up on
-  a pick; each move or strike becomes one `SwingStarts` (how it looks:
+  up when it is aimed and releases at the strike; each attack or strike becomes one `SwingStarts` (how it looks:
   `WeaponLook`, `ManeuverLooks`, the swing and the streak, kept apart from
   the gameplay's `Weapon` and `Maneuvers`; and whether it is a wound-up
   swing released), which the gesture, the streak and the blow's timing

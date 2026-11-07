@@ -23,8 +23,7 @@ pub struct TouchControlPlugin;
 
 impl Plugin for TouchControlPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<CancelIntent>()
-            .init_resource::<Swipe>()
+        app.init_resource::<Swipe>()
             .init_resource::<Pinch>()
             .init_resource::<ControlScheme>()
             .add_systems(

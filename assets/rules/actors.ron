@@ -2,7 +2,8 @@
 (
     // Weapons: damage, turns wound up between aiming and the strike, the
     // cells they cover, drawn with the wielder `@` facing up and each struck
-    // cell `x`, and how they are swung (how far, in cells: `Thrust` straight
+    // cell a digit in the order the swing goes through them (or all `x`),
+    // and how they are swung (how far, in cells: `Thrust` straight
     // at the target, `Sweep` in an arc across the front, `Hook` out and
     // pulled back; a thrust when not given), and the streak each leaves (an
     // effect in `assets/effects`; none when not given).
@@ -15,32 +16,54 @@
         // The whole row in front: stepping aside is no escape.
         "sweep": (damage: 1, windup: 1, swing: Sweep(reach: 0.6), streak: "swoosh",
             art: "
-            xxx
+            123
             .@.
         "),
         // Two cells straight ahead: stepping back is no escape.
         "spear": (damage: 1, windup: 1, swing: Thrust(reach: 0.95), streak: "swoosh",
             art: "
-            x
-            x
+            2
+            1
             @
         "),
     },
 
-    // Moves on a picked target, one for each way the second direction
-    // relates to the first: a name, the hit's damage, how many cells it
-    // knocks the target that way (1 for now: a body moves its whole speed
-    // in one movement pass), whether the mover follows into the cell the
-    // target leaves, whether the two trade places, and how it is swung (as
-    // for weapons; a sideways sweep swings toward the second direction).
+    // Fighting styles: a move for each way a swipe can go from where the
+    // mover faces (forward, left, right, back). A move plays when one of its
+    // cells (drawn as for weapons, the mover `@` facing up) holds a target;
+    // otherwise the swipe is a plain step. It hits each target in its cells
+    // in order (only the first, with `stop: true`) for `hit` damage, and
+    // knocks each `knock` cells the way the swing goes through its cell (1
+    // for now: a body moves its whole speed in one movement pass). `stance`
+    // is where it leaves the mover: `Stay`, `Follow` into the cell the first
+    // knocked target leaves, or `Step` the way of the swipe; with `turn` the
+    // mover turns to face the swipe. `swing` and `streak` are how it looks,
+    // as for weapons (no swing when not given).
     moves: {
         "blade": (
-            forward: (name: "lunge", hit: 1, knock: 1, follow: true,
-                swing: Thrust(reach: 0.6), streak: "swoosh"),
-            side: (name: "push", hit: 1, knock: 1, swing: Sweep(reach: 0.55),
-                streak: "swoosh"),
-            back: (name: "yank", hit: 1, swap: true, swing: Hook(reach: 0.55),
-                streak: "swoosh"),
+            // Into what is ahead, knocking it on and taking its cell.
+            forward: (name: "lunge", hit: 1, knock: 1, stance: Follow,
+                swing: Thrust(reach: 0.6), streak: "swoosh", art: "
+                1
+                @
+            "),
+            // Round from ahead to the side, turning to face it: what is
+            // ahead is swept aside, what is beside is swept back.
+            left: (name: "sweep left", hit: 1, knock: 1, turn: true,
+                swing: Sweep(reach: 0.55), streak: "swoosh", art: "
+                21
+                3@
+            "),
+            right: (name: "sweep right", hit: 1, knock: 1, turn: true,
+                swing: Sweep(reach: 0.55), streak: "swoosh", art: "
+                12
+                @3
+            "),
+            // Facing something, a step back keeps facing it.
+            back: (name: "back off", stance: Step, art: "
+                x
+                @
+            "),
         ),
     },
 

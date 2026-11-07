@@ -1,6 +1,7 @@
-//! Combat through the real `GamePlugin` on small maps: picking a target,
-//! the three maneuvers, impacts, critical hits, wound-up strikes, strike
-//! patterns and friendly fire. Actors are the bundled roster's: `e` a guard
+//! Combat through the real `GamePlugin` on small maps: moves that meet
+//! something attack it (lunge, sweeps, backing off), plain walks, impacts,
+//! critical hits, wound-up strikes, strike patterns and friendly fire. The
+//! player starts facing north. Actors are the bundled roster's: `e` a guard
 //! with a sweep (the row in front), `s` a spearman (two cells ahead).
 
 use bevy::prelude::*;
@@ -85,13 +86,13 @@ impl Game {
         self.app.world().resource::<TokenTimer>().0.elapsed()
     }
 
-    fn player(&mut self) -> (IVec2, Health, i32, Option<Selected>) {
+    fn player(&mut self) -> (IVec2, Health, i32, IVec2) {
         let world = self.app.world_mut();
-        let (pos, health, tokens, selected) = world
-            .query_filtered::<(&Pos, &Health, &Tokens, Option<&Selected>), With<Player>>()
+        let (pos, health, tokens, facing) = world
+            .query_filtered::<(&Pos, &Health, &Tokens, &Facing), With<Player>>()
             .single(world)
             .unwrap();
-        (pos.0, *health, tokens.count, selected.copied())
+        (pos.0, *health, tokens.count, facing.0)
     }
 
     fn player_pos(&mut self) -> IVec2 {
@@ -156,7 +157,8 @@ fn jabbing_guards(kinds: &mut ActorKinds) {
     kinds.0.get_mut(&'e').unwrap().weapon = jab;
 }
 
-/// An enemy right of the player, room to push it any way.
+/// An enemy right of the player (to its right as it faces north), room to
+/// go any way.
 const OPEN: &str = "\
 XXXXXXXXX
 X.......X
@@ -169,94 +171,87 @@ XXXXXXXXX
 const PLAYER: IVec2 = IVec2::new(3, 3);
 const ENEMY: IVec2 = IVec2::new(4, 3);
 
+/// An enemy right ahead of the player.
+const AHEAD: &str = "\
+XXXXXXXXX
+X.......X
+X.......X
+X...e...X
+X...p...X
+X.......X
+XXXXXXXXX
+";
+const BEHIND: IVec2 = IVec2::new(4, 4);
+const FRONT: IVec2 = IVec2::new(4, 3);
+
 #[test]
-fn moving_into_an_enemy_picks_it_and_costs_nothing() {
+fn a_walk_that_meets_nothing_turns_the_player_to_face_it() {
     let mut game = Game::new(OPEN, 2);
-    game.press(RIGHT);
-    let (pos, _, tokens, selected) = game.player();
-    assert_eq!(pos, PLAYER, "bumped instead of picking");
-    assert_eq!(selected.expect("picked").dir, IVec2::X);
-    assert_eq!(tokens, 1, "picking spent the turn");
+    game.press(LEFT);
+    let (pos, _, _, facing) = game.player();
+    assert_eq!(pos, PLAYER + IVec2::NEG_X);
+    assert_eq!(facing, IVec2::NEG_X);
 }
 
 #[test]
-fn a_pick_carries_over_turns_and_a_cancel_drops_it() {
-    let mut game = Game::new(OPEN, 100);
-    game.press(RIGHT);
-    game.next_turn();
-    game.next_turn();
-    assert!(game.player().3.is_some(), "the pick lapsed");
-    let tokens = game.player().2;
-    game.press(KeyCode::KeyC);
-    let (_, _, after, selected) = game.player();
-    assert_eq!(selected, None);
-    assert_eq!(after, tokens, "cancelling spent the turn");
-}
-
-#[test]
-fn a_lunge_knocks_the_target_on_and_takes_its_cell() {
-    let mut game = Game::new(OPEN, 100);
+fn a_lunge_knocks_what_is_ahead_on_and_takes_its_cell() {
+    let mut game = Game::new(AHEAD, 100);
     game.until_aware();
-    game.press(RIGHT);
-    game.press(RIGHT);
-    assert_eq!(game.player_pos(), ENEMY);
-    let (_, hp, _) = game.enemy_at(ENEMY + IVec2::X).expect("knocked on");
+    game.press(UP);
+    assert_eq!(game.player_pos(), FRONT);
+    let (_, hp, _) = game.enemy_at(FRONT + IVec2::NEG_Y).expect("knocked on");
     assert_eq!(hp, 1);
 }
 
 #[test]
-fn a_push_knocks_the_target_aside_and_the_player_stays() {
+fn a_sweep_knocks_what_is_ahead_aside_and_turns_the_player_to_it() {
+    let mut game = Game::new(AHEAD, 100);
+    game.until_aware();
+    game.press(RIGHT);
+    let (pos, _, _, facing) = game.player();
+    assert_eq!(pos, BEHIND, "a sweep moved the player");
+    assert_eq!(facing, IVec2::X);
+    assert_eq!(game.enemy_at(FRONT + IVec2::X).expect("swept right").1, 1);
+}
+
+#[test]
+fn a_move_toward_something_beside_sweeps_it_back() {
+    // Facing north, the enemy east of the player is to its right: swept on
+    // round, back toward the south.
     let mut game = Game::new(OPEN, 100);
     game.until_aware();
     game.press(RIGHT);
+    let (pos, _, _, facing) = game.player();
+    assert_eq!((pos, facing), (PLAYER, IVec2::X));
+    assert_eq!(game.enemy_at(ENEMY + IVec2::Y).expect("swept back").1, 1);
+}
+
+#[test]
+fn backing_off_steps_back_still_facing_what_is_ahead() {
+    let mut game = Game::new(AHEAD, 100);
+    game.until_aware();
     game.press(DOWN);
-    assert_eq!(game.player_pos(), PLAYER);
-    assert_eq!(game.enemy_at(ENEMY + IVec2::Y).expect("pushed").1, 1);
-}
-
-#[test]
-fn a_yank_swaps_the_player_and_the_target() {
-    let mut game = Game::new(OPEN, 100);
-    game.until_aware();
-    game.press(RIGHT);
-    game.press(LEFT);
-    assert_eq!(game.player_pos(), ENEMY);
-    assert_eq!(game.enemy_at(PLAYER).expect("yanked").1, 1);
-}
-
-#[test]
-fn holding_the_key_that_picked_does_not_lunge() {
-    let mut game = Game::new(OPEN, 100);
-    game.until_aware();
-    game.app
-        .world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .press(RIGHT);
-    // Held through several turns, the frames between them included.
-    game.frames(200);
-    assert_eq!(game.player_pos(), PLAYER);
-    assert!(game.player().3.is_some(), "the pick lapsed");
-    assert_eq!(game.enemy_at(ENEMY).unwrap().1, 2, "attacked");
+    let (pos, _, _, facing) = game.player();
+    assert_eq!((pos, facing), (BEHIND + IVec2::Y, IVec2::NEG_Y));
+    assert_eq!(game.enemy_at(FRONT).expect("left alone").1, 2);
 }
 
 #[test]
 fn a_critical_hit_downs_an_enemy_on_its_alert_beat() {
-    let mut game = Game::new(OPEN, 100);
+    let mut game = Game::new(AHEAD, 100);
     let world = game.app.world_mut();
     let exposed = world.query::<&Exposed>().single(world).unwrap().0;
     assert!(exposed, "not caught off guard on its alert beat");
     game.press(RIGHT);
-    game.press(DOWN);
     game.frames(2);
     assert_eq!(game.enemies(), 0, "a critical hit should down it");
 }
 
 #[test]
 fn an_enemy_knocked_into_a_wall_takes_the_impact() {
-    let mut game = Game::new("XXXXX\nX...X\nX.peX\nX...X\nXXXXX\n", 100);
+    let mut game = Game::new("XXXXX\nX.e.X\nX.p.X\nX...X\nXXXXX\n", 100);
     game.until_aware();
-    game.press(RIGHT);
-    game.press(RIGHT);
+    game.press(UP);
     game.frames(2);
     assert_eq!(game.enemies(), 0, "1 + 1 for the impact should down it");
     assert_eq!(
@@ -270,20 +265,19 @@ fn an_enemy_knocked_into_a_wall_takes_the_impact() {
 fn an_enemy_knocked_into_another_hurts_both() {
     // Guards tough enough to live through the hit, so the knocked one moves
     // and runs into the other.
-    let mut game = Game::with("XXXXXXX\nX.....X\nX.pee.X\nX.....X\nXXXXXXX\n", |kinds| {
+    let mut game = Game::with("XXXXX\nX...X\nX.e.X\nX.e.X\nX.p.X\nXXXXX\n", |kinds| {
         kinds.player_mut().hp = 100;
         kinds.0.get_mut(&'e').unwrap().hp = 4;
     });
     // On their alert beat, while neither moves: the near one is caught off
     // guard (1 + 1) and takes the impact (1), the far one the impact.
-    game.press(RIGHT);
-    game.press(RIGHT);
+    game.press(UP);
     game.frames(4);
-    assert_eq!(game.enemy_at(IVec2::new(3, 2)).expect("stays").1, 1);
-    assert_eq!(game.enemy_at(IVec2::new(4, 2)).expect("stays").1, 3);
+    assert_eq!(game.enemy_at(IVec2::new(2, 3)).expect("stays").1, 1);
+    assert_eq!(game.enemy_at(IVec2::new(2, 2)).expect("stays").1, 3);
     assert_eq!(
         game.player_pos(),
-        IVec2::new(2, 2),
+        IVec2::new(2, 4),
         "a blocked lunge stays put"
     );
 }
@@ -309,7 +303,8 @@ fn stepping_off_a_jab_dodges_it() {
 }
 
 /// Whether a wound-up enemy of kind `glyph` right of the player still hits
-/// them after they step `key`.
+/// them after they step `key` (the player faces north, away from it, so
+/// stepping up or left is a plain walk).
 fn dodge(glyph: char, key: KeyCode) -> bool {
     let map: &'static str = Box::leak(OPEN.replace('e', &glyph.to_string()).into_boxed_str());
     let mut game = Game::new(map, 100);
@@ -332,31 +327,31 @@ fn a_spear_cannot_be_backed_away_from_but_can_be_sidestepped() {
     assert!(!dodge('s', UP), "stepping aside did not escape the spear");
 }
 
-/// Whether the player is hit when answering a guard's wound-up sweep with
-/// the maneuver `second`.
-fn hit_after(second: KeyCode) -> bool {
-    let mut game = Game::new(OPEN, 100);
-    game.until_wound_up(ENEMY);
+/// Whether the player is hit when answering a guard's wound-up sweep, from
+/// right ahead, with the move `key`.
+fn hit_after(key: KeyCode) -> bool {
+    let mut game = Game::new(AHEAD, 100);
+    game.until_wound_up(FRONT);
     let before = game.player_hp();
-    game.press(RIGHT);
-    game.press(second);
+    game.press(key);
     game.frames(5);
     game.player_hp() < before
 }
 
 #[test]
-fn against_a_sweep_only_a_yank_is_safe() {
-    // A lunge or a push leaves the player in the row the sweep covers once
-    // the guard is knocked; a yank turns its sweep away.
-    assert!(hit_after(RIGHT), "lunge");
-    assert!(hit_after(DOWN), "push");
-    assert!(!hit_after(LEFT), "yank");
+fn against_a_sweep_only_backing_off_is_safe() {
+    // A lunge or a sweep leaves the player in the row the guard's sweep
+    // covers once the guard is knocked; backing off leaves it.
+    assert!(hit_after(UP), "lunge");
+    assert!(hit_after(LEFT), "sweep left");
+    assert!(hit_after(RIGHT), "sweep right");
+    assert!(!hit_after(DOWN), "back off");
 }
 
 #[test]
 fn a_knocked_strikers_blow_moves_with_it_and_hits_its_friend() {
-    // `a` strikes down at the player, `b` stands beside the player. Pushing
-    // `a` right puts `b` under its strike.
+    // `a`, ahead of the player, strikes down at it; `b` stands to its right.
+    // Sweeping `a` right puts `b` under its strike (the sweep stops at `a`).
     let mut game = Game::with(
         "\
 XXXXXXX
@@ -369,18 +364,19 @@ XXXXXXX
         |kinds| {
             jabbing_guards(kinds);
             kinds.player_mut().hp = 100;
+            let (moves, _) = kinds.player_mut().maneuvers.as_mut().unwrap();
+            moves.right.stop = true;
         },
     );
     let (a, b) = (IVec2::new(3, 2), IVec2::new(4, 3));
     game.until_wound_up(a);
     assert_eq!(game.enemy_at(a).unwrap().2, Some(IVec2::Y));
     let b_before = game.enemy_at(b).unwrap().1;
-    game.press(UP);
     game.press(RIGHT);
-    // The push takes the player's turn, so the next one starts and the
+    // The sweep takes the player's turn, so the next one starts and the
     // strike lands, from where `a` stands now.
     game.frames(5);
-    assert_eq!(game.enemy_at(IVec2::new(4, 2)).expect("pushed right").1, 1);
+    assert_eq!(game.enemy_at(IVec2::new(4, 2)).expect("swept right").1, 1);
     let b_after = game.enemy_at(b).map_or(0, |(_, hp, _)| hp);
     assert_eq!(b_after, b_before - 1, "its friend was not hit");
 }
@@ -405,18 +401,17 @@ fn a_dead_player_plays_the_map_again() {
 
 #[test]
 fn a_lethal_blow_still_knocks_its_target_before_it_dies() {
-    let mut game = Game::new("XXXXXXX\nX.....X\nX.pee.X\nX.....X\nXXXXXXX\n", 100);
+    let mut game = Game::new("XXXXX\nX...X\nX.e.X\nX.e.X\nX.p.X\nXXXXX\n", 100);
     // On its alert beat the near guard is caught off guard: the lunge's
     // critical hit downs it, but it is knocked into the far guard first.
-    game.press(RIGHT);
-    game.press(RIGHT);
+    game.press(UP);
     game.frames(4);
     assert!(
-        game.enemy_at(IVec2::new(3, 2)).is_none(),
+        game.enemy_at(IVec2::new(2, 3)).is_none(),
         "the near one lives"
     );
     assert_eq!(
-        game.enemy_at(IVec2::new(4, 2)).expect("stays").1,
+        game.enemy_at(IVec2::new(2, 2)).expect("stays").1,
         1,
         "the dead body did not hit the far one"
     );

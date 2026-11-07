@@ -23,7 +23,6 @@ use crate::locomotion::LocomotionPlugin;
 use crate::navigation::NavigationPlugin;
 use crate::presentation::PresentationPlugin;
 use crate::schedule::{GamePhase, StartupPhase};
-use crate::selection::SelectionPlugin;
 use crate::service::ServicesPlugin;
 use crate::simulation::SimulationPlugin;
 use crate::transition::TransitionPlugin;
@@ -67,7 +66,6 @@ impl Plugin for GamePlugin {
             ServicesPlugin,
             AiPlugin,
             DamagePlugin,
-            SelectionPlugin,
             CombatPlugin,
             ChoreographyPlugin,
             LocomotionPlugin,

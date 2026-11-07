@@ -3,7 +3,7 @@ use rand::SeedableRng;
 
 use crate::model::{
     Collision, CollisionBuffer, ControlScheme, Follow, Knock, MapGrid, PortalCrossings, SharedRng,
-    Swap, Tile, TokenTimer, TurnPacing, TurnState,
+    Swap, Tile, TokenTimer, Turn, TurnPacing, TurnState,
 };
 use crate::schedule::{ActionStage, GamePhase, PlayerCommands, StartupPhase};
 
@@ -36,6 +36,7 @@ impl Plugin for SimulationPlugin {
             .add_message::<Knock>()
             .add_message::<Follow>()
             .add_message::<Swap>()
+            .add_message::<Turn>()
             .add_message::<Collision>()
             // A turn's actions, in order: begun ones go on, input is read,
             // actors decide, and the effects play out before the moves.
@@ -78,6 +79,9 @@ impl Plugin for SimulationPlugin {
                 Update,
                 (
                     swap_places.in_set(ActionStage::Movement),
+                    (face_walks, apply_turns)
+                        .chain()
+                        .in_set(ActionStage::Movement),
                     knock.after(update_direction).before(movement),
                     (report_collisions, settle_knocked)
                         .chain()

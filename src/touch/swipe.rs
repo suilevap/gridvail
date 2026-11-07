@@ -1,4 +1,4 @@
-//! One-finger swipes walk the player; a tap cancels what they compose.
+//! One-finger swipes walk the player; a tap does nothing yet.
 
 use bevy::prelude::*;
 
@@ -40,14 +40,13 @@ impl Swipe {
     }
 }
 
-/// A finger lifted without swiping is a tap, which asks to cancel
-/// (`CancelIntent`): there are no buttons to cancel with.
+/// A finger lifted without swiping is a tap, which does nothing yet (it is
+/// kept apart from a swipe for a later cancel).
 pub fn read_swipes(
     time: Res<Time>,
     touches: Res<Touches>,
     mut swipe: ResMut<Swipe>,
     mut scheme: ResMut<ControlScheme>,
-    mut cancel: MessageWriter<CancelIntent>,
 ) {
     if touches.any_just_pressed() {
         scheme.set_if_neq(ControlScheme::Touch);
@@ -73,9 +72,6 @@ pub fn read_swipes(
         return;
     };
     let Some(touch) = touches.get_pressed(id) else {
-        if !swipe.swiped {
-            cancel.write(CancelIntent);
-        }
         swipe.origin = None;
         swipe.held = None;
         swipe.swiped = false;

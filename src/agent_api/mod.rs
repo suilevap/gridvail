@@ -15,7 +15,6 @@ use crate::model::*;
 
 pub const STATE_METHOD: &str = "gridvail/state";
 pub const MOVE_METHOD: &str = "gridvail/move";
-pub const CANCEL_METHOD: &str = "gridvail/cancel";
 pub const DEFAULT_AGENT_PORT: u16 = DEFAULT_PORT;
 
 /// Loopback HTTP endpoint for agent control. It is installed only when the
@@ -42,8 +41,7 @@ impl Plugin for AgentApiPlugin {
         app.add_plugins(
             RemotePlugin::default()
                 .with_method_main(STATE_METHOD, get_state)
-                .with_method_main(MOVE_METHOD, move_player)
-                .with_method_main(CANCEL_METHOD, cancel),
+                .with_method_main(MOVE_METHOD, move_player),
         )
         .add_plugins(RemoteHttpPlugin::default().with_port(self.port));
     }
@@ -104,8 +102,9 @@ struct PlayerState {
     keys: usize,
     hp: Option<i32>,
     max_hp: Option<i32>,
-    /// Where the target the player picked stands, if one is picked.
-    selected: Option<Position>,
+    /// The way the player faces: its moves are read from it (one into
+    /// something ahead attacks it, see `COMBAT.md`).
+    facing: Position,
 }
 
 #[derive(Serialize)]
@@ -153,16 +152,16 @@ fn get_state(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
         .0
         .len();
 
-    let (position, tokens, command_pending, items, health, selection) = {
+    let (position, tokens, command_pending, items, health, facing) = {
         let mut players = world.query_filtered::<(
             &Pos,
             &Tokens,
             &MoveCommand,
             Option<&Inventory>,
             Option<&Health>,
-            Option<&Selected>,
+            &Facing,
         ), With<Player>>();
-        let (position, tokens, command, inventory, health, selection) = players
+        let (position, tokens, command, inventory, health, facing) = players
             .single(world)
             .map_err(|error| BrpError::internal(format!("player query failed: {error}")))?;
         let items = inventory
@@ -174,12 +173,9 @@ fn get_state(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
             command.active,
             items,
             health.copied(),
-            selection.copied(),
+            facing.0.into(),
         )
     };
-    let selected = selection
-        .and_then(|selection| world.get::<Pos>(selection.target))
-        .map(|pos| pos.0.into());
     let enemies = world
         .query_filtered::<(&Pos, Option<&Health>, Option<&Telegraph>), (With<Enemy>, Without<DestroyRequested>)>()
         .iter(world)
@@ -225,7 +221,7 @@ fn get_state(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
             keys,
             hp: health.map(|health| health.hp),
             max_hp: health.map(|health| health.max),
-            selected,
+            facing,
         },
         enemy_count,
         enemies,
@@ -264,13 +260,6 @@ fn move_player(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
     pending.relative = true;
     pending.active = true;
     pending.repeat = false;
-    Ok(json!({ "accepted": true }))
-}
-
-/// Drops what the player is composing (a picked target), like a tap or `C`.
-/// Free: it spends no turn.
-fn cancel(In(_params): In<Option<Value>>, world: &mut World) -> BrpResult {
-    world.write_message(CancelIntent);
     Ok(json!({ "accepted": true }))
 }
 
@@ -360,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn a_remote_move_into_an_enemy_picks_it_and_a_cancel_drops_it() {
+    fn a_remote_move_toward_an_enemy_beside_sweeps_it_and_turns_to_it() {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .init_resource::<ButtonInput<KeyCode>>()
@@ -371,15 +360,16 @@ mod tests {
         let response =
             move_player(In(Some(json!({ "direction": "right" }))), app.world_mut()).unwrap();
         assert_eq!(response, json!({ "accepted": true }));
-        app.update();
+        for _ in 0..3 {
+            app.update();
+        }
+        // Facing north at the start, the enemy east of it is to its right:
+        // a sweep right, which turns it east and leaves it where it was.
         let value = get_state(In(None), app.world_mut()).unwrap();
         assert_eq!(value["player"]["position"], json!({ "x": 2, "y": 1 }));
-        assert_eq!(value["player"]["selected"], json!({ "x": 3, "y": 1 }));
-
-        cancel(In(None), app.world_mut()).unwrap();
-        app.update();
-        let value = get_state(In(None), app.world_mut()).unwrap();
-        assert_eq!(value["player"]["selected"], Value::Null);
+        assert_eq!(value["player"]["facing"], json!({ "x": 1, "y": 0 }));
+        // Caught on its alert beat, the critical hit downs it.
+        assert_eq!(value["enemy_count"], json!(0));
     }
 
     #[test]

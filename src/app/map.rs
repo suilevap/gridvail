@@ -207,20 +207,17 @@ fn load_map(
     }
 }
 
-/// A defeated player plays the map again from its start, at full health,
-/// with nothing picked.
+/// A defeated player plays the map again from its start, at full health.
 pub(super) fn restart_on_defeat(
-    mut commands: Commands,
     mut died: MessageReader<Died>,
     current: Option<Res<CurrentMap>>,
-    mut players: Query<(Entity, &mut Health), With<Player>>,
+    mut players: Query<&mut Health, With<Player>>,
     mut load: MessageWriter<LoadMap>,
 ) {
     let mut restart = false;
     for &Died(entity) in died.read() {
-        if let Ok((player, mut health)) = players.get_mut(entity) {
+        if let Ok(mut health) = players.get_mut(entity) {
             health.hp = health.max;
-            commands.entity(player).remove::<Selected>();
             restart = true;
         }
     }
@@ -446,12 +443,14 @@ fn spawn_player(
             PrevPos(at),
         ),
         Glyph::new('@', 1, WHITE),
-        (Player(0), Selector, KeepOnDeath),
+        (Player(0), KeepOnDeath),
         Inventory::default(),
         Tokens::new(1),
         Friction(1),
-        Facing::default(),
-        DirectionBasedOnSpeed,
+        // Facing somewhere from the start: a swipe is read from where it
+        // faces.
+        Facing(IVec2::NEG_Y),
+        FacesItsWalks,
         VisualSensor { radius: 16 },
         PlayerView::with_radius(16),
         LightSource {
@@ -506,7 +505,7 @@ fn actor_body(pos: IVec2, cell_count: usize) -> impl Bundle {
         ),
         Glyph::new('☺', 1, RED),
         Inventory::default(),
-        (Selectable, Movable, Exposed::default()),
+        (Movable, Exposed::default()),
         (
             Destination::default(),
             TraversalPrefs {

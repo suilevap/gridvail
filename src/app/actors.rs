@@ -7,7 +7,7 @@ use flatbt_bevy::prelude::Behavior;
 
 use crate::ai::{enemy_tree, hunter_tree};
 pub use crate::content::actors::Tree;
-use crate::content::actors::{MoveSpec, Roster, SwingSpec};
+use crate::content::actors::{MoveSpec, Roster, StanceSpec, SwingSpec};
 use crate::content::data;
 use crate::model::*;
 
@@ -64,15 +64,26 @@ impl ActorKinds {
     /// The kinds a roster describes; every weapon and move set an actor
     /// names must be in it.
     pub fn from_roster(roster: &Roster) -> Result<Self, String> {
-        let move_of = |spec: &MoveSpec| Maneuver {
-            name: spec.name.clone(),
-            hit: spec.hit,
-            knock: spec.knock,
-            follow: spec.follow,
-            swap: spec.swap,
+        let move_of = |spec: &MoveSpec| -> Result<Maneuver, String> {
+            let cells = spec
+                .cells()
+                .map_err(|error| format!("move `{}`: {error}", spec.name))?;
+            Ok(Maneuver {
+                name: spec.name.clone(),
+                area: Area(cells),
+                stop: spec.stop,
+                hit: spec.hit,
+                knock: spec.knock,
+                stance: match spec.stance {
+                    StanceSpec::Stay => Stance::Stay,
+                    StanceSpec::Follow => Stance::Follow,
+                    StanceSpec::Step => Stance::Step,
+                },
+                turn: spec.turn,
+            })
         };
         let look_of = |swing: Option<SwingSpec>, streak: &Option<String>| SwingLook {
-            swing: swing.map(SwingSpec::swing).unwrap_or_default(),
+            swing: swing.map(SwingSpec::swing),
             streak: streak.clone(),
         };
         let mut kinds = HashMap::default();
@@ -93,7 +104,11 @@ impl ActorKinds {
                             damage: spec.damage,
                             windup: spec.windup,
                         },
-                        WeaponLook(look_of(spec.swing, &spec.streak)),
+                        // A weapon is swung, a thrust when not said.
+                        WeaponLook(SwingLook {
+                            swing: Some(spec.swing.map(SwingSpec::swing).unwrap_or_default()),
+                            ..look_of(None, &spec.streak)
+                        }),
                     ))
                 }
             };
@@ -106,13 +121,15 @@ impl ActorKinds {
                         .ok_or_else(|| format!("{} names no known moves `{name}`", actor.name))?;
                     Some((
                         Maneuvers {
-                            forward: move_of(&spec.forward),
-                            side: move_of(&spec.side),
-                            back: move_of(&spec.back),
+                            forward: move_of(&spec.forward)?,
+                            left: move_of(&spec.left)?,
+                            right: move_of(&spec.right)?,
+                            back: move_of(&spec.back)?,
                         },
                         ManeuverLooks {
                             forward: look_of(spec.forward.swing, &spec.forward.streak),
-                            side: look_of(spec.side.swing, &spec.side.streak),
+                            left: look_of(spec.left.swing, &spec.left.streak),
+                            right: look_of(spec.right.swing, &spec.right.streak),
                             back: look_of(spec.back.swing, &spec.back.streak),
                         },
                     ))
@@ -187,7 +204,7 @@ mod tests {
         let library = crate::effects::EffectLibrary::bundled().unwrap();
         for kind in ActorKinds::default().0.values() {
             let moves = kind.maneuvers.iter().flat_map(|(_, looks)| {
-                [&looks.forward, &looks.side, &looks.back].map(|look| &look.streak)
+                [&looks.forward, &looks.left, &looks.right, &looks.back].map(|look| &look.streak)
             });
             let named = kind
                 .weapon

@@ -24,6 +24,19 @@ pub struct PrevPos(pub IVec2);
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Facing(pub IVec2);
 
+/// `entity` turns to face `dir`.
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Turn {
+    pub entity: Entity,
+    pub dir: IVec2,
+}
+
+/// Turns to face the way it chooses to walk, and only then: being knocked,
+/// following or stepping back does not turn it (the player). An actor
+/// without it faces the way it moves (`DirectionBasedOnSpeed`).
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct FacesItsWalks;
+
 /// Makes the open face of a wall cell a portal: seen from its open side,
 /// it shows what lies beyond the face of the `exit` portal wall, and
 /// walking into it comes out there. Pairs point at each other.

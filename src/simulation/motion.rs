@@ -12,6 +12,40 @@ pub fn update_direction(
     }
 }
 
+/// An actor that faces its walks turns to face a walk it is about to make
+/// (a move nothing else took for something else, such as an attack).
+pub fn face_walks(
+    turn: Res<TurnState>,
+    mut turns: MessageWriter<Turn>,
+    walkers: Query<
+        (Entity, &MoveCommand, &Tokens),
+        (With<FacesItsWalks>, Without<DestroyRequested>),
+    >,
+) {
+    for (entity, command, tokens) in &walkers {
+        let walks = command.active
+            && command.relative
+            && command.target != IVec2::ZERO
+            && tokens.count > 0
+            && !turn.simulation;
+        if walks {
+            turns.write(Turn {
+                entity,
+                dir: command.target,
+            });
+        }
+    }
+}
+
+/// Each turn asked for is made.
+pub fn apply_turns(mut turns: MessageReader<Turn>, mut facings: Query<&mut Facing>) {
+    for turn in turns.read() {
+        if let Ok(mut facing) = facings.get_mut(turn.entity) {
+            facing.0 = turn.dir;
+        }
+    }
+}
+
 /// Starts each mover's step. A step into a portal face from its open side
 /// goes to the floor in front of the exit face instead, and is recorded in
 /// `PortalCrossings`; collisions there are resolved like any other step.
