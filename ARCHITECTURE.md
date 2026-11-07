@@ -20,7 +20,7 @@ meet only in messages and components. `transition` sits on `simulation`,
 `camera` and `model`. `choreography` sits on `animation`, `content`,
 `model` and `schedule` and only reads what the simulation says happened; it asks
 `effects` (particles, on `model`, `content` and `schedule`) for effects by
-name, in a message. `camera` sits on top of `animation` (it
+id, in a message. `camera` sits on top of `animation` (it
 eases the view with the same curves) and below `app` and `rendering`.
 `schedule` is the small, neutral contract
 shared by the domain plugins and output backends. `app` is the game composition
@@ -257,7 +257,11 @@ and renderers must not import it.
   changes nothing in the simulation.
 - `effects/` plays effects, which are data: one RON file each in
   `assets/effects` (`content::effects`), bundled by `build.rs` like the
-  maps, so a new effect is a new file and the roster names it. An effect
+  maps, so a new effect is a new file and the roster names it. Names are
+  data only: they become an `EffectId` (the effect's place among the
+  bundled files, `content::effects::bundled_id`) when the roster or the
+  timings are read, so a misspelled name fails then, and requests
+  (`PlayEffect`), `Bleeds` and looks carry ids, not strings. An effect
   is emitters, each throwing off `Particle`s (short-lived glyphs off the
   grid) from a point along the blow or along the swing, with their count
   (and more per point of strength), speed and drag, life and how long

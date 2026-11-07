@@ -55,13 +55,20 @@ impl Particle {
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct ParticleDelay(pub f32);
 
-/// Play the effect called `effect` (a file in `assets/effects`) from where
+/// An effect, by its place among the effects read: for the bundled ones,
+/// the files in `assets/effects` in name order. Data names effects, and
+/// names are resolved to ids when the data is read, so a misspelled name
+/// fails then, and nothing in play carries or looks up a string.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EffectId(pub u16);
+
+/// Play the effect `effect` (a file in `assets/effects`) from where
 /// `entity` is shown, its way `toward`, `delay` seconds from now. A swing
 /// gives its `swing`, which effects can follow over `secs`; `strength`
 /// scales how much it throws off (the damage of a blow).
-#[derive(Message, Clone, Debug, PartialEq)]
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
 pub struct PlayEffect {
-    pub effect: String,
+    pub effect: EffectId,
     pub entity: Entity,
     pub toward: Vec2,
     pub swing: Option<GestureShape>,
@@ -70,9 +77,9 @@ pub struct PlayEffect {
     pub delay: f32,
 }
 
-/// What a blow knocks out of it (an effect's name: blood, splinters).
-#[derive(Component, Clone, Debug, PartialEq, Eq)]
-pub struct Bleeds(pub String);
+/// What a blow knocks out of it (an effect: blood, splinters).
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Bleeds(pub EffectId);
 
 /// One particle as the frame shows it: where (in frame cells, between
 /// cells), what (`ch`, or a stroke the way of `stroke`, in frame cells),

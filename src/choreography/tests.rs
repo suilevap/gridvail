@@ -1,5 +1,10 @@
 use super::*;
 
+/// The bundled effect called `name`.
+fn effect(name: &str) -> EffectId {
+    bundled_id(name).unwrap()
+}
+
 fn app() -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
@@ -33,9 +38,9 @@ fn guard(app: &mut App, at: IVec2, windup: u8) -> Entity {
             },
             WeaponLook(SwingLook {
                 swing: Some(Swing::Sweep { reach: 0.6 }),
-                streak: Some("swoosh".into()),
+                streak: Some(effect("swoosh")),
             }),
-            Bleeds("blood".into()),
+            Bleeds(effect("blood")),
         ))
         .id()
 }
@@ -43,7 +48,7 @@ fn guard(app: &mut App, at: IVec2, windup: u8) -> Entity {
 #[test]
 fn the_timings_are_data() {
     let timing = Timing::default();
-    assert!(timing.0.swing_secs > 0.0);
+    assert!(timing.spec.swing_secs > 0.0);
     assert!(timing.release_contact() < timing.contact());
 }
 
@@ -83,8 +88,8 @@ fn a_wound_up_strike_releases_and_streaks_at_once() {
     let streaks = sent::<PlayEffect>(&app);
     assert_eq!(streaks.len(), 1);
     assert_eq!(
-        (streaks[0].effect.as_str(), streaks[0].delay),
-        ("swoosh", 0.0)
+        (streaks[0].effect, streaks[0].delay),
+        (effect("swoosh"), 0.0)
     );
 }
 
@@ -190,7 +195,7 @@ fn a_blow_lands_at_contact_and_its_target_is_held_shaken_and_bleeds() {
         .any(|shake| shake.entity == target && shake.delay == contact));
     let bled = sent::<PlayEffect>(&app);
     assert_eq!(bled.len(), 1);
-    assert_eq!((bled[0].effect.as_str(), bled[0].strength), ("blood", 1));
+    assert_eq!((bled[0].effect, bled[0].strength), (effect("blood"), 1));
 }
 
 #[test]
@@ -243,12 +248,12 @@ fn a_slam_plays_after_the_blow_where_the_body_meets_what_it_hit() {
     let played = sent::<PlayEffect>(&app);
     let slam = played
         .iter()
-        .find(|effect| Some(&effect.effect) == timing.0.impact_effect.as_ref())
+        .find(|played| Some(played.effect) == timing.impact_effect)
         .expect("no slam");
     assert_eq!((slam.entity, slam.toward), (mover, Vec2::X));
     assert_eq!(slam.delay, timing.impact());
     assert!(
-        played.iter().any(|effect| effect.effect == "blood"),
+        played.iter().any(|played| played.effect == effect("blood")),
         "no blood"
     );
     assert!(sent::<Gesture>(&app)
@@ -263,7 +268,11 @@ fn the_killed_bleed_through_their_remains_and_more() {
     let body = app.world_mut().spawn_empty().id();
     let remains = app
         .world_mut()
-        .spawn((Remains(body), Pos(IVec2::new(3, 2)), Bleeds("blood".into())))
+        .spawn((
+            Remains(body),
+            Pos(IVec2::new(3, 2)),
+            Bleeds(effect("blood")),
+        ))
         .id();
     app.world_mut().write_message(Hit {
         source: attacker,
@@ -274,5 +283,5 @@ fn the_killed_bleed_through_their_remains_and_more() {
     let bled = sent::<PlayEffect>(&app);
     assert_eq!(bled.len(), 1);
     assert_eq!(bled[0].entity, remains);
-    assert_eq!(bled[0].strength, 1 + timing(&app).0.kill_strength);
+    assert_eq!(bled[0].strength, 1 + timing(&app).spec.kill_strength);
 }

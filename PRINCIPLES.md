@@ -407,8 +407,3 @@ it would help. Each item is its own change.
     `effects`' `ParticleDelay`). Each counts seconds down on its own. One
     "after this many seconds" mechanism for shown things, as `Scheduled`
     is for turns, would let any of them wait the same way. (Principle 7.)
-12. **Effect names are strings** (`PlayEffect`, `Bleeds`, `SwingLook`).
-    A misspelled name in a roster other than the bundled one (which a test
-    checks) shows only as a warning in play, and each request clones its
-    name. Resolve names to handles when the roster is read, with
-    [prefabs](#data-one-format-and-prefabs). (Principles 8, 11.)

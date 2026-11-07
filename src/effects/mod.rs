@@ -6,17 +6,14 @@
 //! colour and fade. Nothing here touches the simulation, and its random
 //! numbers are its own, so the game plays the same without it.
 
-use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
 use crate::content::data;
-use crate::content::effects::{EffectSpec, EmitterSpec, GlyphSpec, SourceSpec};
+use crate::content::effects::{EffectSpec, EmitterSpec, GlyphSpec, SourceSpec, BUNDLED_EFFECTS};
 use crate::model::*;
 use crate::schedule::GamePhase;
-
-include!(concat!(env!("OUT_DIR"), "/bundled_effects.rs"));
 
 pub struct EffectsPlugin;
 
@@ -39,10 +36,14 @@ impl Plugin for EffectsPlugin {
     }
 }
 
-/// Every effect, by name. The bundled ones by default; change it (or insert
-/// another) to change how effects look.
+/// Every effect, by id (its place here), with its name. The bundled ones
+/// by default, in the order their ids give (`content::effects::bundled_id`);
+/// change it (or insert another) to change how effects look.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
-pub struct EffectLibrary(pub HashMap<String, EffectSpec>);
+pub struct EffectLibrary {
+    names: Vec<String>,
+    specs: Vec<EffectSpec>,
+}
 
 impl EffectLibrary {
     /// Every effect in `assets/effects`.
@@ -50,16 +51,30 @@ impl EffectLibrary {
         Self::read(BUNDLED_EFFECTS.iter().copied())
     }
 
-    /// The effects in `(name, text)` files.
+    /// The effects in `(name, text)` files, each with its place as its id.
     pub fn read<'a>(files: impl IntoIterator<Item = (&'a str, &'a str)>) -> Result<Self, String> {
-        files
-            .into_iter()
-            .map(|(name, text)| {
-                let spec = data::read(&format!("effect `{name}`"), text)?;
-                Ok((name.to_string(), spec))
-            })
-            .collect::<Result<_, String>>()
-            .map(Self)
+        let mut library = Self::default();
+        for (name, text) in files {
+            library
+                .specs
+                .push(data::read(&format!("effect `{name}`"), text)?);
+            library.names.push(name.to_string());
+        }
+        Ok(library)
+    }
+
+    /// The effect `id`, if there is one.
+    pub fn get(&self, id: EffectId) -> Option<&EffectSpec> {
+        self.specs.get(id.0 as usize)
+    }
+
+    /// The id of the effect called `name` (for reading data and tests: play
+    /// goes by id).
+    pub fn id(&self, name: &str) -> Option<EffectId> {
+        self.names
+            .iter()
+            .position(|known| known == name)
+            .map(|place| EffectId(place as u16))
     }
 }
 
@@ -184,8 +199,8 @@ pub fn play_effects(
     shown: Query<(Option<&AnimatedPos>, &Pos)>,
 ) {
     for request in requests.read() {
-        let Some(effect) = library.0.get(&request.effect) else {
-            warn_once!("no effect called `{}` in assets/effects", request.effect);
+        let Some(effect) = library.get(request.effect) else {
+            warn_once!("no effect {:?} in the effect library", request.effect);
             continue;
         };
         let Ok((animated, pos)) = shown.get(request.entity) else {
