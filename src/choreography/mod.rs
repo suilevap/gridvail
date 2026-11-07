@@ -3,87 +3,137 @@
 //!
 //! The simulation stays instant and only says what happened
 //! (`ContextAction`, `Strike`, `Hit`, `Collision`, `Died`). These systems
-//! turn that into a timeline for the animation step, measured from the
-//! frame it happened in:
+//! turn that into a timeline for the animation step and effects, measured
+//! from the frame it happened in:
 //!
 //! ```text
-//! 0          attacker: swings as its weapon or move says (its own moves held)
-//! CONTACT    the blow lands: the target's held moves go (a knock slides),
-//!            or it shakes; what a knocked body ran into shakes
-//!            and bleeds; a swing's streak marks where its weapon passed
+//! before     an aimed weapon winds up and holds; a picker draws back
+//! 0          the attacker swings as its look says (its own moves held),
+//!            leaving its streak
+//! contact    the blow lands (`BlowLands`): the target's held moves go (a
+//!            knock is flung), it shakes and bleeds; what a knocked body
+//!            ran into shakes, and the body bleeds
 //! after      the dead, left behind as remains, finish their slide and sink
 //! ```
 //!
-//! Nothing here changes the simulation; without an animation step it does
-//! nothing.
-
-use bevy::prelude::*;
+//! Each system does one of those things. The timings are data
+//! (`assets/rules/choreography.ron`). Nothing here changes the simulation;
+//! without an animation step it does nothing.
 
 use bevy::platform::collections::HashSet;
+use bevy::prelude::*;
 
 use crate::animation::{Flinging, ObjectAnimation, SWING_CONTACT, SWING_WOUND};
+use crate::content::choreography::ChoreographySpec;
+use crate::content::data;
 use crate::model::*;
 use crate::schedule::{ActionStage, GamePhase};
-use crate::simulation::destroy_entities;
 
-/// How long an attacker's swing takes, in seconds, from the wind-up to
-/// settling back...
-pub const SWING_SECS: f32 = 0.42;
-/// ...and so when its blow lands.
-pub const CONTACT: f32 = SWING_SECS * SWING_CONTACT;
-/// How long a knocked body's slide takes, a cell: flung fast, slowing to
-/// a stop.
-const FLING_SECS: f32 = 0.22;
-/// How long taking a blow shakes, in seconds, and how far, in cells.
-const SHAKE_SECS: f32 = 0.3;
-const SHAKE_REACH: f32 = 0.25;
-/// How long after the contact an attacker's own move (a lunge's step
-/// after its target, a swap) starts.
-const FOLLOW_GAP: f32 = 0.06;
-/// How long an aimed weapon's wielder takes to wind up (it then holds until
-/// it strikes); the strike plays the rest of the swing, and its blow lands
-/// sooner than a whole swing's.
-const AIM_SECS: f32 = 0.5;
-const RELEASE_SECS: f32 = SWING_SECS * (1.0 - SWING_WOUND);
-pub const RELEASE_CONTACT: f32 = SWING_SECS * (SWING_CONTACT - SWING_WOUND);
-/// How long the player takes to ready a swing at what they picked, and how
-/// far (a thrust's reach: it draws back a share of that).
-const PICK_SECS: f32 = 0.2;
-const PICK_REACH: f32 = 0.4;
-/// How long dropping a wind-up takes to ease back.
-const UNWIND_SECS: f32 = 0.2;
-/// How long a swing's streak takes to draw: its strike and the start of
-/// its follow-through.
-const STREAK_SECS: f32 = SWING_SECS * (SWING_CONTACT - SWING_WOUND) * 2.0;
-/// How much more blood a killing blow spills.
-const KILL_SPLASH: i32 = 2;
+const TIMING_TEXT: &str = include_str!("../../assets/rules/choreography.ron");
 
 pub struct ChoreographyPlugin;
 
 impl Plugin for ChoreographyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<Gesture>()
+        app.init_resource::<Timing>()
+            .add_message::<Gesture>()
             .add_message::<HoldMoves>()
             .add_message::<Fling>()
             .add_message::<WindUp>()
             .add_message::<Release>()
             .add_message::<PlayEffect>()
+            .add_message::<BlowLands>()
             .add_systems(
                 Update,
-                (wind_up, swing_attackers, react_to_blows)
+                (
+                    (
+                        wind_up_aims,
+                        wind_up_picks,
+                        unwind_dropped_aims,
+                        unwind_dropped_picks,
+                    ),
+                    (
+                        swing_maneuvers,
+                        hold_attackers,
+                        streak_maneuvers,
+                        swing_strikes,
+                        streak_strikes,
+                    ),
+                    time_blows,
+                    (
+                        hold_struck,
+                        shake_struck,
+                        bleed_struck,
+                        shake_obstacles,
+                        bleed_impacts,
+                    ),
+                )
                     .chain()
                     .in_set(GamePhase::Visibility),
             )
-            // While the dead still have their place and motion.
             .add_systems(
                 Update,
                 leave_remains
-                    .after(ActionStage::Damage)
-                    .before(destroy_entities)
+                    .in_set(ActionStage::Aftermath)
                     .in_set(GamePhase::Simulation),
             );
     }
 }
+
+/// How fights are timed on screen: the bundled timings by default; change
+/// it (or insert another) to retime them.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct Timing(pub ChoreographySpec);
+
+impl Default for Timing {
+    fn default() -> Self {
+        data::read("choreography.ron", TIMING_TEXT)
+            .map(Self)
+            .unwrap_or_else(|error| panic!("{error}"))
+    }
+}
+
+impl Timing {
+    /// When a whole swing's blow lands.
+    pub fn contact(&self) -> f32 {
+        self.0.swing_secs * SWING_CONTACT
+    }
+
+    /// How long the rest of a wound-up swing takes once released, and when
+    /// its blow lands.
+    pub fn release_secs(&self) -> f32 {
+        self.0.swing_secs * (1.0 - SWING_WOUND)
+    }
+
+    pub fn release_contact(&self) -> f32 {
+        self.0.swing_secs * (SWING_CONTACT - SWING_WOUND)
+    }
+
+    /// When a whole swing's strike starts, and how long its streak takes.
+    pub fn strike_start(&self) -> f32 {
+        self.0.swing_secs * SWING_WOUND
+    }
+
+    pub fn streak_secs(&self) -> f32 {
+        self.release_contact() * self.0.streak_stretch
+    }
+}
+
+/// A blow lands, `contact` seconds from now, on what shows `target` (its
+/// remains, when it `killed`), driven `toward`, with the hit's `damage`.
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct BlowLands {
+    pub target: Entity,
+    pub toward: Vec2,
+    pub contact: f32,
+    pub damage: i32,
+    pub killed: bool,
+}
+
+/// What is shown of something that died (the body it was), until it has
+/// sunk.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Remains(pub Entity);
 
 /// The gesture of `swing` at a target in grid direction `at`; a sweep
 /// swings toward `across`.
@@ -99,216 +149,258 @@ pub fn swing_gesture(swing: Swing, at: IVec2, across: IVec2) -> GestureShape {
     }
 }
 
-/// Anticipation lasts as long as what it anticipates: a weapon's wielder
-/// winds up its swing when it aims and holds it until the strike; the
-/// player readies a thrust at what they picked while it stays picked.
-/// Either eases back if dropped (the strike and the action play their own
-/// swing, from there).
-#[allow(clippy::type_complexity)]
-pub fn wind_up(
+/// How an actor's move on a picked target looks, and its gesture: a
+/// sideways move sweeps toward its side.
+pub fn maneuver_swing(looks: &ManeuverLooks, action: &ContextAction) -> (SwingLook, GestureShape) {
+    let look = looks.get(Relation::of(action.picked, action.dir)).clone();
+    let across = if action.dir.perp_dot(action.picked) == 0 {
+        action.picked.perp()
+    } else {
+        action.dir
+    };
+    let shape = swing_gesture(look.swing, action.picked, across);
+    (look, shape)
+}
+
+/// A weapon's gesture as it strikes toward `dir`.
+pub fn weapon_swing(look: &WeaponLook, dir: IVec2) -> GestureShape {
+    swing_gesture(look.0.swing, dir, dir.perp())
+}
+
+/// The streak `look` leaves along `shape`, from `delay`, if it names one.
+fn streak(
+    look: &SwingLook,
+    entity: Entity,
+    dir: IVec2,
+    shape: GestureShape,
+    delay: f32,
+    timing: &Timing,
+) -> Option<PlayEffect> {
+    look.streak.as_ref().map(|effect| PlayEffect {
+        effect: effect.clone(),
+        entity,
+        toward: dir.as_vec2(),
+        swing: Some(shape),
+        secs: timing.streak_secs(),
+        strength: 0,
+        delay,
+    })
+}
+
+/// A weapon's wielder winds up its swing when it aims, and holds it until
+/// the strike: its anticipation is its telegraph.
+pub fn wind_up_aims(
+    timing: Res<Timing>,
     mut wind_ups: MessageWriter<WindUp>,
-    mut releases: MessageWriter<Release>,
-    aimed: Query<(Entity, &Weapon, &Telegraph), Changed<Telegraph>>,
-    picks: Query<(Entity, &Selected), Changed<Selected>>,
-    mut dropped_aims: RemovedComponents<Telegraph>,
-    mut dropped_picks: RemovedComponents<Selected>,
-    mut strikes: MessageReader<Strike>,
+    aimed: Query<(Entity, &WeaponLook, &Telegraph), Changed<Telegraph>>,
 ) {
-    for (wielder, weapon, telegraph) in &aimed {
+    for (wielder, look, telegraph) in &aimed {
         wind_ups.write(WindUp {
             entity: wielder,
-            shape: swing_gesture(weapon.swing, telegraph.dir, telegraph.dir.perp()),
-            secs: AIM_SECS,
+            shape: weapon_swing(look, telegraph.dir),
+            secs: timing.0.aim_secs,
         });
     }
+}
+
+/// A picker draws back at what it picked, and holds it while it stays
+/// picked.
+pub fn wind_up_picks(
+    timing: Res<Timing>,
+    mut wind_ups: MessageWriter<WindUp>,
+    picks: Query<(Entity, &Selected), Changed<Selected>>,
+) {
     for (picker, selected) in &picks {
         wind_ups.write(WindUp {
             entity: picker,
             shape: GestureShape::Thrust {
-                toward: selected.dir.as_vec2() * PICK_REACH,
+                toward: selected.dir.as_vec2() * timing.0.pick_reach,
             },
-            secs: PICK_SECS,
+            secs: timing.0.pick_secs,
         });
     }
+}
+
+/// An aim dropped without striking eases back.
+pub fn unwind_dropped_aims(
+    timing: Res<Timing>,
+    mut releases: MessageWriter<Release>,
+    mut dropped: RemovedComponents<Telegraph>,
+    mut strikes: MessageReader<Strike>,
+) {
     let struck: HashSet<Entity> = strikes.read().map(|strike| strike.wielder).collect();
-    for entity in dropped_aims
-        .read()
-        .filter(|entity| !struck.contains(entity))
-        .chain(dropped_picks.read())
-    {
+    for entity in dropped.read().filter(|entity| !struck.contains(entity)) {
         releases.write(Release {
             entity,
-            secs: UNWIND_SECS,
+            secs: timing.0.unwind_secs,
             strike: false,
         });
     }
 }
 
-/// An actor acting on what it picked swings at it as the move says (a
-/// sideways move sweeps toward its side), its own moves held until just
-/// after the blow lands; a weapon's wielder swings the way it strikes,
-/// releasing the swing it wound up when it aimed.
-pub fn swing_attackers(
-    mut actions: MessageReader<ContextAction>,
-    mut strikes: MessageReader<Strike>,
-    (mut gestures, mut holds, mut releases, mut effects): (
-        MessageWriter<Gesture>,
-        MessageWriter<HoldMoves>,
-        MessageWriter<Release>,
-        MessageWriter<PlayEffect>,
-    ),
-    maneuvers: Query<&Maneuvers>,
-    weapons: Query<&Weapon>,
+/// A dropped pick eases back (acting on it swings from there instead).
+pub fn unwind_dropped_picks(
+    timing: Res<Timing>,
+    mut releases: MessageWriter<Release>,
+    mut dropped: RemovedComponents<Selected>,
 ) {
-    let swing = |entity: Entity, shape: GestureShape| Gesture {
-        entity,
-        shape,
-        secs: SWING_SECS,
-        delay: 0.0,
-    };
-    // The streak a swing leaves, if its move or weapon names one.
-    let streak = |effect: &Option<String>, entity: Entity, dir: IVec2, shape, delay| {
-        effect.as_ref().map(|effect| PlayEffect {
-            effect: effect.clone(),
+    for entity in dropped.read() {
+        releases.write(Release {
             entity,
-            toward: dir.as_vec2(),
-            swing: Some(shape),
-            secs: STREAK_SECS,
-            strength: 0,
-            delay,
-        })
-    };
-    for action in actions.read() {
-        let chosen = maneuvers
-            .get(action.actor)
-            .ok()
-            .map(|moves| moves.get(Relation::of(action.picked, action.dir)));
-        let style = chosen.map_or_else(Swing::default, |chosen| chosen.swing);
-        let across = if action.dir.perp_dot(action.picked) == 0 {
-            action.picked.perp()
-        } else {
-            action.dir
-        };
-        let shape = swing_gesture(style, action.picked, across);
-        gestures.write(swing(action.actor, shape));
-        if let Some(chosen) = chosen {
-            effects.write_batch(streak(
-                &chosen.streak,
-                action.actor,
-                action.picked,
-                shape,
-                SWING_SECS * SWING_WOUND,
-            ));
-        }
-        holds.write(HoldMoves {
-            entity: action.actor,
-            secs: CONTACT + FOLLOW_GAP,
+            secs: timing.0.unwind_secs,
+            strike: false,
         });
     }
-    for strike in strikes.read() {
-        let Ok(weapon) = weapons.get(strike.wielder) else {
+}
+
+/// An actor acting on what it picked swings at it as its move looks.
+pub fn swing_maneuvers(
+    timing: Res<Timing>,
+    mut actions: MessageReader<ContextAction>,
+    mut gestures: MessageWriter<Gesture>,
+    looks: Query<&ManeuverLooks>,
+) {
+    for action in actions.read() {
+        let Ok(looks) = looks.get(action.actor) else {
             continue;
         };
-        let shape = swing_gesture(weapon.swing, strike.dir, strike.dir.perp());
-        let mut delay = 0.0;
-        if weapon.windup > 0 {
-            releases.write(Release {
-                entity: strike.wielder,
-                secs: RELEASE_SECS,
-                strike: true,
-            });
-        } else {
-            gestures.write(swing(strike.wielder, shape));
-            delay = SWING_SECS * SWING_WOUND;
-        }
-        effects.write_batch(streak(
-            &weapon.streak,
-            strike.wielder,
-            strike.dir,
+        let (_, shape) = maneuver_swing(looks, action);
+        gestures.write(Gesture {
+            entity: action.actor,
             shape,
-            delay,
+            secs: timing.0.swing_secs,
+            delay: 0.0,
+        });
+    }
+}
+
+/// An actor acting on what it picked keeps its own moves (a lunge's step, a
+/// swap) until just after its blow lands.
+pub fn hold_attackers(
+    timing: Res<Timing>,
+    mut actions: MessageReader<ContextAction>,
+    mut holds: MessageWriter<HoldMoves>,
+) {
+    for action in actions.read() {
+        holds.write(HoldMoves {
+            entity: action.actor,
+            secs: timing.contact() + timing.0.follow_gap,
+        });
+    }
+}
+
+/// A move leaves the streak its look names while it strikes.
+pub fn streak_maneuvers(
+    timing: Res<Timing>,
+    mut actions: MessageReader<ContextAction>,
+    mut effects: MessageWriter<PlayEffect>,
+    looks: Query<&ManeuverLooks>,
+) {
+    for action in actions.read() {
+        let Ok(looks) = looks.get(action.actor) else {
+            continue;
+        };
+        let (look, shape) = maneuver_swing(looks, action);
+        let start = timing.strike_start();
+        effects.write_batch(streak(
+            &look,
+            action.actor,
+            action.picked,
+            shape,
+            start,
+            &timing,
         ));
     }
 }
 
-/// What a blow lands on moves only once it lands: a knocked target is
-/// flung from the contact, one that stays shakes away from the blow, and
-/// either bleeds, the way the blow went (more when it was killed). What a
-/// knocked body runs into shakes at the contact too, and the body bleeds.
-/// The killed are gone by now: their remains stand in for them.
-#[allow(clippy::too_many_arguments)]
-pub fn react_to_blows(
-    mut hits: MessageReader<Hit>,
-    mut collisions: MessageReader<Collision>,
-    (mut gestures, mut holds, mut flings, mut effects): (
-        MessageWriter<Gesture>,
-        MessageWriter<HoldMoves>,
-        MessageWriter<Fling>,
-        MessageWriter<PlayEffect>,
-    ),
+/// A weapon's wielder releases the swing it wound up when it aimed, or, not
+/// wound up, swings whole.
+pub fn swing_strikes(
+    timing: Res<Timing>,
     mut strikes: MessageReader<Strike>,
-    (positions, bleeds): (Query<&Pos>, Query<&Bleeds>),
+    mut releases: MessageWriter<Release>,
+    mut gestures: MessageWriter<Gesture>,
+    weapons: Query<(&Weapon, &WeaponLook)>,
+) {
+    for strike in strikes.read() {
+        let Ok((weapon, look)) = weapons.get(strike.wielder) else {
+            continue;
+        };
+        if weapon.windup > 0 {
+            releases.write(Release {
+                entity: strike.wielder,
+                secs: timing.release_secs(),
+                strike: true,
+            });
+        } else {
+            gestures.write(Gesture {
+                entity: strike.wielder,
+                shape: weapon_swing(look, strike.dir),
+                secs: timing.0.swing_secs,
+                delay: 0.0,
+            });
+        }
+    }
+}
+
+/// A weapon leaves the streak its look names while it strikes.
+pub fn streak_strikes(
+    timing: Res<Timing>,
+    mut strikes: MessageReader<Strike>,
+    mut effects: MessageWriter<PlayEffect>,
+    weapons: Query<(&Weapon, &WeaponLook)>,
+) {
+    for strike in strikes.read() {
+        let Ok((weapon, look)) = weapons.get(strike.wielder) else {
+            continue;
+        };
+        let start = if weapon.windup > 0 {
+            0.0
+        } else {
+            timing.strike_start()
+        };
+        let shape = weapon_swing(look, strike.dir);
+        effects.write_batch(streak(
+            &look.0,
+            strike.wielder,
+            strike.dir,
+            shape,
+            start,
+            &timing,
+        ));
+    }
+}
+
+/// When and on what each hit lands: at the contact of its swing (sooner
+/// for a released wind-up), on the target or, if it was killed, its
+/// remains, driven the way the target is knocked (it is still shown where
+/// it was) or else away from the attacker.
+pub fn time_blows(
+    timing: Res<Timing>,
+    mut hits: MessageReader<Hit>,
+    mut strikes: MessageReader<Strike>,
+    mut blows: MessageWriter<BlowLands>,
     weapons: Query<&Weapon>,
     remains: Query<(Entity, &Remains)>,
-    shown: Query<&AnimatedPos>,
+    (positions, shown): (Query<&Pos>, Query<&AnimatedPos>),
 ) {
+    let released: HashSet<Entity> = strikes
+        .read()
+        .map(|strike| strike.wielder)
+        .filter(|wielder| weapons.get(*wielder).is_ok_and(|weapon| weapon.windup > 0))
+        .collect();
     let shown_by = |entity: Entity| {
         remains
             .iter()
             .find(|(_, of)| of.0 == entity)
             .map_or((entity, false), |(remains, _)| (remains, true))
     };
-    // A wound-up swing, released, lands sooner than a whole one.
-    let released: HashSet<Entity> = strikes
-        .read()
-        .map(|strike| strike.wielder)
-        .filter(|wielder| weapons.get(*wielder).is_ok_and(|weapon| weapon.windup > 0))
-        .collect();
-    let contact = |source: Entity| {
-        if released.contains(&source) {
-            RELEASE_CONTACT
-        } else {
-            CONTACT
-        }
-    };
-    // What a blow knocks out of a body, if it bleeds anything.
-    let bleed = |entity: Entity, toward: Vec2, strength: i32, delay: f32| {
-        bleeds.get(entity).ok().map(|bleeds| PlayEffect {
-            effect: bleeds.0.clone(),
-            entity,
-            toward,
-            swing: None,
-            secs: 0.0,
-            strength,
-            delay,
-        })
-    };
-    let shake = |entity: Entity, from: IVec2, at: IVec2, delay: f32| Gesture {
-        entity,
-        shape: GestureShape::Shake {
-            toward: (at - from).clamp(IVec2::NEG_ONE, IVec2::ONE).as_vec2() * SHAKE_REACH,
-        },
-        secs: SHAKE_SECS,
-        delay,
-    };
     for hit in hits.read() {
-        let delay = contact(hit.source);
         let (target, killed) = shown_by(hit.target);
-        holds.write(HoldMoves {
-            entity: target,
-            secs: delay,
-        });
-        flings.write(Fling {
-            entity: target,
-            secs: FLING_SECS,
-        });
         let (Ok(from), Ok(at)) = (positions.get(shown_by(hit.source).0), positions.get(target))
         else {
             continue;
         };
-        gestures.write(shake(target, from.0, at.0, delay));
-        // A knocked target is still shown where it was: the blow drove it
-        // the way it is going; one that stays, away from the attacker.
         let knocked = shown
             .get(target)
             .map_or(Vec2::ZERO, |shown| at.0.as_vec2() - shown.position);
@@ -317,24 +409,152 @@ pub fn react_to_blows(
         } else {
             (at.0 - from.0).as_vec2()
         };
-        let strength = hit.damage + if killed { KILL_SPLASH } else { 0 };
-        effects.write_batch(bleed(target, toward, strength, delay));
+        let contact = if released.contains(&hit.source) {
+            timing.release_contact()
+        } else {
+            timing.contact()
+        };
+        blows.write(BlowLands {
+            target,
+            toward,
+            contact,
+            damage: hit.damage,
+            killed,
+        });
     }
-    for collision in collisions.read() {
-        let (mover, _) = shown_by(collision.mover);
-        let (Ok(from), Ok(at)) = (positions.get(mover), positions.get(collision.obstacle)) else {
+}
+
+/// What a blow lands on moves only once it lands, flung.
+pub fn hold_struck(
+    timing: Res<Timing>,
+    mut blows: MessageReader<BlowLands>,
+    mut holds: MessageWriter<HoldMoves>,
+    mut flings: MessageWriter<Fling>,
+) {
+    for blow in blows.read() {
+        holds.write(HoldMoves {
+            entity: blow.target,
+            secs: blow.contact,
+        });
+        flings.write(Fling {
+            entity: blow.target,
+            secs: timing.0.fling_secs,
+        });
+    }
+}
+
+/// The way a body shakes when something drives it `toward`.
+fn shake(entity: Entity, toward: Vec2, delay: f32, timing: &Timing) -> Gesture {
+    Gesture {
+        entity,
+        shape: GestureShape::Shake {
+            toward: toward.normalize_or_zero() * timing.0.shake_reach,
+        },
+        secs: timing.0.shake_secs,
+        delay,
+    }
+}
+
+/// What a blow lands on shakes the way it was driven.
+pub fn shake_struck(
+    timing: Res<Timing>,
+    mut blows: MessageReader<BlowLands>,
+    mut gestures: MessageWriter<Gesture>,
+) {
+    for blow in blows.read() {
+        gestures.write(shake(blow.target, blow.toward, blow.contact, &timing));
+    }
+}
+
+/// What a blow lands on bleeds what it `Bleeds`, the way it was driven,
+/// more when it was killed.
+pub fn bleed_struck(
+    timing: Res<Timing>,
+    mut blows: MessageReader<BlowLands>,
+    mut effects: MessageWriter<PlayEffect>,
+    bleeds: Query<&Bleeds>,
+) {
+    for blow in blows.read() {
+        let Ok(bleeds) = bleeds.get(blow.target) else {
             continue;
         };
-        gestures.write(shake(collision.obstacle, from.0, at.0, CONTACT));
-        effects.write_batch(bleed(mover, (at.0 - from.0).as_vec2(), 1, CONTACT));
+        let bonus = if blow.killed {
+            timing.0.kill_strength
+        } else {
+            0
+        };
+        effects.write(PlayEffect {
+            effect: bleeds.0.clone(),
+            entity: blow.target,
+            toward: blow.toward,
+            swing: None,
+            secs: 0.0,
+            strength: blow.damage + bonus,
+            delay: blow.contact,
+        });
+    }
+}
+
+/// What a knocked body runs into shakes when the blow lands.
+pub fn shake_obstacles(
+    timing: Res<Timing>,
+    mut collisions: MessageReader<Collision>,
+    mut gestures: MessageWriter<Gesture>,
+    positions: Query<&Pos>,
+) {
+    for collision in collisions.read() {
+        let (Ok(from), Ok(at)) = (
+            positions.get(collision.mover),
+            positions.get(collision.obstacle),
+        ) else {
+            continue;
+        };
+        let toward = (at.0 - from.0).as_vec2();
+        gestures.write(shake(collision.obstacle, toward, timing.contact(), &timing));
+    }
+}
+
+/// A knocked body bleeds what it `Bleeds` where it runs into something (its
+/// remains, if that killed it).
+pub fn bleed_impacts(
+    timing: Res<Timing>,
+    mut collisions: MessageReader<Collision>,
+    mut effects: MessageWriter<PlayEffect>,
+    remains: Query<(Entity, &Remains)>,
+    positions: Query<&Pos>,
+    bleeds: Query<&Bleeds>,
+) {
+    for collision in collisions.read() {
+        let mover = remains
+            .iter()
+            .find(|(_, of)| of.0 == collision.mover)
+            .map_or(collision.mover, |(remains, _)| remains);
+        let (Ok(from), Ok(at), Ok(bleeds)) = (
+            positions.get(mover),
+            positions.get(collision.obstacle),
+            bleeds.get(mover),
+        ) else {
+            continue;
+        };
+        effects.write(PlayEffect {
+            effect: bleeds.0.clone(),
+            entity: mover,
+            toward: (at.0 - from.0).as_vec2(),
+            swing: None,
+            secs: 0.0,
+            strength: 1,
+            delay: timing.contact(),
+        });
     }
 }
 
 /// What dies (and is removed) leaves its remains to be shown: its glyph,
 /// carrying on the motion it had (and what it bleeds), held until the blow
-/// lands, then sinking into the floor. Only shown objects (with an animation) leave remains.
+/// lands, then sinking into the floor. Only shown objects (with an
+/// animation) leave remains.
 #[allow(clippy::type_complexity)]
 pub fn leave_remains(
+    timing: Res<Timing>,
     mut commands: Commands,
     mut died: MessageReader<Died>,
     bodies: Query<
@@ -359,17 +579,14 @@ pub fn leave_remains(
             *glyph,
             animation.clone(),
             *shown,
-            crate::animation::HeldMoves(CONTACT),
-            Flinging::new(FLING_SECS),
+            crate::animation::HeldMoves(timing.contact()),
+            Flinging::new(timing.0.fling_secs),
         ));
-        // The blow that killed it still knocks out what it bleeds.
         if let Some(bleeds) = bleeds {
             remains.insert(bleeds.clone());
         }
     }
 }
 
-/// What is shown of something that died (the body it was), until it has
-/// sunk.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct Remains(pub Entity);
+#[cfg(test)]
+mod tests;

@@ -145,8 +145,9 @@ and renderers must not import it.
   actions go through `schedule::ActionStage`, in order, within the
   simulation before the moves: `Due` (time passes), `Ongoing` (what fell
   due happens), `PlayerCommands` (input), `Decide`, `Effects`, `Costs`,
-  `Movement`, then, after the movement passes have settled, `Hits` and
-  `Damage`. Each system names its stage, not its neighbours. Death comes
+  `Movement`, then, after the movement passes have settled, `Hits`,
+  `Damage` and `Aftermath` (what follows a death while the dead still
+  stand). Each system names its stage, not its neighbours. Death comes
   after movement, so a lethal blow knocks its target first, like a
   blow that does not kill, and what the body runs into is hurt in the
   same frame.
@@ -234,16 +235,19 @@ and renderers must not import it.
   and gestures of different objects can be timed against each other.
 - `choreography/` times one exchange of blows from what the simulation
   reports (`ContextAction`, `Strike`, `Hit`, `Collision`, `Died`), which
-  it settles in one frame: the attacker swings at once, as the `Swing` of
-  its move or weapon says (thrust, sweep, hook; data), its own move
-  held until just after contact; what the blow lands on is held until
-  contact, then slides (a knock) or shakes, and what a knocked body runs
-  into shakes. The dead leave `Remains`, a copy of their glyph and motion
-  that finishes the slide and sinks. A weapon winds up when it is aimed
-  and releases at the strike; the player winds up on a pick. A swing plays
-  the streak its move or weapon names, a blow what its target `Bleeds`
-  (on the remains, when it killed), each a `PlayEffect`. It changes
-  nothing in the simulation.
+  it settles in one frame, each step its own small system: a weapon winds
+  up when it is aimed and releases at the strike, the player winds up on
+  a pick; the attacker swings at once as its look says (`WeaponLook`,
+  `ManeuverLooks`: the swing and the streak, kept apart from the
+  gameplay's `Weapon` and `Maneuvers`), its own move held until just
+  after contact, and leaves its streak. `time_blows` turns each `Hit`
+  into a `BlowLands` (when, on what, which way), which the target's
+  hold, shake and bleeding each answer; what a knocked body runs into
+  shakes, and the body bleeds. The dead leave `Remains` (in
+  `ActionStage::Aftermath`), a copy of their glyph and motion that
+  finishes the slide and sinks and stands in for them. Its timings are
+  data (`assets/rules/choreography.ron`, the `Timing` resource). It
+  changes nothing in the simulation.
 - `effects/` plays effects, which are data: one RON file each in
   `assets/effects` (`content::effects`), bundled by `build.rs` like the
   maps, so a new effect is a new file and the roster names it. An effect

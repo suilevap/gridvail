@@ -8,7 +8,9 @@ changes of its own, not alongside features.
 
 The combat code (`selection/`, `combat/`, `damage/`,
 `simulation/time.rs`, `simulation/physics.rs`, `content/data.rs`) follows
-them and is the reference for the examples below.
+them and is the reference for the examples below; so do the presentation
+of fights (`choreography/`, `effects/`) and its data
+(`assets/rules/choreography.ron`, `assets/effects/`).
 
 ## Principles
 
@@ -108,8 +110,11 @@ The mechanisms the game should converge on are listed under
 ### 8. Data, not constants
 
 Stats, patterns and tunables live in `assets/rules/` (the actor roster:
-kinds, hit points, weapons drawn as art, move sets), are read by
-`content/` into plain specs, and are turned into components by `app`. Code
+kinds, hit points, weapons drawn as art, move sets; how fights are timed
+on screen), are read by `content/` into plain specs, and are turned into
+components by `app`. How things look follows the same rule: effects are
+one file each in `assets/effects`, and the roster names them, so a new
+look is a new file. Code
 keeps a default only where data would add nothing. Data files share one
 format read by one generic reader, so a new file or field is a new type,
 not a new parser (see [Data](#data-one-format-and-prefabs)). Tunables a system reads
@@ -120,7 +125,9 @@ change them without touching the system.
 
 Gameplay systems never set colours or glyphs for the player to see. They
 expose state (a `Telegraph`, a `Selected`) and a presentation system turns
-it into marks (`CellMarks`), which the frame composer draws. That keeps
+it into marks (`CellMarks`), which the frame composer draws. What only
+shows is kept off gameplay components: how a weapon looks swung is a
+`WeaponLook` beside its `Weapon`, read by `choreography/` alone. That keeps
 what happens apart from how it is shown, so feedback can change freely.
 
 ### 10. Input is intent, from any device

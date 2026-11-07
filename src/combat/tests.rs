@@ -34,8 +34,6 @@ fn blade() -> Maneuvers {
         knock,
         follow,
         swap,
-        swing: Swing::default(),
-        streak: None,
     };
     Maneuvers {
         forward: make("lunge", 1, true, false),
@@ -160,8 +158,6 @@ fn a_weapon_is_aimed_owes_its_windup_then_strikes_its_area() {
         area: Area(vec![IVec2::new(1, -1), IVec2::X, IVec2::new(1, 1)]),
         damage: 1,
         windup: 1,
-        swing: Swing::default(),
-        streak: None,
     };
     let wielder = app.world_mut().spawn((sweep, Pos(IVec2::new(3, 3)))).id();
     // Two in the row in front (to the west), one behind.
@@ -220,8 +216,6 @@ fn strike_marks_are_planted_in_the_order_the_weapon_swings() {
         area: Area(vec![IVec2::new(1, 1), IVec2::X, IVec2::new(1, -1)]),
         damage: 1,
         windup: 1,
-        swing: Swing::default(),
-        streak: None,
     };
     // Facing east, it winds up to the north and swings south.
     world.spawn((Pos(IVec2::new(3, 3)), sweep, Telegraph { dir: IVec2::X }));

@@ -61,7 +61,11 @@ impl Plugin for SimulationPlugin {
             // removed.
             .configure_sets(
                 Update,
-                (ActionStage::Hits, ActionStage::Damage)
+                (
+                    ActionStage::Hits,
+                    ActionStage::Damage,
+                    ActionStage::Aftermath,
+                )
                     .chain()
                     .after(resolve_commit)
                     .before(drop_items)

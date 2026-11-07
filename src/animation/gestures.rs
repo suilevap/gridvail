@@ -166,33 +166,29 @@ pub fn gesture_path(shape: GestureShape) -> Path {
     }
 }
 
-/// Plays each new gesture now, or queues it on its object until its delay
-/// is up; winds up and releases; holds an object's moves for as long as
-/// the longest hold asked.
-pub fn take_gestures(
+/// Holds an object's moves for as long as the longest hold asked.
+pub fn take_holds(
     mut commands: Commands,
-    mut gestures: MessageReader<Gesture>,
     mut holds: MessageReader<HoldMoves>,
-    mut flings: MessageReader<Fling>,
-    mut wind_ups: MessageReader<WindUp>,
-    mut releases: MessageReader<Release>,
-    mut objects: Query<(
-        &mut ObjectAnimation,
-        Option<&mut PendingGestures>,
-        Option<&mut HeldMoves>,
-    )>,
+    mut objects: Query<Option<&mut HeldMoves>, With<ObjectAnimation>>,
 ) {
     for hold in holds.read() {
-        let Ok((_, _, held)) = objects.get_mut(hold.entity) else {
-            continue;
-        };
-        match held {
-            Some(mut held) => held.0 = held.0.max(hold.secs),
-            None => {
+        match objects.get_mut(hold.entity) {
+            Ok(Some(mut held)) => held.0 = held.0.max(hold.secs),
+            Ok(None) => {
                 commands.entity(hold.entity).insert(HeldMoves(hold.secs));
             }
+            Err(_) => {}
         }
     }
+}
+
+/// Makes an object's next move a fling.
+pub fn take_flings(
+    mut commands: Commands,
+    mut flings: MessageReader<Fling>,
+    objects: Query<(), With<ObjectAnimation>>,
+) {
     for fling in flings.read() {
         if objects.contains(fling.entity) {
             commands
@@ -200,15 +196,29 @@ pub fn take_gestures(
                 .insert(Flinging::new(fling.secs));
         }
     }
+}
+
+/// Winds an object's pose up, to hold.
+pub fn take_wind_ups(
+    mut wind_ups: MessageReader<WindUp>,
+    mut objects: Query<&mut ObjectAnimation>,
+) {
     for wind_up in wind_ups.read() {
-        if let Ok((mut animation, _, _)) = objects.get_mut(wind_up.entity) {
+        if let Ok(mut animation) = objects.get_mut(wind_up.entity) {
             animation
                 .pose
                 .wind_up(gesture_path(wind_up.shape), wind_up.secs);
         }
     }
+}
+
+/// Releases an object's wind-up: strikes on, or eases back.
+pub fn take_releases(
+    mut releases: MessageReader<Release>,
+    mut objects: Query<&mut ObjectAnimation>,
+) {
     for release in releases.read() {
-        if let Ok((mut animation, _, _)) = objects.get_mut(release.entity) {
+        if let Ok(mut animation) = objects.get_mut(release.entity) {
             if release.strike {
                 animation.pose.release(release.secs);
             } else {
@@ -216,8 +226,17 @@ pub fn take_gestures(
             }
         }
     }
+}
+
+/// Plays each new gesture now, or queues it on its object until its delay
+/// is up.
+pub fn take_gestures(
+    mut commands: Commands,
+    mut gestures: MessageReader<Gesture>,
+    mut objects: Query<(&mut ObjectAnimation, Option<&mut PendingGestures>)>,
+) {
     for gesture in gestures.read() {
-        let Ok((mut animation, pending, _)) = objects.get_mut(gesture.entity) else {
+        let Ok((mut animation, pending)) = objects.get_mut(gesture.entity) else {
             continue;
         };
         if gesture.delay <= 0.0 {
@@ -237,15 +256,11 @@ pub fn take_gestures(
     }
 }
 
-/// Counts queued gestures and holds down, playing each gesture when its
-/// delay is up, letting moves go when a hold is over, and ending a fling
-/// once its move has had its time.
-pub fn advance_gestures(
+/// Counts queued gestures down, playing each when its delay is up.
+pub fn play_pending_gestures(
     mut commands: Commands,
     time: Res<Time>,
     mut pending: Query<(Entity, &mut ObjectAnimation, &mut PendingGestures)>,
-    mut held: Query<(Entity, &mut HeldMoves)>,
-    mut flinging: Query<(Entity, &mut Flinging), Without<HeldMoves>>,
 ) {
     let dt = time.delta_secs();
     for (entity, mut animation, mut queue) in &mut pending {
@@ -262,16 +277,32 @@ pub fn advance_gestures(
             commands.entity(entity).remove::<PendingGestures>();
         }
     }
-    for (entity, mut fling) in &mut flinging {
-        fling.left -= dt;
-        if fling.left <= 0.0 {
-            commands.entity(entity).remove::<Flinging>();
-        }
-    }
+}
+
+/// Lets an object's moves go when its hold is over.
+pub fn wear_off_holds(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut held: Query<(Entity, &mut HeldMoves)>,
+) {
     for (entity, mut hold) in &mut held {
-        hold.0 -= dt;
+        hold.0 -= time.delta_secs();
         if hold.0 <= 0.0 {
             commands.entity(entity).remove::<HeldMoves>();
+        }
+    }
+}
+
+/// Ends a fling once the move after the hold has had its time.
+pub fn wear_off_flings(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut flinging: Query<(Entity, &mut Flinging), Without<HeldMoves>>,
+) {
+    for (entity, mut fling) in &mut flinging {
+        fling.left -= time.delta_secs();
+        if fling.left <= 0.0 {
+            commands.entity(entity).remove::<Flinging>();
         }
     }
 }

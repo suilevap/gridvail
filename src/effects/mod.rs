@@ -28,7 +28,7 @@ impl Plugin for EffectsPlugin {
             .insert_resource(EffectRng(StdRng::seed_from_u64(0x5eed)))
             .add_systems(
                 Update,
-                (play_effects, advance_particles)
+                (play_effects, reveal_particles, advance_particles)
                     .chain()
                     .in_set(GamePhase::Animation),
             );
@@ -211,21 +211,27 @@ pub fn play_effects(
     }
 }
 
-/// Particles appear when their delay is up, drift and slow down, and go
-/// once they have lived their life.
-pub fn advance_particles(
+/// Particles appear when their delay is up.
+pub fn reveal_particles(
     mut commands: Commands,
     time: Res<Time>,
     mut waiting: Query<(Entity, &mut ParticleDelay)>,
-    mut particles: Query<(Entity, &mut Particle), Without<ParticleDelay>>,
 ) {
-    let dt = time.delta_secs();
     for (entity, mut delay) in &mut waiting {
-        delay.0 -= dt;
+        delay.0 -= time.delta_secs();
         if delay.0 <= 0.0 {
             commands.entity(entity).remove::<ParticleDelay>();
         }
     }
+}
+
+/// Particles drift and slow down, and go once they have lived their life.
+pub fn advance_particles(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut particles: Query<(Entity, &mut Particle), Without<ParticleDelay>>,
+) {
+    let dt = time.delta_secs();
     for (entity, mut particle) in &mut particles {
         particle.age += dt;
         if particle.age >= particle.life {
