@@ -725,8 +725,10 @@ fn particles_in_sight_are_listed_where_they_are_and_strokes_keep_their_way() {
     app.world_mut()
         .spawn(particle(Vec2::new(5.3, 4.0), Some(Vec2::Y)));
     // Not yet appeared, and past the map's edge: neither is drawn.
-    app.world_mut()
-        .spawn((particle(Vec2::new(3.0, 3.0), None), ParticleDelay(0.5)));
+    app.world_mut().spawn(Particle {
+        age: -0.5,
+        ..particle(Vec2::new(3.0, 3.0), None)
+    });
     app.world_mut().spawn(particle(Vec2::new(-1.5, 3.0), None));
     app.world_mut().run_system_once(compose_frame).unwrap();
     app.world_mut().run_system_once(compose_effects).unwrap();

@@ -18,6 +18,14 @@ fn sent<M: Message + Clone>(app: &App) -> Vec<M> {
     messages.iter_current_update_messages().cloned().collect()
 }
 
+/// What was sent to wait for its moment this frame, with its seconds.
+fn later<M: Message + Clone>(app: &App) -> Vec<(f32, M)> {
+    sent::<Later<M>>(app)
+        .into_iter()
+        .map(|later| (later.secs, later.message))
+        .collect()
+}
+
 fn timing(app: &App) -> Timing {
     *app.world().resource::<Timing>()
 }
@@ -80,12 +88,9 @@ fn a_wound_up_strike_releases_and_streaks_at_once() {
         sent::<Gesture>(&app).is_empty(),
         "swung whole over the wind-up"
     );
-    let streaks = sent::<PlayEffect>(&app);
+    let streaks = later::<PlayEffect>(&app);
     assert_eq!(streaks.len(), 1);
-    assert_eq!(
-        (streaks[0].effect, streaks[0].delay),
-        (EffectId::Swoosh, 0.0)
-    );
+    assert_eq!((streaks[0].1.effect, streaks[0].0), (EffectId::Swoosh, 0.0));
 }
 
 /// Moves that hit what is ahead, sweeping round to the left.
@@ -140,7 +145,10 @@ fn an_attack_swings_round_the_way_its_cells_go_and_holds_its_actor() {
     }
     let holds = sent::<HoldMoves>(&app);
     assert!(holds.iter().any(|hold| hold.entity == actor));
-    assert!(sent::<PlayEffect>(&app).is_empty(), "a streak nobody named");
+    assert!(
+        later::<PlayEffect>(&app).is_empty(),
+        "a streak nobody named"
+    );
 }
 
 #[test]
@@ -185,12 +193,15 @@ fn a_blow_lands_at_contact_and_its_target_is_held_shaken_and_bleeds() {
     assert!(sent::<HoldMoves>(&app)
         .iter()
         .any(|hold| hold.entity == target && hold.secs == contact));
-    assert!(sent::<Gesture>(&app)
+    assert!(later::<Gesture>(&app)
         .iter()
-        .any(|shake| shake.entity == target && shake.delay == contact));
-    let bled = sent::<PlayEffect>(&app);
+        .any(|(secs, shake)| shake.entity == target && *secs == contact));
+    let bled = later::<PlayEffect>(&app);
     assert_eq!(bled.len(), 1);
-    assert_eq!((bled[0].effect, bled[0].strength), (EffectId::Blood, 1));
+    assert_eq!(
+        (bled[0].0, bled[0].1.effect, bled[0].1.strength),
+        (contact, EffectId::Blood, 1)
+    );
 }
 
 #[test]
@@ -240,20 +251,22 @@ fn a_slam_plays_after_the_blow_where_the_body_meets_what_it_hit() {
     app.update();
     let timing = timing(&app);
     assert!(timing.impact() > timing.contact(), "not after the blow");
-    let played = sent::<PlayEffect>(&app);
-    let slam = played
+    let played = later::<PlayEffect>(&app);
+    let (secs, slam) = played
         .iter()
-        .find(|played| Some(played.effect) == timing.0.impact_effect)
+        .find(|(_, played)| Some(played.effect) == timing.0.impact_effect)
         .expect("no slam");
     assert_eq!((slam.entity, slam.toward), (mover, Vec2::X));
-    assert_eq!(slam.delay, timing.impact());
+    assert_eq!(*secs, timing.impact());
     assert!(
-        played.iter().any(|played| played.effect == EffectId::Blood),
+        played
+            .iter()
+            .any(|(_, played)| played.effect == EffectId::Blood),
         "no blood"
     );
-    assert!(sent::<Gesture>(&app)
+    assert!(later::<Gesture>(&app)
         .iter()
-        .any(|shake| shake.entity == wall && shake.delay == timing.impact()));
+        .any(|(secs, shake)| shake.entity == wall && *secs == timing.impact()));
 }
 
 #[test]
@@ -275,8 +288,8 @@ fn the_killed_bleed_through_their_remains_and_more() {
         damage: 1,
     });
     app.update();
-    let bled = sent::<PlayEffect>(&app);
+    let bled = later::<PlayEffect>(&app);
     assert_eq!(bled.len(), 1);
-    assert_eq!(bled[0].entity, remains);
-    assert_eq!(bled[0].strength, 1 + timing(&app).0.kill_strength);
+    assert_eq!(bled[0].1.entity, remains);
+    assert_eq!(bled[0].1.strength, 1 + timing(&app).0.kill_strength);
 }

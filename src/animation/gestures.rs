@@ -8,18 +8,13 @@ use crate::model::*;
 
 use super::{MotionStyle, ObjectAnimation, Path, SWING_WOUND};
 
-/// Gestures waiting for their delay, each with the seconds still to wait.
-#[derive(Component, Debug, Default)]
-pub struct PendingGestures(pub Vec<(f32, Gesture)>);
-
-impl PendingGestures {
-    /// Seconds until the last one has finished.
-    pub fn remaining(&self) -> f32 {
-        self.0
-            .iter()
-            .map(|(wait, gesture)| wait + gesture.secs)
-            .fold(0.0, f32::max)
-    }
+/// Seconds until the last gesture still waiting for `entity` has finished.
+pub fn waiting_for(waiting: &Waiting<Gesture>, entity: Entity) -> f32 {
+    waiting
+        .iter()
+        .filter(|(_, gesture)| gesture.entity == entity)
+        .map(|(wait, gesture)| wait + gesture.secs)
+        .fold(0.0, f32::max)
 }
 
 /// Moves to new cells held back for the seconds left.
@@ -228,53 +223,16 @@ pub fn take_releases(
     }
 }
 
-/// Plays each new gesture now, or queues it on its object until its delay
-/// is up.
+/// Plays each gesture on its object.
 pub fn take_gestures(
-    mut commands: Commands,
     mut gestures: MessageReader<Gesture>,
-    mut objects: Query<(&mut ObjectAnimation, Option<&mut PendingGestures>)>,
+    mut objects: Query<&mut ObjectAnimation>,
 ) {
     for gesture in gestures.read() {
-        let Ok((mut animation, pending)) = objects.get_mut(gesture.entity) else {
-            continue;
-        };
-        if gesture.delay <= 0.0 {
+        if let Ok(mut animation) = objects.get_mut(gesture.entity) {
             animation
                 .pose
                 .start(gesture_path(gesture.shape), gesture.secs);
-            continue;
-        }
-        match pending {
-            Some(mut pending) => pending.0.push((gesture.delay, *gesture)),
-            None => {
-                commands
-                    .entity(gesture.entity)
-                    .insert(PendingGestures(vec![(gesture.delay, *gesture)]));
-            }
-        }
-    }
-}
-
-/// Counts queued gestures down, playing each when its delay is up.
-pub fn play_pending_gestures(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut pending: Query<(Entity, &mut ObjectAnimation, &mut PendingGestures)>,
-) {
-    let dt = time.delta_secs();
-    for (entity, mut animation, mut queue) in &mut pending {
-        for (wait, gesture) in queue.0.iter_mut() {
-            *wait -= dt;
-            if *wait <= 0.0 {
-                animation
-                    .pose
-                    .start(gesture_path(gesture.shape), gesture.secs);
-            }
-        }
-        queue.0.retain(|(wait, _)| *wait > 0.0);
-        if queue.0.is_empty() {
-            commands.entity(entity).remove::<PendingGestures>();
         }
     }
 }
@@ -366,16 +324,21 @@ mod tests {
     }
 
     #[test]
-    fn a_delayed_gesture_waits_for_its_delay() {
+    fn a_gesture_sent_later_waits_and_holds_the_turn() {
         let (mut app, entity) = app();
-        app.world_mut().write_message(Gesture {
+        let gesture = Gesture {
             entity,
             shape: GestureShape::Reach { toward: Vec2::X },
             secs: 0.2,
-            delay: 0.1,
-        });
+        };
+        app.world_mut().write_message(Later::after(0.1, gesture));
         frames(&mut app, 4);
         assert_eq!(shown(&app, entity), Vec2::new(2.0, 2.0), "played early");
+        let pacing = app.world().resource::<TurnPacing>();
+        assert!(
+            pacing.animation().unwrap() > Duration::from_secs_f32(0.2),
+            "the turn did not wait for it"
+        );
         frames(&mut app, 8);
         assert!(shown(&app, entity).x > 2.1, "never played");
         frames(&mut app, 20);

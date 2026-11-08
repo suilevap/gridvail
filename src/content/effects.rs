@@ -28,7 +28,7 @@ pub struct EmitterSpec {
     pub speed: (f32, f32),
     #[serde(default)]
     pub drag: f32,
-    /// Seconds after the request's own delay before they appear.
+    /// Seconds after the effect is played before they appear.
     #[serde(default)]
     pub delay: f32,
     /// How long each lives, in seconds (picked in the range), and the share

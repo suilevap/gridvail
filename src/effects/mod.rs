@@ -12,6 +12,7 @@ use rand::{RngExt, SeedableRng};
 
 use crate::content::catalog::Catalog;
 use crate::content::effects::{EmitterSpec, GlyphSpec, SourceSpec};
+use crate::cues::ShowLater;
 use crate::model::*;
 use crate::schedule::GamePhase;
 
@@ -20,13 +21,13 @@ pub struct EffectsPlugin;
 impl Plugin for EffectsPlugin {
     fn build(&self, app: &mut App) {
         let library = EffectLibrary::bundled().unwrap_or_else(|error| panic!("{error}"));
-        app.add_message::<PlayEffect>()
+        app.add_later_message::<PlayEffect>()
             .add_message::<MapLoaded>()
             .insert_resource(library)
             .insert_resource(EffectRng(StdRng::seed_from_u64(0x5eed)))
             .add_systems(
                 Update,
-                (play_effects, reveal_particles, advance_particles)
+                (play_effects, advance_particles)
                     .chain()
                     // Effects start where things are shown; one started
                     // the frame a move does may start a frame behind it.
@@ -79,14 +80,15 @@ pub fn along_swing(swing: GestureShape, (near, far, arc): (f32, f32, f32), t: f3
     }
 }
 
-/// The particles one emitter throws off for `request`, from `at`: each
-/// with the seconds until it appears.
+/// The particles one emitter throws off for `request`, from `at`, each
+/// aged to appear when the emitter says (its `delay`, and along a swing,
+/// as the swing gets there).
 pub fn emit(
     emitter: &EmitterSpec,
     request: &PlayEffect,
     at: Vec2,
     rng: &mut StdRng,
-) -> Vec<(Particle, f32)> {
+) -> Vec<Particle> {
     let toward = request.toward.normalize_or(Vec2::X);
     let count = emitter.count as f32 + emitter.per_strength * request.strength.max(0) as f32;
     let count = count.round() as usize;
@@ -132,28 +134,24 @@ pub fn emit(
             continue;
         };
         let color = rgb(color);
-        particles.push((
-            Particle {
-                position: start,
-                velocity: way * pick(rng, emitter.speed),
-                drag: emitter.drag,
-                age: 0.0,
-                life: pick(rng, emitter.life),
-                hold: emitter.hold,
-                ch,
-                stroke,
-                color,
-                end_color: emitter.fade_to.map_or(color, rgb),
-            },
-            request.delay + emitter.delay + delay,
-        ));
+        particles.push(Particle {
+            position: start,
+            velocity: way * pick(rng, emitter.speed),
+            drag: emitter.drag,
+            age: -(emitter.delay + delay),
+            life: pick(rng, emitter.life),
+            hold: emitter.hold,
+            ch,
+            stroke,
+            color,
+            end_color: emitter.fade_to.map_or(color, rgb),
+        });
     }
     particles
 }
 
 /// Plays each requested effect from where its entity is shown: every
-/// emitter's particles, each waiting for its moment. An effect nobody
-/// wrote is skipped.
+/// emitter's particles, each appearing when its emitter says.
 pub fn play_effects(
     mut commands: Commands,
     mut requests: MessageReader<PlayEffect>,
@@ -171,12 +169,8 @@ pub fn play_effects(
         };
         let at = animated.map_or(pos.0.as_vec2(), |animated| animated.position);
         for emitter in &effect.emitters {
-            for (particle, delay) in emit(emitter, request, at, &mut rng.0) {
-                if delay > 0.0 {
-                    commands.spawn((particle, ParticleDelay(delay)));
-                } else {
-                    commands.spawn(particle);
-                }
+            for particle in emit(emitter, request, at, &mut rng.0) {
+                commands.spawn(particle);
             }
         }
     }
@@ -197,29 +191,19 @@ pub fn clear_particles(
     }
 }
 
-/// Particles appear when their delay is up.
-pub fn reveal_particles(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut waiting: Query<(Entity, &mut ParticleDelay)>,
-) {
-    for (entity, mut delay) in &mut waiting {
-        delay.0 -= time.delta_secs();
-        if delay.0 <= 0.0 {
-            commands.entity(entity).remove::<ParticleDelay>();
-        }
-    }
-}
-
-/// Particles drift and slow down, and go once they have lived their life.
+/// Particles age; those that have appeared drift and slow down, and go
+/// once they have lived their life.
 pub fn advance_particles(
     mut commands: Commands,
     time: Res<Time>,
-    mut particles: Query<(Entity, &mut Particle), Without<ParticleDelay>>,
+    mut particles: Query<(Entity, &mut Particle)>,
 ) {
     let dt = time.delta_secs();
     for (entity, mut particle) in &mut particles {
         particle.age += dt;
+        if !particle.appeared() {
+            continue;
+        }
         if particle.age >= particle.life {
             commands.entity(entity).despawn();
             continue;

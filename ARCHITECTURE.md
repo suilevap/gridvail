@@ -5,7 +5,7 @@ The code is arranged from reusable foundations toward the concrete game:
 ```text
 foundation  content  layout  model  schedule
      ↑        ↑        ↑       ↑       ↑
-     simulation  vision  navigation  lighting  animation  effects  presentation
+     simulation  vision  navigation  lighting  cues  animation  effects  presentation
           ↑               ↑                  ↑
           ai  →  locomotion   combat  damage   transition  choreography
              ↑       ↑       ↑
@@ -18,9 +18,10 @@ Arrows point toward dependencies. `combat` and `damage` sit
 on `model`, `schedule` and `simulation` and import none of each other; they
 meet only in messages and components. `transition` sits on `simulation`,
 `camera` and `model`. `choreography` sits on `animation`, `content`,
-`model` and `schedule` and only reads what the simulation says happened; it asks
-`effects` (particles, on `model`, `content` and `schedule`) for effects by
-id, in a message. `camera` sits on top of `animation` (it
+`model`, `schedule` and `cues` and only reads what the simulation says
+happened; it asks `effects` (particles, on `model`, `content`, `schedule`
+and `cues`) for effects by id, in a message, and `animation` (also on
+`cues`) for gestures. `cues` sits on `model` and `schedule` only. `camera` sits on top of `animation` (it
 eases the view with the same curves) and below `app` and `rendering`.
 `schedule` is the small, neutral contract
 shared by the domain plugins and output backends. `app` is the game composition
@@ -248,7 +249,8 @@ and renderers must not import it.
   delay. On top of the move, an object can make a `Gesture` (a reach, a
   thrust, a shake): an offset out and back that keeps the cell
   (`AnimatedPos::pose`, drawn at `drawn()` but not followed by the camera),
-  started now or after a delay. A `WindUp` plays a swing up to its
+  started when it arrives (one that waits for its moment is sent `Later`,
+  and the turn waits for it too). A `WindUp` plays a swing up to its
   wound-up pose and holds it until a `Release` (the rest of the swing, or
   easing back); a new gesture starts from wherever the pose had got to. `HoldMoves` keeps an object's next cell
   move from starting for a while (the turn waits for it too), so moves
@@ -270,6 +272,13 @@ and renderers must not import it.
   finishes the slide and sinks and stands in for them. Its timings are
   data (`assets/rules/choreography.ron`, the `Timing` resource). It
   changes nothing in the simulation.
+- `cues.rs` lets what is shown wait for its moment, in seconds on screen
+  as `simulation/time.rs` does in turns: a `Later<M>` is sent as its `M`
+  once its seconds are up, in `GamePhase::Cues` (between `Visibility`
+  and `Animation`), and a new map drops what still waits. A message type
+  opts in with `add_later_message`. The choreography sends shakes and
+  effects `Later`, timed to the blow; gestures and effects play when they
+  arrive and count nothing down themselves.
 - `effects/` plays effects, which are data: one RON file each in
   `assets/effects` (`content::effects`), bundled by `build.rs` like the
   maps, as a catalog: a new effect is a new file, `EffectId::Blood` for
@@ -279,7 +288,9 @@ and renderers must not import it.
   is emitters, each throwing off `Particle`s (short-lived glyphs off the
   grid) from a point along the blow or along the swing, with their count
   (and more per point of strength), speed and drag, life and how long
-  they show before fading, glyphs and colours; one generic system plays
+  they show before fading, glyphs and colours (an emitter's own delay,
+  and a streak's way along its swing, are the particle's age starting
+  below zero); one generic system plays
   any of them, with random numbers of its own so the game plays the same
   without them; a new map clears them. The frame lists
   the ones in sight (`RenderBuffers::effects`, through portals too) and

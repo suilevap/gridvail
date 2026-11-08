@@ -238,7 +238,10 @@ effects.
 
 **Built** (`simulation/time.rs`): `Debt` paid off a turn at a time before
 anyone decides, `Delay` to add to it, `Scheduled` messages released when it
-is paid (any message type, by `add_scheduled_message`). Weapon wind-ups use
+is paid (any message type, by `add_scheduled_message`). What is shown waits the
+same way in seconds (`cues`): a `Later` message is sent when its seconds
+are up (any message type, by `add_later_message`), so a shake or blood
+timed to a blow is a message sent later, not a countdown of its own. Weapon wind-ups use
 it: a delay plus the strike scheduled. Debt lives beside `Tokens` rather
 than in them. **Still to absorb:** `Tokens` themselves (costs other than
 one turn, a different recharge for haste or slowness), the AI's `Pause`
@@ -414,8 +417,9 @@ it would help. Each item is its own change.
     game's format, so they are not a catalog, but the names should be a
     small enum (`TileRule::Wall | Rail`, `DirectionRule::Triangle | V`).
     (Principle 8.)
-12. **Presentation delays counted down in several places**
-    (`animation`'s `PendingGestures`, `HeldMoves` and `Flinging`;
-    `effects`' `ParticleDelay`). Each counts seconds down on its own. One
-    "after this many seconds" mechanism for shown things, as `Scheduled`
-    is for turns, would let any of them wait the same way. (Principle 7.)
+12. **Held moves and flings count their own seconds** (`animation`'s
+    `HeldMoves` and `Flinging`). They are how long a body is shown a
+    certain way, not something waiting to be shown (which is `Later`, in
+    `cues`), so they are conditions with a duration in seconds. With a
+    second user (a flash that lasts, a body shown stunned) they would be
+    one "shown for this many seconds" component. (Principle 7.)
