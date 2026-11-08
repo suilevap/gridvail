@@ -235,7 +235,26 @@ fn a_finger_kept_down_holds_where_it_points_until_it_lifts() {
     touch(&mut app, TouchPhase::Started, 100.0, 100.0);
     touch(&mut app, TouchPhase::Moved, 160.0, 100.0);
     assert_eq!(held(&app), Some(IVec2::X));
-    // Slid past where it landed to the other side: it points there now.
+    // Slid back the other way: it points there now.
     touch(&mut app, TouchPhase::Moved, 40.0, 100.0);
     assert_eq!(held(&app), Some(IVec2::NEG_X));
+}
+
+#[test]
+fn a_finger_turns_the_way_it_last_moved_not_from_where_it_landed() {
+    let (mut app, player) = touch_app();
+    let held = |app: &App| {
+        app.world()
+            .get::<MoveIntent>(player)
+            .unwrap()
+            .held
+            .map(|held| held.map)
+    };
+    touch(&mut app, TouchPhase::Started, 100.0, 100.0);
+    touch(&mut app, TouchPhase::Moved, 100.0, 50.0);
+    assert_eq!(held(&app), Some(IVec2::NEG_Y));
+    // Slid sideways from up there, still above where it landed: it points
+    // aside now, without coming back down first.
+    touch(&mut app, TouchPhase::Moved, 130.0, 50.0);
+    assert_eq!(held(&app), Some(IVec2::X));
 }

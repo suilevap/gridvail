@@ -45,7 +45,7 @@ forward, left, right or back.
   order it swings through them, and the turn's timeout waits, up to 3s
   (`readies` in `assets/actors/player.ron`, `--ready` / `?ready=`; 0
   makes attacks on the press, as before). Pointing another way (the
-  finger slid round, another key pressed) aims that way's attack, backing
+  finger slid aside from wherever it is, another key pressed) aims that way's attack, backing
   off too; pointing where it meets nothing aims nothing, and letting go
   then makes nothing and takes no turn. Space cancels an aim (the key
   held on from it does nothing more until a fresh press). Plain walks are

@@ -354,7 +354,7 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 396 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 397 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
@@ -485,9 +485,9 @@ python3 -m http.server -d dist 8000
 ```
 
 On touch screens, swipe to take a step and keep the finger down to keep
-walking; slide it past where it landed to turn. A swipe that would attack
+walking; slide it another way to turn (from wherever it is, the way it last moved). A swipe that would attack
 strikes when the finger lifts: a quick flick strikes at once, and a finger
-kept down aims, its cells marked cyan while the turn waits; slide it round
+kept down aims, its cells marked cyan while the turn waits; slide it aside
 to aim another way, or to where it meets nothing to drop it (a key works
 the same: held, it aims; let go, it strikes; Space drops it). Two fingers pinch to zoom,
 and twisting them an eighth of a turn turns the view a quarter turn, like Q

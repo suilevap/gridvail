@@ -11,12 +11,15 @@ const SWIPE_THRESHOLD: f32 = 24.0;
 const SWIPE_HOLD_SECS: f32 = 0.25;
 
 /// A swipe steps once toward its dominant axis, and keeping the finger down
-/// a moment longer keeps walking, like a held key. The finger works as a
-/// floating stick around where it landed, so sliding it to the other side
-/// turns.
+/// a moment longer keeps walking, like a held key. Where the finger points
+/// is the way it last moved (from where it last turned or went on), not
+/// where it is from where it landed: sliding it sideways turns it sideways
+/// from wherever it is, without coming back first (an attack aimed ahead
+/// turns to one aside).
 #[derive(Resource, Default, Debug)]
 pub struct Swipe {
-    /// The tracked finger and where it landed.
+    /// The tracked finger, and where its way is measured from: where it
+    /// landed, then where it last moved far enough to point.
     origin: Option<(u64, Vec2)>,
     /// The direction the finger points while it stays down, and seconds
     /// since it started pointing there.
@@ -79,23 +82,25 @@ pub fn read_swipes(
         swipe.swiped = false;
         return;
     };
+    // Kept down, it keeps pointing where it did, held a little longer.
+    if let Some((_, secs)) = &mut swipe.held {
+        *secs += time.delta_secs();
+    }
     let delta = touch.position() - origin;
     if delta.length() < SWIPE_THRESHOLD {
         return;
     }
     swipe.swiped = true;
+    swipe.origin = Some((id, touch.position()));
     // Window coordinates grow downward, like grid rows.
     let dir = if delta.x.abs() > delta.y.abs() {
         IVec2::new(delta.x.signum() as i32, 0)
     } else {
         IVec2::new(0, delta.y.signum() as i32)
     };
-    match &mut swipe.held {
-        Some((held, secs)) if *held == dir => *secs += time.delta_secs(),
-        _ => {
-            swipe.held = Some((dir, 0.0));
-            swipe.pending = Some(dir);
-        }
+    if swipe.held.is_none_or(|(held, _)| held != dir) {
+        swipe.held = Some((dir, 0.0));
+        swipe.pending = Some(dir);
     }
 }
 
