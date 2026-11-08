@@ -154,19 +154,22 @@ pub struct Attack {
     pub dir: IVec2,
 }
 
-/// An actor whose moves that would attack are readied first: held for
-/// `0` seconds, the attack shown as it would be made, before it is made,
-/// so the player sees what a move will do and can drop it (`Cancel`).
+/// An actor whose attacks are made on release: a move that would strike,
+/// while its input is held (`MoveIntent`), is only aimed (`Readied`), shown
+/// as it would be made, and made when the input lets go, the way it then
+/// points. A quick flick strikes at once; holding on looks first. The turn
+/// waits for an aim up to `0` seconds.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct Readies(pub f32);
 
-/// A move that would attack, held: the `attack` it would make, made once
-/// the game's elapsed time reaches `until` (or sooner, if the same move
-/// is made again). A new move in its place readies (or walks) instead.
+/// An attack being aimed: the way `dir` the input points, the `attack` a
+/// move that way would make (none when it meets nothing: letting go then
+/// makes nothing), and when the aim began (the game's elapsed seconds).
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct Readied {
-    pub attack: Attack,
-    pub until: f32,
+    pub dir: IVec2,
+    pub attack: Option<Attack>,
+    pub since: f32,
 }
 
 /// A readied move was cancelled: a move held on from it (a key or finger

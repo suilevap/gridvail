@@ -15,11 +15,12 @@ type Mover = (
     &'static Tokens,
 );
 
-/// An actor that readies its moves, with the move it holds, if any, and
-/// whether a cancel withholds what is held on.
+/// An actor that readies its moves, what its input holds, the attack it
+/// aims, if any, and whether a cancel withholds what is held on.
 type Readier = (
     Mover,
     &'static Readies,
+    &'static MoveIntent,
     Option<&'static Readied>,
     Has<Withheld>,
 );
@@ -79,16 +80,15 @@ pub fn choose_attacks(
     }
 }
 
-/// An actor that `Readies` holds a move that would strike (an attack that
-/// hits or knocks) as `Readied` for its seconds instead of making it, and
-/// makes it when they are up, or at once when the same move comes again
-/// (it is then chosen as any move is, so if nothing is there any more it
-/// walks). A move made `at_once` is never held. While one is held, a move
-/// held on from before waits, and a fresh move in another way takes its
-/// place: readied in turn if it attacks at all (backing off too), for its
-/// own full seconds, else walked. While one is held the turn waits for it
-/// (`HoldsTurn`). After a cancel,
-/// a move held on from before is not made until a fresh one comes.
+/// An actor that `Readies` aims a move that would strike instead of making
+/// it, while its input is held (`MoveIntent`): `Readied`, which the turn
+/// waits for (`HoldsTurn`) up to the actor's seconds. Pointing another way
+/// aims that way's attack (any attack, backing off too; none if it meets
+/// nothing). Letting go makes the aimed attack (it is then chosen as any
+/// move is, so if nothing is there any more it walks), or nothing when
+/// nothing is aimed. A move already let go (a flick, a tap of a key) is
+/// made at once, as is one made `at_once`. After a cancel, a move held on
+/// from before is not made until a fresh one comes.
 pub fn ready_attacks(
     mut commands: Commands,
     time: Res<Time>,
@@ -98,57 +98,69 @@ pub fn ready_attacks(
     targets: Query<(), Target>,
 ) {
     let now = time.elapsed_secs();
-    for ((actor, pos, facing, maneuvers, mut command, tokens), readies, readied, withheld) in
-        &mut actors
+    for (
+        (actor, pos, facing, maneuvers, mut command, tokens),
+        readies,
+        intent,
+        readied,
+        withheld,
+    ) in &mut actors
     {
-        let fresh = ready(&command, tokens, &turn) && !command.repeat;
+        let mover = (actor, pos, facing, maneuvers);
+        let held = intent.held.map(|held| held.map);
         if withheld {
-            if !fresh {
+            if ready(&command, tokens, &turn) && !command.repeat {
+                commands.entity(actor).remove::<Withheld>();
+            } else {
                 command.active = false;
                 continue;
             }
-            commands.entity(actor).remove::<Withheld>();
         }
         if let Some(readied) = readied {
-            if (fresh && command.target == readied.attack.dir) || now >= readied.until {
-                // Made now: the move goes on to be chosen.
-                command.target = readied.attack.dir;
-                command.active = true;
-                command.relative = true;
-                command.repeat = false;
-                commands.entity(actor).remove::<(Readied, HoldsTurn)>();
-                continue;
+            command.active = false;
+            match held {
+                // Let go: made as aimed.
+                None => {
+                    if let Some(attack) = readied.attack {
+                        command.target = attack.dir;
+                        command.active = true;
+                        command.relative = true;
+                        command.repeat = false;
+                    }
+                    commands.entity(actor).remove::<(Readied, HoldsTurn)>();
+                }
+                Some(dir) => {
+                    if dir != readied.dir {
+                        commands.entity(actor).insert(Readied {
+                            dir,
+                            attack: attack_of(mover, dir, &grid, &targets),
+                            ..*readied
+                        });
+                    }
+                    if now - readied.since >= readies.0 {
+                        commands.entity(actor).remove::<HoldsTurn>();
+                    }
+                }
             }
-            if !fresh {
-                command.active = false;
-                continue;
-            }
-        }
-        if !ready(&command, tokens, &turn) {
             continue;
         }
-        let mover = (actor, pos, facing, maneuvers);
-        match attack_of(mover, command.target, &grid, &targets) {
-            // One that strikes is held; while one is held, any attack in
-            // its place is (the player switches what it looks at).
-            Some(attack)
-                if !command.at_once
-                    && (readied.is_some() || maneuvers.get(attack.relation).strikes()) =>
-            {
-                commands.entity(actor).insert((
-                    Readied {
-                        attack,
-                        until: now + readies.0,
-                    },
-                    HoldsTurn,
-                ));
-                command.active = false;
-                command.target = IVec2::ZERO;
-            }
-            _ if readied.is_some() => {
-                commands.entity(actor).remove::<(Readied, HoldsTurn)>();
-            }
-            _ => {}
+        if !ready(&command, tokens, &turn) || command.at_once || held != Some(command.target) {
+            continue;
+        }
+        let Some(attack) = attack_of(mover, command.target, &grid, &targets) else {
+            continue;
+        };
+        if maneuvers.get(attack.relation).strikes() {
+            commands.entity(actor).insert((
+                Readied {
+                    dir: command.target,
+                    attack: Some(attack),
+                    since: now,
+                },
+                HoldsTurn,
+            ));
+            command.active = false;
+            command.target = IVec2::ZERO;
         }
     }
 }

@@ -146,3 +146,24 @@ pub fn tap_cancels(
         cancels.write(Cancel(player));
     }
 }
+
+/// Where a finger kept down points is what the player holds
+/// (`MoveIntent`), as a held key is: an attack aimed by a swipe is made
+/// when the finger lifts, the way it then points.
+pub fn swipe_intent(
+    swipe: Res<Swipe>,
+    camera: Option<Res<ViewCamera>>,
+    mut players: Query<&mut MoveIntent, (With<Player>, With<Active>, Without<DestroyRequested>)>,
+) {
+    if swipe.origin.is_none() {
+        return;
+    }
+    let screen = swipe.held.map(|(dir, _)| dir);
+    for mut intent in &mut players {
+        intent.hold(screen, |screen| {
+            camera
+                .as_ref()
+                .map_or(screen, |camera| camera.map_direction(screen))
+        });
+    }
+}

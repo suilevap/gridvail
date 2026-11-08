@@ -182,14 +182,15 @@ and renderers must not import it.
     from where it faces (`Relation`: forward, left, right, back); when the
     maneuver for that way has a target in its `Area`, the move becomes an
     `Attack` (its action for the turn) instead of a walk. An actor that
-    `Readies` (the player, with `--ready`; off by default) has `ready_attacks` hold such a
-    move first (`Readied`, a component, so the turn does not start) for
-    its seconds, shown by its cyan marks (`mark_readied`) and its
-    wind-up (`choreography`); then it is made, or at once if the same
-    move comes again. A `Cancel` (Space, a tap) drops it, another move
-    that attacks takes its place, held in turn, and a move made `at_once`
-    (the agent API) is never held. While one is held the actor
-    `HoldsTurn`, and `recharge_tokens` stops the turn's timeout.
+    `Readies` (the player) makes such a move on release: while its input
+    is held (`MoveIntent`, which keys and a finger kept down both write),
+    `ready_attacks` only aims it (`Readied`, shown by its cyan marks,
+    `mark_readied`, and its wind-up in `choreography`), re-aims it as the
+    input points elsewhere, and makes it when the input lets go; a move
+    already let go (a flick) is made at once. A `Cancel` (Space) drops an
+    aim, and a move made `at_once` (the agent API) is never aimed. While
+    one is aimed the actor `HoldsTurn`, up to its seconds, and
+    `recharge_tokens` stops the turn's timeout.
     `perform_attacks` answers it: a `Hit` for each target in order (only
     the first if it stops there), a `Knock` the way the swing goes through
     its cell plus the actor's step (the blow carries it), a `Follow`

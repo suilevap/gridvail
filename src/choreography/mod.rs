@@ -235,22 +235,34 @@ fn maneuver_swing(
     area_swing(looks.get(attack.relation), area, attack.facing)
 }
 
-/// A readied attack winds up as it will swing, over the time it is held:
-/// its anticipation is its preview.
+/// An aimed attack winds up as it will swing, and an aim at nothing eases
+/// back: what the player looks at is how the attack would start.
 pub fn wind_up_readied(
-    time: Res<Time>,
+    timing: Res<Timing>,
     mut wind_ups: MessageWriter<WindUp>,
+    mut releases: MessageWriter<Release>,
     readied: Query<(Entity, &Readied, &Maneuvers, &ManeuverLooks), Changed<Readied>>,
 ) {
     for (actor, readied, maneuvers, looks) in &readied {
-        let Some(shape) = maneuver_swing(&readied.attack, maneuvers, looks) else {
-            continue;
-        };
-        wind_ups.write(WindUp {
-            entity: actor,
-            shape,
-            secs: (readied.until - time.elapsed_secs()).max(0.0),
-        });
+        match readied
+            .attack
+            .and_then(|attack| maneuver_swing(&attack, maneuvers, looks))
+        {
+            Some(shape) => {
+                wind_ups.write(WindUp {
+                    entity: actor,
+                    shape,
+                    secs: timing.0.aim_secs,
+                });
+            }
+            None => {
+                releases.write(Release {
+                    entity: actor,
+                    secs: timing.0.unwind_secs,
+                    strike: false,
+                });
+            }
+        }
     }
 }
 

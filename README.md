@@ -116,8 +116,8 @@ next to this file.
   player going down plays the map again. `arena.txt` is a map to try it
   in. `--turn SECONDS` sets how long a turn waits for the player (1 by
   default), `--hp` the player's hit points, `--enemy-hp` everyone else's,
-  `--ready SECONDS` how long an attack of the player's is held, shown,
-  before it is made, cancellable (off by default; try 0.8).
+  `--ready SECONDS` how long the turn waits while the player aims an
+  attack by holding it (3 by default; 0 makes attacks on the press).
   `--slomo FACTOR` runs the whole game that many times slower, to watch a
   fight's choreography.
 - Player-bound `i` direction marker via relative position + rotation.
@@ -354,7 +354,7 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 395 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 396 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
@@ -485,11 +485,11 @@ python3 -m http.server -d dist 8000
 ```
 
 On touch screens, swipe to take a step and keep the finger down to keep
-walking; slide it past where it landed to turn. With `?ready=0.8` a swipe
-that would attack winds up for a moment first, its cells marked cyan, and
-the turn waits for it: tap to cancel it, swipe another way to switch to
-that attack, or swipe the same way again to strike at once (Space cancels
-on a keyboard). Two fingers pinch to zoom,
+walking; slide it past where it landed to turn. A swipe that would attack
+strikes when the finger lifts: a quick flick strikes at once, and a finger
+kept down aims, its cells marked cyan while the turn waits; slide it round
+to aim another way, or to where it meets nothing to drop it (a key works
+the same: held, it aims; let go, it strikes; Space drops it). Two fingers pinch to zoom,
 and twisting them an eighth of a turn turns the view a quarter turn, like Q
 and E; they never walk. The performance panel starts
 hidden in the browser (F3 shows it). Touch controls live in `src/touch/`;

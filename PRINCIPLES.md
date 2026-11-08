@@ -334,10 +334,10 @@ Staggered after an impact, exposed for a turn after a stagger.
 
 ### Previews: what an action would do, before doing it
 
-**Today.** Marks show a wound-up strike. With `--ready`, a move of the
-player's that would strike is held for a moment first (`Readied`), its
-wind-up playing and the cells it strikes marked, and can be cancelled;
-it is off by default, as it slowed fights down. Nothing yet
+**Today.** Marks show a wound-up strike. A move of the player's that
+would strike is made on release: held, it is only aimed (`Readied`), its
+wind-up playing and the cells it strikes marked, and it can be re-aimed
+or dropped. Nothing yet
 shows where bodies would end up, which is likely part of why fights feel
 hard to predict (`COMBAT.md`).
 

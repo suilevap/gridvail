@@ -35,7 +35,7 @@ impl Plugin for TouchControlPlugin {
             )
             .add_systems(
                 Update,
-                (swipe_commands, tap_cancels)
+                (swipe_intent, swipe_commands, tap_cancels)
                     .after(player_input)
                     .before(move_commands)
                     .in_set(PlayerCommands)

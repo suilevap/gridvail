@@ -16,13 +16,14 @@ fn touch_app() -> (App, Entity) {
             (read_swipes, read_pinch).after(bevy::input::InputSystems),
         )
         .add_message::<Cancel>()
-        .add_systems(Update, (swipe_commands, tap_cancels));
+        .add_systems(Update, (swipe_intent, swipe_commands, tap_cancels));
     let player = app
         .world_mut()
         .spawn((
             Player(0),
             Active,
             MoveCommand::default(),
+            MoveIntent::default(),
             Tokens {
                 count: 0,
                 recharge: 1,
@@ -219,4 +220,22 @@ fn a_swipe_is_fresh_and_a_finger_kept_down_repeats() {
     touch(&mut app, TouchPhase::Moved, 161.0, 100.0);
     assert_eq!(step_taken(&mut app, player), Some(IVec2::X), "held");
     assert!(repeat(&app), "walking on is not a fresh input");
+}
+
+#[test]
+fn a_finger_kept_down_holds_where_it_points_until_it_lifts() {
+    let (mut app, player) = touch_app();
+    let held = |app: &App| {
+        app.world()
+            .get::<MoveIntent>(player)
+            .unwrap()
+            .held
+            .map(|held| held.map)
+    };
+    touch(&mut app, TouchPhase::Started, 100.0, 100.0);
+    touch(&mut app, TouchPhase::Moved, 160.0, 100.0);
+    assert_eq!(held(&app), Some(IVec2::X));
+    // Slid past where it landed to the other side: it points there now.
+    touch(&mut app, TouchPhase::Moved, 40.0, 100.0);
+    assert_eq!(held(&app), Some(IVec2::NEG_X));
 }

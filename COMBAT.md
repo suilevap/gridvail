@@ -37,23 +37,22 @@ forward, left, right or back.
   always one step that way.
 - **Next to an enemy the player is engaged:** the moves toward it attack.
   Walking past one can sweep it.
-- **An attack can be shown before it is made (off by default).** With
-  `--ready SECONDS` (`?ready=0.8` on the web, or `readies` in
-  `assets/actors/player.ron`), a move whose attack hits or knocks is
-  held for that long: the player winds up as it will swing, and
-  the cells it strikes are marked cyan (lamps light nothing cyan, so it
-  stands out) in the order it swings through them. Then it is made. In
-  that moment a tap (Space, Backspace) cancels it and takes no turn (a
-  key or finger still held from it does nothing more until a fresh move);
-  the same move again makes it at once; another move that attacks
-  (backing off too) switches to that attack, held for its own full
-  moment; a move that meets nothing drops it and walks. The turn's
-  timeout waits while an attack is held, so looking at one costs no
-  time. A move that strikes nothing (a walk, backing off) is never held
-  on its own. Tried at 0.5s and 0.8s: the control and the preview were
-  liked, but fights felt slower and less dynamic, so it is off until a
-  form that keeps the pace is found (a short hold without a full cancel,
-  or a preview while the finger is still down, made on release).
+- **An attack is made on release.** A move whose attack hits or knocks
+  is made when its key (or finger) lets go, the way it then points. A
+  quick flick, or a tap of a key, strikes at once. Held, the attack is
+  only aimed: the player winds up as it would swing, the cells it strikes
+  are marked cyan (lamps light nothing cyan, so it stands out) in the
+  order it swings through them, and the turn's timeout waits, up to 3s
+  (`readies` in `assets/actors/player.ron`, `--ready` / `?ready=`; 0
+  makes attacks on the press, as before). Pointing another way (the
+  finger slid round, another key pressed) aims that way's attack, backing
+  off too; pointing where it meets nothing aims nothing, and letting go
+  then makes nothing and takes no turn. Space cancels an aim (the key
+  held on from it does nothing more until a fresh press). Plain walks are
+  made on the press, as before: only a move that would strike waits for
+  the release. The first try held every attack for a fixed 0.5s–0.8s
+  with a tap to cancel: the control and the preview were liked, but
+  fights felt slower; on release, a quick player loses no time.
 - **A timeout never acts for the player.** The turn passes like a wait.
 
 ## The attacks: one for each way

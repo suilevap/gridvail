@@ -321,17 +321,18 @@ fn readying(app: &mut App) -> (Entity, Attack) {
 }
 
 #[test]
-fn a_readied_attack_winds_up_then_is_released_into_its_swing() {
+fn an_aimed_attack_winds_up_then_is_released_into_its_swing() {
     let mut app = app();
     let (actor, attack) = readying(&mut app);
-    app.world_mut()
-        .entity_mut(actor)
-        .insert(Readied { attack, until: 0.3 });
+    app.world_mut().entity_mut(actor).insert(Readied {
+        dir: attack.dir,
+        attack: Some(attack),
+        since: 0.0,
+    });
     app.update();
     let wind_ups = sent::<WindUp>(&app);
     assert_eq!(wind_ups.len(), 1);
     assert!(matches!(wind_ups[0].shape, GestureShape::Sweep { .. }));
-    assert!(wind_ups[0].secs > 0.2, "not wound up over the hold");
     // Made: no longer readied, and the attack swings from its wind-up.
     app.world_mut().entity_mut(actor).remove::<Readied>();
     app.world_mut().write_message(attack);
@@ -342,15 +343,35 @@ fn a_readied_attack_winds_up_then_is_released_into_its_swing() {
 }
 
 #[test]
-fn a_dropped_readied_attack_eases_back() {
+fn a_dropped_aim_eases_back() {
     let mut app = app();
     let (actor, attack) = readying(&mut app);
-    app.world_mut()
-        .entity_mut(actor)
-        .insert(Readied { attack, until: 0.3 });
+    app.world_mut().entity_mut(actor).insert(Readied {
+        dir: attack.dir,
+        attack: Some(attack),
+        since: 0.0,
+    });
     app.update();
     app.world_mut().entity_mut(actor).remove::<Readied>();
     app.update();
+    let releases = sent::<Release>(&app);
+    assert!(
+        releases.len() == 1 && !releases[0].strike,
+        "did not ease back"
+    );
+}
+
+#[test]
+fn an_aim_at_nothing_eases_back() {
+    let mut app = app();
+    let (actor, _) = readying(&mut app);
+    app.world_mut().entity_mut(actor).insert(Readied {
+        dir: IVec2::NEG_X,
+        attack: None,
+        since: 0.0,
+    });
+    app.update();
+    assert!(sent::<WindUp>(&app).is_empty());
     let releases = sent::<Release>(&app);
     assert!(
         releases.len() == 1 && !releases[0].strike,

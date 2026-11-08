@@ -110,7 +110,7 @@ pub fn mark_strikes(
     }
 }
 
-/// Marks every cell a readied attack will strike, planted in the order it
+/// Marks every cell an aimed attack will strike, planted in the order it
 /// swings through them, the way a weapon's are.
 pub fn mark_readied(
     grid: Res<MapGrid>,
@@ -121,8 +121,11 @@ pub fn mark_readied(
         return;
     };
     for (pos, maneuvers, readied) in &actors {
-        let area = &maneuvers.get(readied.attack.relation).area;
-        for (rank, cell) in area.cells(pos.0, readied.attack.facing).enumerate() {
+        let Some(attack) = readied.attack else {
+            continue;
+        };
+        let area = &maneuvers.get(attack.relation).area;
+        for (rank, cell) in area.cells(pos.0, attack.facing).enumerate() {
             let mark = READY_MARK.after(rank as f32 * STRIKE_MARK_STEP);
             marks.0.push((grid.safe_pos(cell), mark));
         }
