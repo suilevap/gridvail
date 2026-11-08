@@ -3,7 +3,7 @@
 use bevy::math::Vec2;
 use bevy::platform::collections::HashMap;
 
-use crate::model::{FigurePart, FigureShape, FigureView, PartGlyph, Rgb};
+use crate::model::{FigurePart, FigureShape, FigureView, Gait, PartGlyph, Rgb};
 
 /// The size of a figure's glyphs unless a part says otherwise: half a cell,
 /// the cell font's own 8 px.
@@ -19,6 +19,7 @@ pub const FONT_PIXELS: f32 = 16.0;
 ///
 /// ```text
 /// LABEL GLYPH [x=X] [y=Y] [scale=S] [turn=DEGREES] [shade=S | tint=#rrggbb] [only=GLYPHS] [noflip]
+/// [follow=W] [when=still|moving|stepa|stepb]
 /// ```
 ///
 /// `x`, `y` and `scale` are in cells, or in font pixels with `px` (16 a
@@ -81,6 +82,8 @@ pub fn parse_figures(text: &str) -> Result<HashMap<String, FigureShape>, String>
             tint: Rgb::new(255, 255, 255),
             only: Vec::new(),
             no_flip: false,
+            follow: 1.0,
+            when: None,
         };
         for word in words {
             // A length in cells, or in font pixels with `px`.
@@ -119,6 +122,12 @@ pub fn parse_figures(text: &str) -> Result<HashMap<String, FigureShape>, String>
                 Some(("tint", value)) => {
                     part.tint = parse_hex(value)
                         .ok_or_else(|| error(format!("`{word}`: expected #rrggbb")))?;
+                }
+                Some(("follow", value)) => part.follow = number(value)?,
+                Some(("when", value)) => {
+                    part.when = Some(Gait::from_name(value).ok_or_else(|| {
+                        error(format!("`{word}`: when is still, moving, stepa or stepb"))
+                    })?);
                 }
                 Some(("only", value)) if !value.is_empty() => {
                     part.only = value.chars().collect();
@@ -190,6 +199,18 @@ mod tests {
         assert_eq!(figures["b"].scale, 1.0);
         assert!(parse_figures("figure a scale=0\nfoot ▪").is_err());
         assert!(parse_figures("figure a big\nfoot ▪").is_err());
+    }
+
+    #[test]
+    fn parts_may_follow_gestures_and_keep_to_a_gait() {
+        let figures =
+            parse_figures("figure a\nblade / follow=1.8\nleg ( when=stepa\nfoot ' follow=0\n")
+                .unwrap();
+        let (parts, _) = figures["a"].parts(FigureView::Front);
+        assert_eq!((parts[0].follow, parts[0].when), (1.8, None));
+        assert_eq!(parts[1].when, Some(Gait::StepA));
+        assert_eq!(parts[2].follow, 0.0);
+        assert!(parse_figures("figure a\nleg ( when=running").is_err());
     }
 
     #[test]

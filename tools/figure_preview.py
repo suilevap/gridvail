@@ -42,7 +42,8 @@ def parse(text):
             continue
         words = line.split()
         part = {'glyph': words[1], 'x': 0.0, 'y': 0.0, 'scale': 0.5, 'turn': 0.0,
-                'tint': (255, 255, 255), 'only': '', 'noflip': False}
+                'tint': (255, 255, 255), 'only': '', 'noflip': False,
+                'follow': 1.0, 'when': None}
         for word in words[2:]:
             key, _, value = word.partition('=')
             if key in ('x', 'y', 'scale'):
@@ -58,6 +59,10 @@ def parse(text):
                 part['only'] = value
             elif key == 'noflip':
                 part['noflip'] = True
+            elif key == 'follow':
+                part['follow'] = float(value)
+            elif key == 'when':
+                part['when'] = value
         figures[name].setdefault(view, []).append(part)
     return figures
 
@@ -80,7 +85,16 @@ def glyph_mask(font, ch):
     return mask.point(lambda v: 255 if v >= 128 else 0)
 
 
-def draw_view(font, parts, mirrored, zoom, own, figure_scale=1.0):
+def shown_in(when, gait):
+    """Whether a part kept to `when` shows in `gait` (`Gait::admits`)."""
+    if when is None:
+        return True
+    if when == 'moving':
+        return gait != 'still'
+    return when == gait
+
+
+def draw_view(font, parts, mirrored, zoom, own, figure_scale=1.0, gait='still'):
     cells = 3
     size = cells * PX
     image = Image.new('RGB', (size * zoom, size * zoom), (14, 16, 22))
@@ -93,6 +107,8 @@ def draw_view(font, parts, mirrored, zoom, own, figure_scale=1.0):
     flip = -1 if mirrored else 1
     for part in parts:
         if part['only'] and own not in part['only']:
+            continue
+        if not shown_in(part['when'], gait):
             continue
         ch = own if part['glyph'] == 'own' else part['glyph']
         side = max(round(part['scale'] * figure_scale * PX * zoom), 1)
@@ -115,6 +131,8 @@ def main():
     parser.add_argument('--figures', default=str(ROOT / 'assets/rules/figures.txt'))
     parser.add_argument('--zoom', type=int, default=8, help='screen pixels a font pixel')
     parser.add_argument('--own', default='e', help='the object glyph `own` parts draw')
+    parser.add_argument('--gait', default='still', choices=['still', 'stepa', 'stepb'],
+                        help='which `when=` parts to draw')
     args = parser.parse_args()
     figures = parse(Path(args.figures).read_text(encoding='utf-8-sig'))
     font = ImageFont.truetype(str(FONT), 8)
@@ -122,7 +140,7 @@ def main():
     rows = []
     for name in names:
         views = [draw_view(font, *parts_for(figures[name], view), args.zoom, args.own,
-                           figures[name]['scale'])
+                           figures[name]['scale'], args.gait)
                  for view in VIEWS]
         row = Image.new('RGB', (sum(v.width for v in views) + 8 * (len(views) - 1),
                                 views[0].height + 14), (0, 0, 0))
@@ -130,7 +148,7 @@ def main():
         x = 0
         for view, image in zip(VIEWS, views):
             row.paste(image, (x, 14))
-            draw.text((x + 2, 1), f'{name} {view}', fill=(200, 200, 200))
+            draw.text((x + 2, 1), f'{name} {view} {args.gait}', fill=(200, 200, 200))
             x += image.width + 8
         rows.append(row)
     sheet = Image.new('RGB', (max(r.width for r in rows), sum(r.height + 8 for r in rows)))

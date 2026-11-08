@@ -376,6 +376,7 @@ XXXXXXX
                 weapon: None,
                 maneuvers: None,
                 bleeds: None,
+                figure: None,
             };
             kinds.0.insert('d', dummy);
         },

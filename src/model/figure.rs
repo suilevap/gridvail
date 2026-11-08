@@ -43,11 +43,69 @@ pub struct FigurePart {
     /// When its side is drawn mirrored, the glyph keeps its own way round
     /// (its place still mirrors): for a glyph read as itself, such as `@`.
     pub no_flip: bool,
+    /// How much of the object's gestures (a thrust, a shake) it follows: 1
+    /// moves with the body, 0 stays put (planted feet), above 1 goes
+    /// further (a weapon reaching out).
+    pub follow: f32,
+    /// Drawn only in this gait; always if none.
+    pub when: Option<Gait>,
 }
 
 impl FigurePart {
     pub fn shown_for(&self, glyph: char) -> bool {
         self.only.is_empty() || self.only.contains(&glyph)
+    }
+}
+
+/// How a figure is going, for parts drawn only in some gaits (legs that
+/// stride while it walks).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Gait {
+    /// Standing in its cell.
+    Still,
+    /// On its way to another cell, either step.
+    Moving,
+    /// The first half of the way to the next cell.
+    StepA,
+    /// The second half.
+    StepB,
+}
+
+impl Gait {
+    pub const ALL: [Self; 4] = [Self::Still, Self::Moving, Self::StepA, Self::StepB];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Still => "still",
+            Self::Moving => "moving",
+            Self::StepA => "stepa",
+            Self::StepB => "stepb",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|gait| gait.name() == name)
+    }
+
+    /// The gait of something shown `travel` cells short of its cell: still
+    /// once (all but) there, else the step of the way it is on.
+    pub fn of(travel: f32) -> Self {
+        if travel < 0.05 {
+            Self::Still
+        } else if travel > 0.5 {
+            Self::StepA
+        } else {
+            Self::StepB
+        }
+    }
+
+    /// Whether a part drawn in `self` shows while the figure goes `now` (a
+    /// step, from `of`).
+    pub fn admits(self, now: Gait) -> bool {
+        match self {
+            Self::Moving => now != Self::Still,
+            _ => self == now,
+        }
     }
 }
 
@@ -164,6 +222,8 @@ mod tests {
             tint: Rgb::new(255, 255, 255),
             only: Vec::new(),
             no_flip: false,
+            follow: 1.0,
+            when: None,
         }
     }
 
@@ -174,6 +234,16 @@ mod tests {
         assert_eq!(FigureView::of(Vec2::X), FigureView::Right);
         assert_eq!(FigureView::of(Vec2::NEG_X), FigureView::Left);
         assert_eq!(FigureView::of(Vec2::ZERO), FigureView::Front);
+    }
+
+    #[test]
+    fn gaits_follow_the_way_to_the_cell() {
+        assert_eq!(Gait::of(0.0), Gait::Still);
+        assert_eq!(Gait::of(0.9), Gait::StepA);
+        assert_eq!(Gait::of(0.3), Gait::StepB);
+        assert!(Gait::Moving.admits(Gait::StepA) && Gait::Moving.admits(Gait::StepB));
+        assert!(!Gait::Moving.admits(Gait::Still));
+        assert!(Gait::StepA.admits(Gait::StepA) && !Gait::StepA.admits(Gait::StepB));
     }
 
     #[test]

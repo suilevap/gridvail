@@ -6,7 +6,8 @@
 //! Each part is a text sprite like any object's, in the same font and the
 //! light its object is in (or, marked, wholly in its mark's colour), at its own offset, size and turn from the
 //! object's shown position. Which parts are drawn follows the way the
-//! object faces as seen on screen (`FigureView`): toward the viewer, away,
+//! object looks (where it aims a wound-up weapon, else the way it faces) as
+//! seen on screen (`FigureView`): toward the viewer, away,
 //! or to either side, so it stays right as the view turns. Parts share
 //! their object's draw order (`depth_order`), back to front in the order
 //! listed, so walls in front hide a figure and walls behind do not.
@@ -14,7 +15,8 @@
 use bevy::{platform::collections::HashMap, prelude::*};
 
 use crate::model::{
-    Facing, Figure, FigureView, Figures, PartGlyph, RenderBuffers, ViewCamera, WallVolume,
+    Facing, Figure, FigureView, Figures, Gait, PartGlyph, RenderBuffers, Telegraph, ViewCamera,
+    WallVolume,
 };
 use crate::schedule::GamePhase;
 
@@ -60,7 +62,7 @@ fn draw_figures(
     font: Option<Res<CellFont>>,
     mut state: ResMut<FigureSprites>,
     mut used: Local<HashMap<(Entity, u16, u8), Entity>>,
-    objects: Query<(&Figure, Option<&Facing>)>,
+    objects: Query<(&Figure, Option<&Facing>, Option<&Telegraph>)>,
     mut sprites: Query<
         (&mut Text2d, &mut TextColor, &mut Transform, &mut Visibility),
         With<FigurePartSprite>,
@@ -75,15 +77,19 @@ fn draw_figures(
         let lean = lean(*volume);
         let cell = CELL_SIZE.y * camera.zoom;
         for object in &buffers.objects {
-            let Ok((figure, facing)) = objects.get(object.entity) else {
+            let Ok((figure, facing, aim)) = objects.get(object.entity) else {
                 continue;
             };
             let Some(shape) = figures.get(figure) else {
                 continue;
             };
-            // The way it faces on screen (y down): turned by a portal it is
-            // seen through (counter-clockwise quarters), then by the view.
-            let mut toward = facing.map_or(IVec2::ZERO, |facing| facing.0);
+            // The way it looks: where it aims a wound-up weapon, so the
+            // strike it threatens is the way it faces, else the way it faces.
+            // On screen (y down): turned by a portal it is seen through
+            // (counter-clockwise quarters), then by the view.
+            let mut toward = aim
+                .map(|aim| aim.dir)
+                .unwrap_or_else(|| facing.map_or(IVec2::ZERO, |facing| facing.0));
             for _ in 0..object.quarters {
                 toward = IVec2::new(toward.y, -toward.x);
             }
@@ -91,8 +97,16 @@ fn draw_figures(
             let (parts, mirrored) = shape.parts(view);
             let flip = if mirrored { -1.0 } else { 1.0 };
 
-            let base = view_translation(&camera, object.position).truncate()
-                + Vec2::Y * object.lift * cell;
+            let lifted = Vec2::Y * object.lift * cell;
+            let base = view_translation(&camera, object.position).truncate() + lifted;
+            // Where each part is: the object's place (gesture and all), less
+            // the share of the gesture it does not follow.
+            let part_base = |follow: f32| {
+                view_translation(&camera, object.position + object.pose * (follow - 1.0)).truncate()
+                    + lifted
+            };
+            // How it is going: on its way to its cell, or there.
+            let gait = Gait::of((object.position - object.pose - object.pos.as_vec2()).length());
             let depth = 1.5 - base.dot(lean) / 16384.0 + object.cell.depth as f32 * 1e-5;
             let light = Color::from(object.cell.color).to_linear();
             // An object not in its cell's own light has been given a colour
@@ -103,7 +117,9 @@ fn draw_figures(
                 .idx(object.pos)
                 .is_some_and(|index| buffers.light[index] != object.cell.color);
             for (index, part) in parts.iter().enumerate().take(u8::MAX as usize) {
-                if !part.shown_for(object.cell.ch) {
+                if !part.shown_for(object.cell.ch)
+                    || part.when.is_some_and(|when| !when.admits(gait))
+                {
                     continue;
                 }
                 let ch = match part.glyph {
@@ -157,7 +173,8 @@ fn draw_figures(
                     color.0 = desired;
                 }
                 let offset = Vec2::new(part.offset.x * flip, part.offset.y) * shape.scale * cell;
-                let translation = (base + offset).extend(depth + index as f32 * 1e-6);
+                let translation =
+                    (part_base(part.follow) + offset).extend(depth + index as f32 * 1e-6);
                 let glyph_flip = if part.no_flip { 1.0 } else { flip };
                 let size = part.scale * shape.scale;
                 let scale = Vec3::new(glyph_flip * size, size, 1.0) * camera.zoom;

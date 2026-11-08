@@ -245,7 +245,10 @@ next to this file.
   and tint, in cells or font pixels), so other objects (boxes, barrels,
   doors) can be made the same way, and `tools/figure_preview.py OUT.png
   [NAME...]` draws every view of them as the game does, for designing
-  without running it. `assets/maps/figures.txt` is a small room to look at
+  without running it. Figures move with the game's animation: in a strike the
+  weapon and arms reach out further than the body while the feet stay
+  planted, a guard turns to face the cells it is about to strike, and legs
+  stride while walking. `assets/maps/figures.txt` is a small room to look at
   them in.
 - Light effects (an addition, `--light`): with `smooth`, light blends
   between cells across standing walls, pixel by pixel, instead of one

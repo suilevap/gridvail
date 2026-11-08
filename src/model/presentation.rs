@@ -56,6 +56,10 @@ pub struct ObjectCell {
     /// Shown position in fractional frame cells; `pos` when nothing
     /// animates it.
     pub position: Vec2,
+    /// How far a gesture (a thrust, a shake) takes it off its place, in
+    /// frame cells, already in `position`: renderers that draw an object in
+    /// parts can move each part more or less than that.
+    pub pose: Vec2,
     /// Height above the ground in cells.
     pub lift: f32,
     /// How far it stands out of the floor, from 0 (sunk) to 1 (standing):

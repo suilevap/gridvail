@@ -321,10 +321,16 @@ and renderers must not import it.
   figure has parts for each way it is seen facing on screen
   (`FigureView`: toward the viewer, away, either side, a side not drawn
   being the other mirrored), picked from its `Facing` turned by the view,
-  so which way an actor looks shows however the view is turned (a
+  so which way an actor looks shows however the view is turned (where it
+  aims a wound-up weapon wins over its facing; a
   marker bound to a figure, the player's direction marker, is not drawn). A part can
   draw the object's own glyph and show only for some glyphs, so state the
   simulation shows by glyph (a mood, an open door) shows on the figure.
+  Figures take part in the animation step's motion: each part follows a
+  share of the object's gesture (`ObjectCell::pose`; `follow`, so a
+  thrust is the weapon reaching out while the feet stay planted), and parts
+  can be kept to a gait (`Gait`: still, or either half of a step between
+  cells) for legs that stride.
   Flat renderers draw the glyph. With smooth light it colours
   each pixel from the light map below, blended between cells: a wall in
   its cell's own light is drawn black into the wall map, and takes its
