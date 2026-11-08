@@ -24,6 +24,9 @@ pub enum GamePhase {
     FieldOfView,
     Lighting,
     Visibility,
+    /// What waited to be shown (`Later`) and whose time has come is sent,
+    /// before it is animated.
+    Cues,
     /// Turn whole-cell moves into continuous motion for display.
     Animation,
     Presentation,

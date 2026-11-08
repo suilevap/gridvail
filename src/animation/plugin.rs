@@ -2,13 +2,14 @@ use std::time::Duration;
 
 use bevy::prelude::*;
 
+use crate::cues::ShowLater;
 use crate::model::*;
 use crate::schedule::GamePhase;
 
 use super::{
-    animate_children, play_pending_gestures, take_flings, take_gestures, take_holds, take_releases,
-    take_wind_ups, wear_off_flings, wear_off_holds, Flinging, HeldMoves, MotionState, MotionStyle,
-    MovePath, ObjectMotion, Path, PendingGestures, Pose, Tween,
+    animate_children, take_flings, take_gestures, take_holds, take_releases, take_wind_ups,
+    waiting_for, wear_off_flings, wear_off_holds, Flinging, HeldMoves, MotionState, MotionStyle,
+    MovePath, ObjectMotion, Path, Pose, Tween,
 };
 
 /// How long an object takes to rise out of the floor or sink into it.
@@ -54,7 +55,7 @@ pub struct ObjectAnimationPlugin;
 impl Plugin for ObjectAnimationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MotionStyle>()
-            .add_message::<Gesture>()
+            .add_later_message::<Gesture>()
             .add_message::<HoldMoves>()
             .add_message::<Fling>()
             .add_message::<WindUp>()
@@ -68,7 +69,7 @@ impl Plugin for ObjectAnimationPlugin {
                     // A strike releases the wind-up taken this frame, and
                     // a gesture plays over either.
                     (take_wind_ups, take_releases, take_gestures).chain(),
-                    (play_pending_gestures, wear_off_holds, wear_off_flings),
+                    (wear_off_holds, wear_off_flings),
                     animate_objects,
                     animate_children,
                     remove_sunk,
@@ -258,6 +259,7 @@ pub fn animate_objects(
     grid: Res<MapGrid>,
     crossings: Option<Res<PortalCrossings>>,
     mut pacing: ResMut<TurnPacing>,
+    waiting: Res<Waiting<Gesture>>,
     // Children are placed relative to their parent by `animate_children`.
     mut objects: Query<
         (
@@ -268,11 +270,7 @@ pub fn animate_objects(
             Option<&SlideRoute>,
             Has<NonBlockingAnimation>,
             (Has<Sliding>, Has<Rising>, Has<Sinking>),
-            (
-                Option<&HeldMoves>,
-                Option<&PendingGestures>,
-                Option<&Flinging>,
-            ),
+            (Option<&HeldMoves>, Option<&Flinging>),
             &mut ObjectAnimation,
             &mut AnimatedPos,
         ),
@@ -289,7 +287,7 @@ pub fn animate_objects(
         route,
         non_blocking,
         (sliding, rising, sinking),
-        (held, pending, flinging),
+        (held, flinging),
         mut animation,
         mut shown,
     ) in &mut objects
@@ -332,9 +330,8 @@ pub fn animate_objects(
             }
             None => pos.0.as_vec2(),
         };
-        if let Some(pending) = pending {
-            to_come = to_come.max(pending.remaining());
-        }
+        // A gesture still waiting for its moment holds the turn too.
+        to_come = to_come.max(waiting_for(&waiting, entity));
         if still_rising {
             to_come = cells * motion.timing().0;
         } else {

@@ -428,11 +428,11 @@ fn borders_known_background(
 /// off the map: sight never shows past its edge.
 pub fn compose_effects(
     grid: Res<MapGrid>,
-    particles: Query<&Particle, Without<ParticleDelay>>,
+    particles: Query<&Particle>,
     mut buffers: ResMut<RenderBuffers>,
 ) {
     buffers.effects.clear();
-    for particle in &particles {
+    for particle in particles.iter().filter(|particle| particle.appeared()) {
         let cell = particle.position.round().as_ivec2();
         let Some(world) = grid.idx(cell) else {
             continue;

@@ -26,6 +26,7 @@ use bevy::prelude::*;
 use crate::animation::{ObjectAnimation, SWING_CONTACT, SWING_WOUND};
 use crate::content::choreography::ChoreographySpec;
 use crate::content::data;
+use crate::cues::ShowLater;
 use crate::model::*;
 use crate::schedule::{ActionStage, GamePhase};
 
@@ -36,12 +37,12 @@ pub struct ChoreographyPlugin;
 impl Plugin for ChoreographyPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Timing>()
-            .add_message::<Gesture>()
+            .add_later_message::<Gesture>()
             .add_message::<HoldMoves>()
             .add_message::<Fling>()
             .add_message::<WindUp>()
             .add_message::<Release>()
-            .add_message::<PlayEffect>()
+            .add_later_message::<PlayEffect>()
             .add_message::<SwingStarts>()
             .add_message::<BlowLands>()
             .add_systems(
@@ -302,7 +303,6 @@ pub fn play_swings(
                 entity: swing.entity,
                 shape: swing.shape,
                 secs: timing.0.swing_secs,
-                delay: 0.0,
             });
         }
     }
@@ -312,25 +312,28 @@ pub fn play_swings(
 pub fn streak_swings(
     timing: Res<Timing>,
     mut swings: MessageReader<SwingStarts>,
-    mut effects: MessageWriter<PlayEffect>,
+    mut effects: MessageWriter<Later<PlayEffect>>,
 ) {
     for swing in swings.read() {
         let Some(effect) = swing.look.streak else {
             continue;
         };
-        effects.write(PlayEffect {
-            effect,
-            entity: swing.entity,
-            toward: swing.dir.as_vec2(),
-            swing: Some(swing.shape),
-            secs: timing.streak_secs(),
-            strength: 0,
-            delay: if swing.released {
-                0.0
-            } else {
-                timing.strike_start()
+        let strikes = if swing.released {
+            0.0
+        } else {
+            timing.strike_start()
+        };
+        effects.write(Later::after(
+            strikes,
+            PlayEffect {
+                effect,
+                entity: swing.entity,
+                toward: swing.dir.as_vec2(),
+                swing: Some(swing.shape),
+                secs: timing.streak_secs(),
+                strength: 0,
             },
-        });
+        ));
     }
 }
 
@@ -405,23 +408,26 @@ pub fn fling_struck(
     }
 }
 
-/// The way a body shakes when something drives it `toward`.
-fn shake(entity: Entity, toward: Vec2, delay: f32, timing: &Timing) -> Gesture {
-    Gesture {
-        entity,
-        shape: GestureShape::Shake {
-            toward: toward.normalize_or_zero() * timing.0.shake_reach,
+/// The way a body shakes when something drives it `toward`, `secs` from
+/// now.
+fn shake(entity: Entity, toward: Vec2, secs: f32, timing: &Timing) -> Later<Gesture> {
+    Later::after(
+        secs,
+        Gesture {
+            entity,
+            shape: GestureShape::Shake {
+                toward: toward.normalize_or_zero() * timing.0.shake_reach,
+            },
+            secs: timing.0.shake_secs,
         },
-        secs: timing.0.shake_secs,
-        delay,
-    }
+    )
 }
 
 /// What a blow lands on shakes the way it was driven.
 pub fn shake_struck(
     timing: Res<Timing>,
     mut blows: MessageReader<BlowLands>,
-    mut gestures: MessageWriter<Gesture>,
+    mut gestures: MessageWriter<Later<Gesture>>,
 ) {
     for blow in blows.read() {
         gestures.write(shake(blow.target, blow.toward, blow.contact, &timing));
@@ -433,7 +439,7 @@ pub fn shake_struck(
 pub fn bleed_struck(
     timing: Res<Timing>,
     mut blows: MessageReader<BlowLands>,
-    mut effects: MessageWriter<PlayEffect>,
+    mut effects: MessageWriter<Later<PlayEffect>>,
     bleeds: Query<&Bleeds>,
 ) {
     for blow in blows.read() {
@@ -445,15 +451,17 @@ pub fn bleed_struck(
         } else {
             0
         };
-        effects.write(PlayEffect {
-            effect: bleeds.0,
-            entity: blow.target,
-            toward: blow.toward,
-            swing: None,
-            secs: 0.0,
-            strength: blow.damage + bonus,
-            delay: blow.contact,
-        });
+        effects.write(Later::after(
+            blow.contact,
+            PlayEffect {
+                effect: bleeds.0,
+                entity: blow.target,
+                toward: blow.toward,
+                swing: None,
+                secs: 0.0,
+                strength: blow.damage + bonus,
+            },
+        ));
     }
 }
 
@@ -470,7 +478,7 @@ pub fn shake_obstacles(
     timing: Res<Timing>,
     grid: Res<MapGrid>,
     mut collisions: MessageReader<Collision>,
-    mut gestures: MessageWriter<Gesture>,
+    mut gestures: MessageWriter<Later<Gesture>>,
     positions: Query<&Pos>,
 ) {
     for collision in collisions.read() {
@@ -491,7 +499,7 @@ pub fn bleed_impacts(
     timing: Res<Timing>,
     grid: Res<MapGrid>,
     mut collisions: MessageReader<Collision>,
-    mut effects: MessageWriter<PlayEffect>,
+    mut effects: MessageWriter<Later<PlayEffect>>,
     remains: Query<(Entity, &Remains)>,
     (positions, bleeds): (Query<&Pos>, Query<&Bleeds>),
 ) {
@@ -504,15 +512,17 @@ pub fn bleed_impacts(
         ) else {
             continue;
         };
-        effects.write(PlayEffect {
-            effect: bleeds.0,
-            entity: mover,
-            toward: grid.delta(from.0, at.0).as_vec2(),
-            swing: None,
-            secs: 0.0,
-            strength: timing.0.impact_strength,
-            delay: timing.impact(),
-        });
+        effects.write(Later::after(
+            timing.impact(),
+            PlayEffect {
+                effect: bleeds.0,
+                entity: mover,
+                toward: grid.delta(from.0, at.0).as_vec2(),
+                swing: None,
+                secs: 0.0,
+                strength: timing.0.impact_strength,
+            },
+        ));
     }
 }
 
@@ -523,7 +533,7 @@ pub fn slam_impacts(
     timing: Res<Timing>,
     grid: Res<MapGrid>,
     mut collisions: MessageReader<Collision>,
-    mut effects: MessageWriter<PlayEffect>,
+    mut effects: MessageWriter<Later<PlayEffect>>,
     remains: Query<(Entity, &Remains)>,
     positions: Query<&Pos>,
 ) {
@@ -535,15 +545,17 @@ pub fn slam_impacts(
         let (Ok(from), Ok(at)) = (positions.get(mover), positions.get(collision.obstacle)) else {
             continue;
         };
-        effects.write(PlayEffect {
-            effect,
-            entity: mover,
-            toward: grid.delta(from.0, at.0).as_vec2(),
-            swing: None,
-            secs: 0.0,
-            strength: timing.0.impact_strength,
-            delay: timing.impact(),
-        });
+        effects.write(Later::after(
+            timing.impact(),
+            PlayEffect {
+                effect,
+                entity: mover,
+                toward: grid.delta(from.0, at.0).as_vec2(),
+                swing: None,
+                secs: 0.0,
+                strength: timing.0.impact_strength,
+            },
+        ));
     }
 }
 

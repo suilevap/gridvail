@@ -27,3 +27,77 @@ pub struct DebtPaid(pub Entity);
 /// for it.
 #[derive(Component, Clone, Debug, PartialEq, Eq)]
 pub struct Scheduled<M: Message + Clone>(pub M);
+
+/// `message`, sent `secs` seconds from now: something shown that waits for
+/// its moment on screen (a target's shake at the blow's contact, blood when
+/// the blow lands). It is to seconds what `Scheduled` is to turns. Whatever
+/// reads `M` never knows it waited. Any message type can wait, once the app
+/// has `add_later_message::<M>()` (`cues::ShowLater`).
+#[derive(Message, Clone, Copy, Debug, PartialEq)]
+pub struct Later<M: Message> {
+    pub secs: f32,
+    pub message: M,
+}
+
+impl<M: Message> Later<M> {
+    /// `message`, `secs` seconds from now.
+    pub const fn after(secs: f32, message: M) -> Self {
+        Self { secs, message }
+    }
+
+    /// `message`, as soon as what waits is sent.
+    pub const fn now(message: M) -> Self {
+        Self::after(0.0, message)
+    }
+}
+
+/// The `Later` messages of type `M` still waiting, each with its seconds
+/// left. A new map drops them: what was to be shown went with the old one.
+#[derive(Resource, Debug)]
+pub struct Waiting<M> {
+    queue: Vec<(f32, M)>,
+}
+
+impl<M> Default for Waiting<M> {
+    fn default() -> Self {
+        Self { queue: Vec::new() }
+    }
+}
+
+impl<M> Waiting<M> {
+    /// Each waiting message, with its seconds left.
+    pub fn iter(&self) -> impl Iterator<Item = (f32, &M)> {
+        self.queue.iter().map(|(secs, message)| (*secs, message))
+    }
+
+    /// Takes one more message to wait `secs`.
+    pub fn push(&mut self, secs: f32, message: M) {
+        self.queue.push((secs, message));
+    }
+
+    /// `dt` seconds pass.
+    pub fn age(&mut self, dt: f32) {
+        for (secs, _) in &mut self.queue {
+            *secs -= dt;
+        }
+    }
+
+    /// Gives each message whose time has come to `send`, in the order
+    /// they were asked for, and keeps the rest.
+    pub fn release(&mut self, mut send: impl FnMut(M))
+    where
+        M: Clone,
+    {
+        self.queue.retain(|(secs, message)| {
+            let due = *secs <= 0.0;
+            if due {
+                send(message.clone());
+            }
+            !due
+        });
+    }
+
+    pub fn clear(&mut self) {
+        self.queue.clear();
+    }
+}

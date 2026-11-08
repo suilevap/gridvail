@@ -24,10 +24,12 @@ fn frames(app: &mut App, n: usize) {
 }
 
 fn particles(app: &mut App) -> Vec<Particle> {
-    let mut query = app
-        .world_mut()
-        .query_filtered::<&Particle, Without<ParticleDelay>>();
-    query.iter(app.world()).copied().collect()
+    let mut query = app.world_mut().query::<&Particle>();
+    query
+        .iter(app.world())
+        .filter(|particle| particle.appeared())
+        .copied()
+        .collect()
 }
 
 fn request(effect: EffectId, entity: Entity) -> PlayEffect {
@@ -38,7 +40,6 @@ fn request(effect: EffectId, entity: Entity) -> PlayEffect {
         swing: None,
         secs: 0.0,
         strength: 1,
-        delay: 0.0,
     }
 }
 
@@ -77,11 +78,13 @@ fn how_an_effect_looks_is_only_data() {
 fn blood_is_thrown_the_way_the_blow_went_and_lies_then_fades() {
     let mut app = app();
     let target = app.world_mut().spawn(Pos(IVec2::new(4, 4))).id();
-    app.world_mut().write_message(PlayEffect {
-        strength: 2,
-        delay: 0.1,
-        ..request(EffectId::Blood, target)
-    });
+    app.world_mut().write_message(Later::after(
+        0.1,
+        PlayEffect {
+            strength: 2,
+            ..request(EffectId::Blood, target)
+        },
+    ));
     frames(&mut app, 2);
     assert!(
         particles(&mut app).is_empty(),
@@ -139,10 +142,8 @@ fn strokes_are_drawn_the_way_they_go() {
 fn a_new_map_clears_every_particle() {
     let mut app = app();
     let target = app.world_mut().spawn(Pos(IVec2::new(4, 4))).id();
-    app.world_mut().write_message(PlayEffect {
-        delay: 0.5,
-        ..request(EffectId::Blood, target)
-    });
+    app.world_mut()
+        .write_message(Later::after(0.5, request(EffectId::Blood, target)));
     app.world_mut()
         .write_message(request(EffectId::Blood, target));
     frames(&mut app, 2);

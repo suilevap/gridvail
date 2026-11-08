@@ -7,7 +7,8 @@ use super::{EffectId, GestureShape, Rgb};
 /// drifts at `velocity` (cells a second), slowed by `drag` (the share of
 /// its speed lost a second, as a rate), turns from `color` to `end_color`
 /// over its `life`, and shows fully for the share `hold` of it, then fades
-/// out. It is drawn as `ch`, or, a stroke, as a line the way of `stroke`
+/// out. Its `age` starts below zero when it is to appear later (a streak
+/// drawn along a swing): until then it is neither shown nor moves. It is drawn as `ch`, or, a stroke, as a line the way of `stroke`
 /// (picked where it is drawn, so a turned view turns it).
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct Particle {
@@ -24,6 +25,11 @@ pub struct Particle {
 }
 
 impl Particle {
+    /// Whether it has appeared yet.
+    pub fn appeared(&self) -> bool {
+        self.age >= 0.0
+    }
+
     /// How far through its life it is, 0 to 1.
     pub fn progress(&self) -> f32 {
         (self.age / self.life.max(f32::EPSILON)).clamp(0.0, 1.0)
@@ -51,12 +57,9 @@ impl Particle {
     }
 }
 
-/// A particle that has not appeared yet: seconds until it does.
-#[derive(Component, Clone, Copy, Debug, PartialEq)]
-pub struct ParticleDelay(pub f32);
-
 /// Play the effect `effect` (a file in `assets/effects`) from where
-/// `entity` is shown, its way `toward`, `delay` seconds from now. A swing
+/// `entity` is shown, its way `toward` (sent `Later` to wait for its
+/// moment, it starts from where `entity` is shown then). A swing
 /// gives its `swing`, which effects can follow over `secs`; `strength`
 /// scales how much it throws off (the damage of a blow).
 #[derive(Message, Clone, Copy, Debug, PartialEq)]
@@ -67,7 +70,6 @@ pub struct PlayEffect {
     pub swing: Option<GestureShape>,
     pub secs: f32,
     pub strength: i32,
-    pub delay: f32,
 }
 
 /// What a blow knocks out of it (an effect: blood, splinters).

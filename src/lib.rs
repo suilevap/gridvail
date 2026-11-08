@@ -10,6 +10,7 @@ pub mod camera;
 pub mod choreography;
 pub mod combat;
 pub mod content;
+pub mod cues;
 pub mod damage;
 pub mod debug_ui;
 pub mod effects;

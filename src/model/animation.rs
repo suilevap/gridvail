@@ -127,15 +127,14 @@ pub enum GestureShape {
 }
 
 /// A move out and back that does not change the object's cell, `secs`
-/// long, starting `delay` seconds from now: a swing, a recoil. Several
-/// gestures (and held moves) timed against each other play one exchange in
-/// order. Shown by the animation step, if there is one.
+/// long: a swing, a recoil. Several gestures (and held moves) timed against
+/// each other play one exchange in order; one that waits for its moment is
+/// sent `Later`. Shown by the animation step, if there is one.
 #[derive(Message, Clone, Copy, Debug, PartialEq)]
 pub struct Gesture {
     pub entity: Entity,
     pub shape: GestureShape,
     pub secs: f32,
-    pub delay: f32,
 }
 
 /// Holds `entity`'s moves to new cells for `secs`: it keeps being shown
