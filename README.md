@@ -115,7 +115,9 @@ next to this file.
   another (`weapon: Sweep`), so a new one needs no code. The
   player going down plays the map again. `arena.txt` is a map to try it
   in. `--turn SECONDS` sets how long a turn waits for the player (1 by
-  default), `--hp` the player's hit points, `--enemy-hp` everyone else's.
+  default), `--hp` the player's hit points, `--enemy-hp` everyone else's,
+  `--ready SECONDS` how long an attack of the player's is held, shown,
+  before it is made (0.8 by default; 0 makes it at once).
   `--slomo FACTOR` runs the whole game that many times slower, to watch a
   fight's choreography.
 - Player-bound `i` direction marker via relative position + rotation.

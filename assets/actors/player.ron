@@ -7,4 +7,4 @@
 // effect: `Blood` is `assets/effects/blood.ron`), and for how many seconds
 // a move that would attack is held, shown as it would be made, before it is
 // made (a tap or Space drops it; the same move again makes it at once).
-(hp: 2, style: Blade, bleeds: Blood, readies: 0.5)
+(hp: 2, style: Blade, bleeds: Blood, readies: 0.8)

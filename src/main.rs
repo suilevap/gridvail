@@ -118,6 +118,12 @@ fn main() -> AppExit {
     if let Some(hp) = options.hp {
         app.world_mut().resource_mut::<ActorKinds>().player_mut().hp = hp;
     }
+    if let Some(secs) = options.ready {
+        app.world_mut()
+            .resource_mut::<ActorKinds>()
+            .player_mut()
+            .readies = (secs > 0.0).then_some(secs);
+    }
     if let Some(hp) = options.enemy_hp {
         app.world_mut()
             .resource_mut::<ActorKinds>()
@@ -220,6 +226,9 @@ struct Options {
     hp: Option<i32>,
     /// Every other actor's hit points.
     enemy_hp: Option<i32>,
+    /// Seconds the player's attack is held, shown, before it is made (0:
+    /// at once).
+    ready: Option<f32>,
     /// How many times slower than real time the game runs.
     slomo: Option<f32>,
 }
@@ -290,6 +299,7 @@ impl Options {
         let mut turn = None;
         let mut hp = None;
         let mut enemy_hp = None;
+        let mut ready = None;
         let mut slomo = None;
         parse_options!(source, args;
             "--screenshot": native if capture.is_none() => {
@@ -328,6 +338,16 @@ impl Options {
                         .ok()
                         .filter(|points| *points > 0)
                         .expect("--hp must be a positive whole number"),
+                );
+            },
+            "--ready": value if ready.is_none() => {
+                let seconds = args.next().expect("--ready requires seconds");
+                ready = Some(
+                    seconds
+                        .parse::<f32>()
+                        .ok()
+                        .filter(|seconds| *seconds >= 0.0)
+                        .expect("--ready must be zero or a positive number of seconds"),
                 );
             },
             "--enemy-hp": value if enemy_hp.is_none() => {
@@ -463,6 +483,7 @@ impl Options {
             turn,
             hp,
             enemy_hp,
+            ready,
             slomo,
         }
     }
@@ -525,6 +546,8 @@ mod option_tests {
                 "1.5",
                 "--hp",
                 "1",
+                "--ready",
+                "0.8",
             ]
             .map(String::from)
         });
@@ -536,6 +559,7 @@ mod option_tests {
         assert_eq!(options.intro, Some(IntroLayout::Noise));
         assert_eq!(options.turn, Some(1.5));
         assert_eq!(options.hp, Some(1));
+        assert_eq!(options.ready, Some(0.8));
     }
 
     #[test]

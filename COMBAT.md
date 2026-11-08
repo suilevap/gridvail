@@ -38,7 +38,7 @@ forward, left, right or back.
 - **Next to an enemy the player is engaged:** the moves toward it attack.
   Walking past one can sweep it.
 - **An attack is shown before it is made.** A move whose attack hits or
-  knocks is held for a moment (0.5s, `readies` in
+  knocks is held for a moment (0.8s, `--ready` / `?ready=`, `readies` in
   `assets/actors/player.ron`): the player winds up as it will swing, and
   the cells it strikes are marked cyan (lamps light nothing cyan, so it
   stands out) in the order it swings through them. Then it is made. In
@@ -183,7 +183,8 @@ Out, roughly in the order they would follow:
 - **Facing starts north**, so a swipe is read from somewhere on the first
   move.
 - **Knobs.** `--turn SECONDS` (or `?turn=` on the web) sets how long a turn
-  waits for the player; `--hp N` the player's hit points.
+  waits for the player; `--hp N` the player's hit points; `--ready
+  SECONDS` how long an attack is held, shown, before it is made.
 - **Found while building it.** Enemies see all around them, so one is
   rarely unaware when the player gets next to it. Critical hits mostly land
   on the `!` beat, or from darkness and around corners. Sight that depends

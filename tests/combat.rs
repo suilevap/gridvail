@@ -454,7 +454,7 @@ fn a_lethal_blow_still_knocks_its_target_before_it_dies() {
 
 /// Frames (of 16ms) the bundled player's readied attack is held for, and a
 /// few more.
-const READIED_FRAMES: usize = 40;
+const READIED_FRAMES: usize = 60;
 
 #[test]
 fn a_move_that_would_attack_is_readied_and_shown_then_made() {
