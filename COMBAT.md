@@ -44,8 +44,12 @@ forward, left, right or back.
   stands out) in the order it swings through them. Then it is made. In
   that moment a tap (Space, Backspace) cancels it and takes no turn (a
   key or finger still held from it does nothing more until a fresh move);
-  the same move again makes it at once; another move takes its place. A move that strikes nothing (a walk, backing off)
-  is never held.
+  the same move again makes it at once; another move that attacks
+  (backing off too) switches to that attack, held for its own full
+  moment; a move that meets nothing drops it and walks. The turn's
+  timeout waits while an attack is held, so looking at one costs no
+  time. A move that strikes nothing (a walk, backing off) is never held
+  on its own.
 - **A timeout never acts for the player.** The turn passes like a wait.
 
 ## The attacks: one for each way

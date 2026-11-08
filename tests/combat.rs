@@ -506,17 +506,52 @@ fn the_same_move_again_makes_the_readied_attack_at_once() {
 }
 
 #[test]
-fn another_move_takes_the_readied_attacks_place() {
+fn another_move_that_attacks_takes_the_readied_attacks_place_held_in_turn() {
     let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
     game.until_aware();
     game.press(UP);
-    // Backing off strikes nothing, so it is made at once, in place of the
-    // lunge.
+    game.frames(READIED_FRAMES / 2);
+    // Switched to a sweep right: held in turn, for its own full time.
+    game.press(RIGHT);
+    let readied = game.readied().expect("not held");
+    assert_eq!(readied.relation, Relation::Right);
+    game.frames(READIED_FRAMES * 2 / 3);
+    assert!(game.readied().is_some(), "made on the first one's time");
+    // Backing off strikes nothing, but in place of a held one it is held
+    // too: it is what the player now looks at.
     game.press(DOWN);
-    assert!(game.readied().is_none());
+    assert_eq!(game.readied().expect("not held").relation, Relation::Back);
+    assert_eq!(game.player_pos(), BEHIND);
     game.frames(READIED_FRAMES);
     assert_eq!(game.player_pos(), BEHIND + IVec2::Y);
     assert_eq!(game.enemy_at(FRONT).expect("left alone").1, 2);
+}
+
+#[test]
+fn a_walk_away_drops_the_readied_attack_and_walks() {
+    // Facing north, the enemy east of the player: a move right sweeps it,
+    // a move left meets nothing.
+    let mut game = Game::readying(OPEN, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    game.press(RIGHT);
+    assert!(game.readied().is_some());
+    game.press(LEFT);
+    assert!(game.readied().is_none(), "still held");
+    assert_eq!(game.player_pos(), PLAYER + IVec2::NEG_X, "did not walk");
+    assert_eq!(game.enemy_at(ENEMY).expect("left alone").1, 2);
+}
+
+#[test]
+fn the_turn_waits_while_an_attack_is_held() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    game.press(UP);
+    let held = game.timer();
+    game.frames(READIED_FRAMES / 2);
+    assert_eq!(game.timer(), held, "the timeout ran on");
+    game.press(KeyCode::Space);
+    game.frames(3);
+    assert!(game.timer() > held, "the timeout stayed stopped");
 }
 
 #[test]

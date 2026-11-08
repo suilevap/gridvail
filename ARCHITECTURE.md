@@ -187,8 +187,9 @@ and renderers must not import it.
     its seconds, shown by its cyan marks (`mark_readied`) and its
     wind-up (`choreography`); then it is made, or at once if the same
     move comes again. A `Cancel` (Space, a tap) drops it, another move
-    takes its place, and a move made `at_once` (the agent API) is never
-    held.
+    that attacks takes its place, held in turn, and a move made `at_once`
+    (the agent API) is never held. While one is held the actor
+    `HoldsTurn`, and `recharge_tokens` stops the turn's timeout.
     `perform_attacks` answers it: a `Hit` for each target in order (only
     the first if it stops there), a `Knock` the way the swing goes through
     its cell plus the actor's step (the blow carries it), a `Follow`

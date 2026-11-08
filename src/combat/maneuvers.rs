@@ -85,7 +85,9 @@ pub fn choose_attacks(
 /// (it is then chosen as any move is, so if nothing is there any more it
 /// walks). A move made `at_once` is never held. While one is held, a move
 /// held on from before waits, and a fresh move in another way takes its
-/// place: readied too if it strikes, else made as it is. After a cancel,
+/// place: readied in turn if it attacks at all (backing off too), for its
+/// own full seconds, else walked. While one is held the turn waits for it
+/// (`HoldsTurn`). After a cancel,
 /// a move held on from before is not made until a fresh one comes.
 pub fn ready_attacks(
     mut commands: Commands,
@@ -114,7 +116,7 @@ pub fn ready_attacks(
                 command.active = true;
                 command.relative = true;
                 command.repeat = false;
-                commands.entity(actor).remove::<Readied>();
+                commands.entity(actor).remove::<(Readied, HoldsTurn)>();
                 continue;
             }
             if !fresh {
@@ -127,16 +129,24 @@ pub fn ready_attacks(
         }
         let mover = (actor, pos, facing, maneuvers);
         match attack_of(mover, command.target, &grid, &targets) {
-            Some(attack) if !command.at_once && maneuvers.get(attack.relation).strikes() => {
-                commands.entity(actor).insert(Readied {
-                    attack,
-                    until: now + readies.0,
-                });
+            // One that strikes is held; while one is held, any attack in
+            // its place is (the player switches what it looks at).
+            Some(attack)
+                if !command.at_once
+                    && (readied.is_some() || maneuvers.get(attack.relation).strikes()) =>
+            {
+                commands.entity(actor).insert((
+                    Readied {
+                        attack,
+                        until: now + readies.0,
+                    },
+                    HoldsTurn,
+                ));
                 command.active = false;
                 command.target = IVec2::ZERO;
             }
             _ if readied.is_some() => {
-                commands.entity(actor).remove::<Readied>();
+                commands.entity(actor).remove::<(Readied, HoldsTurn)>();
             }
             _ => {}
         }
@@ -152,7 +162,10 @@ pub fn cancel_readied(
 ) {
     for &Cancel(actor) in cancels.read() {
         if readied.contains(actor) {
-            commands.entity(actor).remove::<Readied>().insert(Withheld);
+            commands
+                .entity(actor)
+                .remove::<(Readied, HoldsTurn)>()
+                .insert(Withheld);
         }
     }
 }

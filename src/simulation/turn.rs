@@ -11,6 +11,7 @@ pub fn turn_tick(mut turn: ResMut<TurnState>) {
 pub fn recharge_tokens(
     time: Res<Time>,
     cutscene: Option<Res<Cutscene>>,
+    deciding: Query<(), With<HoldsTurn>>,
     mut timer: ResMut<TokenTimer>,
     mut pacing: ResMut<TurnPacing>,
     mut holders: Query<&mut Tokens, Or<(With<Player>, With<Enemy>)>>,
@@ -19,7 +20,10 @@ pub fn recharge_tokens(
     if cutscene.is_some() {
         return;
     }
-    timer.0.tick(time.delta());
+    // While something is being decided, the timeout waits.
+    if deciding.is_empty() {
+        timer.0.tick(time.delta());
+    }
     let any_left = holders.iter().any(|tokens| tokens.count > 0);
     // A new turn starts on the timeout, or once every token is spent and the
     // player's action has (almost) finished animating, if anything animates.
