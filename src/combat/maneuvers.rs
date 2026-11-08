@@ -15,6 +15,15 @@ type Mover = (
     &'static Tokens,
 );
 
+/// An actor that readies its moves, with the move it holds, if any, and
+/// whether a cancel withholds what is held on.
+type Readier = (
+    Mover,
+    &'static Readies,
+    Option<&'static Readied>,
+    Has<Withheld>,
+);
+
 /// A move about to be carried out this frame.
 fn ready(command: &MoveCommand, tokens: &Tokens, turn: &TurnState) -> bool {
     command.active
@@ -83,10 +92,7 @@ pub fn ready_attacks(
     time: Res<Time>,
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
-    mut actors: Query<
-        (Mover, &Readies, Option<&Readied>, Has<Withheld>),
-        Without<DestroyRequested>,
-    >,
+    mut actors: Query<Readier, Without<DestroyRequested>>,
     targets: Query<(), Target>,
 ) {
     let now = time.elapsed_secs();
