@@ -37,9 +37,10 @@ forward, left, right or back.
   always one step that way.
 - **Next to an enemy the player is engaged:** the moves toward it attack.
   Walking past one can sweep it.
-- **An attack is shown before it is made.** A move whose attack hits or
-  knocks is held for a moment (0.8s, `--ready` / `?ready=`, `readies` in
-  `assets/actors/player.ron`): the player winds up as it will swing, and
+- **An attack can be shown before it is made (off by default).** With
+  `--ready SECONDS` (`?ready=0.8` on the web, or `readies` in
+  `assets/actors/player.ron`), a move whose attack hits or knocks is
+  held for that long: the player winds up as it will swing, and
   the cells it strikes are marked cyan (lamps light nothing cyan, so it
   stands out) in the order it swings through them. Then it is made. In
   that moment a tap (Space, Backspace) cancels it and takes no turn (a
@@ -49,7 +50,10 @@ forward, left, right or back.
   moment; a move that meets nothing drops it and walks. The turn's
   timeout waits while an attack is held, so looking at one costs no
   time. A move that strikes nothing (a walk, backing off) is never held
-  on its own.
+  on its own. Tried at 0.5s and 0.8s: the control and the preview were
+  liked, but fights felt slower and less dynamic, so it is off until a
+  form that keeps the pace is found (a short hold without a full cancel,
+  or a preview while the finger is still down, made on release).
 - **A timeout never acts for the player.** The turn passes like a wait.
 
 ## The attacks: one for each way

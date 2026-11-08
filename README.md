@@ -117,7 +117,7 @@ next to this file.
   in. `--turn SECONDS` sets how long a turn waits for the player (1 by
   default), `--hp` the player's hit points, `--enemy-hp` everyone else's,
   `--ready SECONDS` how long an attack of the player's is held, shown,
-  before it is made (0.8 by default; 0 makes it at once).
+  before it is made, cancellable (off by default; try 0.8).
   `--slomo FACTOR` runs the whole game that many times slower, to watch a
   fight's choreography.
 - Player-bound `i` direction marker via relative position + rotation.
@@ -485,11 +485,11 @@ python3 -m http.server -d dist 8000
 ```
 
 On touch screens, swipe to take a step and keep the finger down to keep
-walking; slide it past where it landed to turn. A swipe that would attack
-winds up for a moment first, its cells marked cyan, and the turn waits
-for it: tap to cancel it, swipe another way to switch to that attack, or
-swipe the same way again to strike at once (Space cancels on a
-keyboard). Two fingers pinch to zoom,
+walking; slide it past where it landed to turn. With `?ready=0.8` a swipe
+that would attack winds up for a moment first, its cells marked cyan, and
+the turn waits for it: tap to cancel it, swipe another way to switch to
+that attack, or swipe the same way again to strike at once (Space cancels
+on a keyboard). Two fingers pinch to zoom,
 and twisting them an eighth of a turn turns the view a quarter turn, like Q
 and E; they never walk. The performance panel starts
 hidden in the browser (F3 shows it). Touch controls live in `src/touch/`;

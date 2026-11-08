@@ -38,7 +38,7 @@ impl Game {
     }
 
     /// The map with the kinds of actor changed by `setup` first, the
-    /// player's attacks readied as the bundled player's are.
+    /// player's attacks readied for `READY_SECS`.
     fn readying(map: &'static str, setup: impl FnOnce(&mut ActorKinds)) -> Self {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
@@ -51,7 +51,9 @@ impl Game {
             )))
             .insert_resource(MapText(map))
             .add_plugins(GamePlugin);
-        setup(&mut app.world_mut().resource_mut::<ActorKinds>());
+        let mut kinds = app.world_mut().resource_mut::<ActorKinds>();
+        kinds.player_mut().readies = Some(READY_SECS);
+        setup(&mut kinds);
         let mut game = Self { app };
         game.app.update();
         game.frames(5);
@@ -452,8 +454,9 @@ fn a_lethal_blow_still_knocks_its_target_before_it_dies() {
     );
 }
 
-/// Frames (of 16ms) the bundled player's readied attack is held for, and a
-/// few more.
+/// How long the tests of readying hold the player's attacks, and the
+/// frames (of 16ms) that takes, and a few more.
+const READY_SECS: f32 = 0.8;
 const READIED_FRAMES: usize = 60;
 
 #[test]

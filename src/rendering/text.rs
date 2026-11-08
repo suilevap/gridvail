@@ -737,7 +737,7 @@ fn update_hud(
         match scheme {
             ControlScheme::Keyboard => writeln!(
                 text.0,
-                "PavEcsGame Lite Bevy port | arrows/WASD | Space cancels | Q/E turn | Z/X zoom{} | M motion: {} | Esc settings",
+                "PavEcsGame Lite Bevy port | arrows/WASD | Q/E turn | Z/X zoom{} | M motion: {} | Esc settings",
                 if extruded_walls.is_some() {
                     " | wheel zoom"
                 } else {
@@ -747,7 +747,7 @@ fn update_hud(
             ),
             ControlScheme::Touch => writeln!(
                 text.0,
-                "PavEcsGame Lite Bevy port | swipe to step, hold to walk | tap cancels | pinch zoom | twist turns view"
+                "PavEcsGame Lite Bevy port | swipe to step, hold to walk | pinch zoom | twist turns view"
             ),
         }
         .expect("writing to String cannot fail");

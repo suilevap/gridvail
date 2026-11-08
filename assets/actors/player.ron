@@ -4,7 +4,8 @@
 // (none for the player), its hit points, its weapon (`Sweep` is
 // `assets/weapons/sweep.ron`) or fighting style (`Blade` is
 // `assets/styles/blade.ron`), and what a blow knocks out of it (an
-// effect: `Blood` is `assets/effects/blood.ron`), and for how many seconds
-// a move that would attack is held, shown as it would be made, before it is
-// made (a tap or Space drops it; the same move again makes it at once).
-(hp: 2, style: Blade, bleeds: Blood, readies: 0.8)
+// effect: `Blood` is `assets/effects/blood.ron`). `readies: 0.8` would
+// hold a move that would attack for that many seconds, shown as it would be
+// made, before making it (a tap or Space drops it; the same move again
+// makes it at once). Off: it made fights feel slower (`COMBAT.md`).
+(hp: 2, style: Blade, bleeds: Blood)
