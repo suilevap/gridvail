@@ -76,18 +76,31 @@ pub fn choose_attacks(
 /// (it is then chosen as any move is, so if nothing is there any more it
 /// walks). A move made `at_once` is never held. While one is held, a move
 /// held on from before waits, and a fresh move in another way takes its
-/// place: readied too if it strikes, else made as it is.
+/// place: readied too if it strikes, else made as it is. After a cancel,
+/// a move held on from before is not made until a fresh one comes.
 pub fn ready_attacks(
     mut commands: Commands,
     time: Res<Time>,
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
-    mut actors: Query<(Mover, &Readies, Option<&Readied>), Without<DestroyRequested>>,
+    mut actors: Query<
+        (Mover, &Readies, Option<&Readied>, Has<Withheld>),
+        Without<DestroyRequested>,
+    >,
     targets: Query<(), Target>,
 ) {
     let now = time.elapsed_secs();
-    for ((actor, pos, facing, maneuvers, mut command, tokens), readies, readied) in &mut actors {
+    for ((actor, pos, facing, maneuvers, mut command, tokens), readies, readied, withheld) in
+        &mut actors
+    {
         let fresh = ready(&command, tokens, &turn) && !command.repeat;
+        if withheld {
+            if !fresh {
+                command.active = false;
+                continue;
+            }
+            commands.entity(actor).remove::<Withheld>();
+        }
         if let Some(readied) = readied {
             if (fresh && command.target == readied.attack.dir) || now >= readied.until {
                 // Made now: the move goes on to be chosen.
@@ -124,7 +137,8 @@ pub fn ready_attacks(
     }
 }
 
-/// A `Cancel` drops the move its actor readied.
+/// A `Cancel` drops the move its actor readied, and withholds what is held
+/// on from it (`Withheld`).
 pub fn cancel_readied(
     mut commands: Commands,
     mut cancels: MessageReader<Cancel>,
@@ -132,7 +146,7 @@ pub fn cancel_readied(
 ) {
     for &Cancel(actor) in cancels.read() {
         if readied.contains(actor) {
-            commands.entity(actor).remove::<Readied>();
+            commands.entity(actor).remove::<Readied>().insert(Withheld);
         }
     }
 }

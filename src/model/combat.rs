@@ -169,6 +169,11 @@ pub struct Readied {
     pub until: f32,
 }
 
+/// A readied move was cancelled: a move held on from it (a key or finger
+/// kept down) is not made, until a fresh one.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Withheld;
+
 /// `entity` drops the move it has readied: nothing is made, and no turn is
 /// taken. Written by input (a tap, a key).
 #[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]

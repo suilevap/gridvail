@@ -454,7 +454,7 @@ fn a_lethal_blow_still_knocks_its_target_before_it_dies() {
 
 /// Frames (of 16ms) the bundled player's readied attack is held for, and a
 /// few more.
-const READIED_FRAMES: usize = 25;
+const READIED_FRAMES: usize = 40;
 
 #[test]
 fn a_move_that_would_attack_is_readied_and_shown_then_made() {
@@ -517,4 +517,28 @@ fn another_move_takes_the_readied_attacks_place() {
     game.frames(READIED_FRAMES);
     assert_eq!(game.player_pos(), BEHIND + IVec2::Y);
     assert_eq!(game.enemy_at(FRONT).expect("left alone").1, 2);
+}
+
+#[test]
+fn a_key_still_held_after_a_cancel_does_nothing_until_pressed_again() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    keys(&mut game).press(UP);
+    game.frames(3);
+    assert!(game.readied().is_some());
+    keys(&mut game).press(KeyCode::Space);
+    game.frames(1);
+    keys(&mut game).release(KeyCode::Space);
+    game.frames(READIED_FRAMES);
+    assert!(game.readied().is_none(), "readied again by the held key");
+    assert_eq!(game.player_pos(), BEHIND, "made by the held key");
+    assert_eq!(game.enemy_at(FRONT).expect("left alone").1, 2);
+    keys(&mut game).release(UP);
+    game.frames(2);
+    game.press(UP);
+    assert!(game.readied().is_some(), "a fresh press is not readied");
+}
+
+fn keys(game: &mut Game) -> Mut<'_, ButtonInput<KeyCode>> {
+    game.app.world_mut().resource_mut::<ButtonInput<KeyCode>>()
 }

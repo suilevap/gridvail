@@ -38,12 +38,13 @@ forward, left, right or back.
 - **Next to an enemy the player is engaged:** the moves toward it attack.
   Walking past one can sweep it.
 - **An attack is shown before it is made.** A move whose attack hits or
-  knocks is held for a moment (0.3s, `readies` in
+  knocks is held for a moment (0.5s, `readies` in
   `assets/actors/player.ron`): the player winds up as it will swing, and
-  the cells it strikes are marked yellow in the order it swings through
-  them. Then it is made. In that moment a tap (Space, Backspace) cancels
-  it and takes no turn; the same move again makes it at once; another
-  move takes its place. A move that strikes nothing (a walk, backing off)
+  the cells it strikes are marked cyan (lamps light nothing cyan, so it
+  stands out) in the order it swings through them. Then it is made. In
+  that moment a tap (Space, Backspace) cancels it and takes no turn (a
+  key or finger still held from it does nothing more until a fresh move);
+  the same move again makes it at once; another move takes its place. A move that strikes nothing (a walk, backing off)
   is never held.
 - **A timeout never acts for the player.** The turn passes like a wait.
 

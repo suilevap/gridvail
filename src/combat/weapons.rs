@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::lighting::{RED, YELLOW};
+use crate::lighting::{CYAN, RED};
 use crate::model::*;
 
 /// How a cell about to be struck is marked.
@@ -17,10 +17,10 @@ pub const STRIKE_MARK: CellMark = CellMark {
 pub const READY_MARK: CellMark = CellMark {
     ground: RenderCell {
         ch: '×',
-        color: YELLOW,
+        color: CYAN,
         depth: 0,
     },
-    tint: YELLOW,
+    tint: CYAN,
     delay: 0.0,
 };
 /// How long after a weapon's first cell is marked the next one is, in the
