@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn the_bundled_file_parses() {
         let figures = parse_figures(include_str!("../../assets/rules/figures.txt")).unwrap();
-        for name in ["person", "rifleman", "officer", "lamp"] {
+        for name in ["person", "doctor", "rifleman", "officer", "lamp"] {
             assert!(
                 !figures[name].parts(FigureView::Front).0.is_empty(),
                 "{name}"
