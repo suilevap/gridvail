@@ -1,7 +1,7 @@
 //! The one format for data files: RON, read straight into any type that
 //! derives `Deserialize`. A new file is a new type; a new field is a new
-//! field. Fields that are optional may be written bare (`weapon: "jab"`
-//! rather than `weapon: Some("jab")`).
+//! field. Fields that are optional may be written bare (`weapon: Jab`
+//! rather than `weapon: Some(Jab)`).
 
 use ron::extensions::Extensions;
 use serde::de::DeserializeOwned;

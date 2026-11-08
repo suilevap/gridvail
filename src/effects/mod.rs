@@ -11,7 +11,7 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
 use crate::content::catalog::Catalog;
-use crate::content::effects::{EffectSpec, EmitterSpec, GlyphSpec, SourceSpec};
+use crate::content::effects::{EmitterSpec, GlyphSpec, SourceSpec};
 use crate::model::*;
 use crate::schedule::GamePhase;
 
@@ -39,7 +39,7 @@ impl Plugin for EffectsPlugin {
 /// Every effect's spec, by its `EffectId`: the effects catalog. The bundled
 /// one by default; change it (or insert another) to change how effects
 /// look.
-pub type EffectLibrary = Catalog<EffectId, EffectSpec>;
+pub type EffectLibrary = Catalog<EffectId>;
 
 /// The effects' own random numbers, apart from the game's.
 #[derive(Resource)]

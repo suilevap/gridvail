@@ -54,6 +54,9 @@ and renderers must not import it.
   to lay out walls is a new file implementing the trait.
 - `model/` contains ECS data, split into actors, spatial state, vision,
   lighting, world resources, and presentation buffers. It contains no systems.
+  It also holds the catalog ids `build.rs` generates (`CatalogId`), which
+  derive `Deserialize` so data names things by them; their texts and spec
+  types stay in `content`.
 - `schedule.rs` defines startup and update phase sets. It contains no systems
   and lets plugins declare ordering without depending on `app`.
 - `service.rs` is for work that may take longer than a frame. A service
@@ -200,7 +203,7 @@ and renderers must not import it.
     into any type that derives `Deserialize`, so a new data file is a new
     type, with no parser; `content::art` reads shapes drawn as text art.
     Things of a kind are **catalogs** (`content::catalog`): one file each
-    in a folder of `assets` (`effects`, `weapons`, `moves`, `actors`).
+    in a folder of `assets` (`effects`, `weapons`, `styles`, `actors`).
     `build.rs` makes each folder an id enum, a variant per file
     (`assets/weapons/sweep.ron` is `WeaponId::Sweep`, implementing
     `model::CatalogId`), and bundles the texts; `Catalog<Id, Spec>` reads
@@ -208,10 +211,12 @@ and renderers must not import it.
     name things by those ids, never by a string (an actor says `weapon:
     Sweep`), so a name nobody wrote fails to compile or to read. A new
     thing is a new file; a new kind is a new folder, a line in
-    `build.rs`'s `CATALOGS` and the spec type its files read into. Kinds
-    of actor (by map glyph, behaviour, hit points, weapon or fighting
-    style) read into `content::actors` types, and `app::ActorKinds` equips
-    each actor spawned from a map glyph with what its kind names. Maps
+    `build.rs`'s `CATALOGS` (naming its folder, id and spec type) and the
+    spec type. Kinds of actor (map glyph, behaviour, hit points, weapon or
+    fighting style) read into `content::actors` types; `app::ActorKinds`
+    checks them (every weapon and style makes sense, glyphs are unique
+    and mean nothing else in maps) and equips each actor spawned, the
+    player (`ActorId::Player`, placed by `p`) or one by its glyph. Maps
     stay named (a map names the next by file), and single files (the
     choreography timings, the tile rules) stay files.
 - `lighting/` contains light blending and light colour: a `LightCell` keeps

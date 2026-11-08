@@ -41,7 +41,7 @@ beside the `@`): forward, left, right or back.
 
 ## The attacks: one for each way
 
-An attack is data (the blade's in `assets/moves/blade.ron`): the cells it
+An attack is data (the blade's in `assets/styles/blade.ron`): the cells it
 strikes, drawn as art with digits for the order its swing goes through
 them, its damage, how far it knocks each target (the way the swing travels
 through its cell, plus one cell the way the player steps: the blow
@@ -252,7 +252,7 @@ Small modules that share only data and messages (see `ARCHITECTURE.md`):
   order), whether it stops at the first target, damage, knock, `Stance`
   and turn. `choose_attacks` turns a move that meets a target into an
   `Attack`; `perform_attacks` answers it. A new fighting style is a new
-  file in `assets/moves`.
+  file in `assets/styles`.
 - **Weapons own their strikes.** A `Weapon` (an `Area`, damage, wind-up)
   on any actor answers `UseWeapon`: it aims (`Telegraph`), owes its
   wind-up in turns (`Delay`) with the `Strike` scheduled for when that is

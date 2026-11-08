@@ -1,7 +1,8 @@
 // A kind of actor (`content::actors::ActorSpec`): the map glyph that
-// places it (any lowercase letter without a meaning of its own), the
-// behaviour it runs (none for the player), its hit points, its weapon
-// (`Sweep` is `assets/weapons/sweep.ron`) or fighting style (`Blade` is
-// `assets/moves/blade.ron`), and what a blow knocks out of it (an effect:
-// `Blood` is `assets/effects/blood.ron`).
-(glyph: 'p', hp: 2, moves: Blade, bleeds: Blood)
+// places it (any lowercase letter without a meaning of its own in maps;
+// none for the player, whom maps place with `p`), the behaviour it runs
+// (none for the player), its hit points, its weapon (`Sweep` is
+// `assets/weapons/sweep.ron`) or fighting style (`Blade` is
+// `assets/styles/blade.ron`), and what a blow knocks out of it (an
+// effect: `Blood` is `assets/effects/blood.ron`).
+(hp: 2, style: Blade, bleeds: Blood)
