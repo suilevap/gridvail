@@ -235,8 +235,8 @@ next to this file.
   doors by default; any glyph can be listed), and a `Stature` component
   gives one object its own height. People, guards and lamps stand as
   figures instead: a few characters placed together as ASCII art, each in
-  its own colour (the player is the `@` of their hat over a cloak `Δ`,
-  carrying a lantern `õ`; guards are riflemen `ô` with cross belts `X`,
+  its own colour (the player is a masked figure in a long coat and a
+  broad hat, eyes glowing over a beaked mask, carrying a lantern `θ`; guards are riflemen `ô` with cross belts `X`,
   hunters officers with a plume and a sabre), with a front, back and
   side view picked by the way the actor faces on screen. A guard's bayonet or sabre always points where
   they look, so their line of sight reads at a glance (the player's

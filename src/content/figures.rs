@@ -18,7 +18,7 @@ pub const FONT_PIXELS: f32 = 16.0;
 /// a line per part, back to front:
 ///
 /// ```text
-/// LABEL GLYPH [x=X] [y=Y] [scale=S] [turn=DEGREES] [shade=S | tint=#rrggbb] [only=GLYPHS] [noflip]
+/// LABEL GLYPH [x=X] [y=Y] [scale=S] [turn=DEGREES] [shade=S | tint=#rrggbb] [only=GLYPHS] [noflip] [glow]
 /// [follow=W] [when=still|moving|stepa|stepb]
 /// ```
 ///
@@ -82,6 +82,7 @@ pub fn parse_figures(text: &str) -> Result<HashMap<String, FigureShape>, String>
             tint: Rgb::new(255, 255, 255),
             only: Vec::new(),
             no_flip: false,
+            glow: false,
             follow: 1.0,
             when: None,
         };
@@ -106,6 +107,7 @@ pub fn parse_figures(text: &str) -> Result<HashMap<String, FigureShape>, String>
             };
             match word.split_once('=') {
                 None if word == "noflip" => part.no_flip = true,
+                None if word == "glow" => part.glow = true,
                 Some(("x", value)) => part.offset.x = length(value)?,
                 Some(("y", value)) => part.offset.y = length(value)?,
                 Some(("turn", value)) => part.turn = number(value)?.to_radians(),
@@ -210,6 +212,9 @@ mod tests {
         assert_eq!((parts[0].follow, parts[0].when), (1.8, None));
         assert_eq!(parts[1].when, Some(Gait::StepA));
         assert_eq!(parts[2].follow, 0.0);
+        assert!(!parts[0].glow);
+        let lit = parse_figures("figure a\neyes ‥ glow\n").unwrap();
+        assert!(lit["a"].parts(FigureView::Front).0[0].glow);
         assert!(parse_figures("figure a\nleg ( when=running").is_err());
     }
 

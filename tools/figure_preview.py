@@ -59,6 +59,8 @@ def parse(text):
                 part['only'] = value
             elif key == 'noflip':
                 part['noflip'] = True
+            elif key == 'glow':
+                part['glow'] = True
             elif key == 'follow':
                 part['follow'] = float(value)
             elif key == 'when':

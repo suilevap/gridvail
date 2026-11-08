@@ -163,6 +163,12 @@ fn draw_figures(
                 } else {
                     Color::from(part.tint).to_linear()
                 };
+                // A part that glows is its own light; a mark still wins.
+                let light = if part.glow && !marked {
+                    LinearRgba::WHITE
+                } else {
+                    light
+                };
                 let desired = Color::LinearRgba(LinearRgba::new(
                     light.red * tint.red,
                     light.green * tint.green,

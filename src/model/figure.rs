@@ -43,6 +43,9 @@ pub struct FigurePart {
     /// When its side is drawn mirrored, the glyph keeps its own way round
     /// (its place still mirrors): for a glyph read as itself, such as `@`.
     pub no_flip: bool,
+    /// It gives off its own light: drawn in its tint whatever light it is
+    /// in (glowing eyes, a lantern), not darkened with the rest.
+    pub glow: bool,
     /// How much of the object's gestures (a thrust, a shake) it follows: 1
     /// moves with the body, 0 stays put (planted feet), above 1 goes
     /// further (a weapon reaching out).
@@ -222,6 +225,7 @@ mod tests {
             tint: Rgb::new(255, 255, 255),
             only: Vec::new(),
             no_flip: false,
+            glow: false,
             follow: 1.0,
             when: None,
         }
