@@ -130,7 +130,7 @@ pub enum Tree {
 }
 
 /// A kind of actor (its name is its file's).
-#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct ActorSpec {
     /// The map glyph that places it: a lowercase letter without a meaning
     /// of its own in maps. The player has none (maps place it with `p`).
@@ -149,6 +149,11 @@ pub struct ActorSpec {
     /// when not given).
     #[serde(default)]
     pub bleeds: Option<EffectId>,
+    /// Seconds a move of its that would attack is held, shown as it would
+    /// be made, before it is made (a cancel drops it); made at once when
+    /// not given.
+    #[serde(default)]
+    pub readies: Option<f32>,
 }
 
 #[cfg(test)]

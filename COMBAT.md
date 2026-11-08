@@ -23,9 +23,9 @@ and the cut taken for the first playable version (MVP). The MVP is in
 
 ## Controls: every move is read from where you face
 
-There is no picking and nothing to cancel. Each move (a swipe, an arrow)
-is one action, read relative to the way the player faces (the marker
-beside the `@`): forward, left, right or back.
+There is no picking. Each move (a swipe, an arrow) is one action, read
+relative to the way the player faces (the marker beside the `@`):
+forward, left, right or back.
 
 - **The weapon has an attack for each way.** An attack plays when one of
   its cells holds a target (anything with hit points); it takes the turn.
@@ -37,6 +37,14 @@ beside the `@`): forward, left, right or back.
   always one step that way.
 - **Next to an enemy the player is engaged:** the moves toward it attack.
   Walking past one can sweep it.
+- **An attack is shown before it is made.** A move whose attack hits or
+  knocks is held for a moment (0.3s, `readies` in
+  `assets/actors/player.ron`): the player winds up as it will swing, and
+  the cells it strikes are marked yellow in the order it swings through
+  them. Then it is made. In that moment a tap (Space, Backspace) cancels
+  it and takes no turn; the same move again makes it at once; another
+  move takes its place. A move that strikes nothing (a walk, backing off)
+  is never held.
 - **A timeout never acts for the player.** The turn passes like a wait.
 
 ## The attacks: one for each way
@@ -131,8 +139,8 @@ In:
 
 Out, roughly in the order they would follow:
 
-- A preview of the attack a move will make, played as its anticipation,
-  with a tap to cancel.
+- The rest of the preview: where the target is knocked and where the
+  player is left, marked while the attack is held.
 - Strikes meeting in a cell from opposite directions as a block or parry.
 - Slowdown while a gesture is in progress; the one-stroke L gesture.
 - Momentum: knocked bodies flying several cells, impacts passing force on,
@@ -183,9 +191,9 @@ predictable. To look into separately; possible causes, none decided yet:
 
 - **The patterns.** A sweep or a spear may be hard to read from the glyph
   alone, and a pattern shows only once the enemy winds up.
-- **Missing feedback on a move.** Nothing shows which attack a move will
-  make: where the target and the player would end up, and which cells
-  would then be struck.
+- **Missing feedback on a move.** A held attack now shows its swing and
+  the cells it strikes, and can be cancelled; it does not yet show where
+  the target and the player would end up.
 - **Missing motion.** Knockbacks, swaps and strikes could animate, so the
   player sees what happened and why. A first step is in: each exchange is
   choreographed (below).

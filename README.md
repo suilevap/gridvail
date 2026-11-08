@@ -336,7 +336,7 @@ direction, and where new foundational versus game-specific code belongs.
 cargo run    # arrows or WASD to step the @ player
 cargo run -- --renderer 3d-walls  # perspective 3D walls, text actors and HUD
 cargo run -- --motion overshoot   # motion style; M cycles it in game
-cargo run -- --map assets/maps/arena.txt   # combat: move into an enemy to lunge, sweep or back off
+cargo run -- --map assets/maps/arena.txt   # combat: move into an enemy to lunge, sweep or back off; Space cancels
 cargo run -- --map assets/maps/arena.txt --turn 1.5 --hp 1  # a slower turn, one hit to go down
 cargo run -- --map assets/maps/arena.txt --slomo 4 --hp 9 --enemy-hp 9  # watch blows land, slowly
 cargo run -- --map assets/maps/portals.txt  # two rooms joined only by portals
@@ -352,7 +352,7 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 385 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 392 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
@@ -483,7 +483,10 @@ python3 -m http.server -d dist 8000
 ```
 
 On touch screens, swipe to take a step and keep the finger down to keep
-walking; slide it past where it landed to turn. Two fingers pinch to zoom,
+walking; slide it past where it landed to turn. A swipe that would attack
+winds up for a moment first, its cells marked yellow: tap to cancel it,
+or swipe the same way again to strike at once (Space cancels on a
+keyboard). Two fingers pinch to zoom,
 and twisting them an eighth of a turn turns the view a quarter turn, like Q
 and E; they never walk. The performance panel starts
 hidden in the browser (F3 shows it). Touch controls live in `src/touch/`;
@@ -546,7 +549,8 @@ curl http://127.0.0.1:15702 \
 `{"accepted":true}` when queued, or `accepted:false` with a reason when the
 simulation is busy, another command is pending, or the player has no token.
 Accepted commands use the normal turn pipeline, so a move whose attack
-meets an enemy attacks it.
+meets an enemy attacks it, at once: an agent's moves are never held
+first to be shown, as the player's are.
 
 ```sh
 curl http://127.0.0.1:15702 \

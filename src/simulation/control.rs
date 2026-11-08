@@ -9,6 +9,25 @@ pub fn track_keyboard_scheme(keys: Res<ButtonInput<KeyCode>>, mut scheme: ResMut
     }
 }
 
+/// Space or Backspace cancels the player's readied move (`Cancel`).
+pub fn cancel_keys(
+    keys: Res<ButtonInput<KeyCode>>,
+    menu: Option<Res<SettingsMenu>>,
+    cutscene: Option<Res<Cutscene>>,
+    mut cancels: MessageWriter<Cancel>,
+    players: Query<Entity, (With<Player>, With<Active>, Without<DestroyRequested>)>,
+) {
+    if SettingsMenu::is_open(menu.as_deref())
+        || cutscene.is_some()
+        || !keys.any_just_pressed([KeyCode::Space, KeyCode::Backspace])
+    {
+        return;
+    }
+    for player in &players {
+        cancels.write(Cancel(player));
+    }
+}
+
 /// Keep producing player commands while a movement key is held. Keys are
 /// directions on screen: when the view is turned, "up" walks toward the top
 /// of the screen. The map direction is the one the key meant when it was
@@ -68,6 +87,7 @@ pub fn player_input(
         command.relative = true;
         command.active = true;
         command.repeat = repeat;
+        command.at_once = false;
     }
 }
 

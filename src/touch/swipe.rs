@@ -1,4 +1,4 @@
-//! One-finger swipes walk the player; a tap does nothing yet.
+//! One-finger swipes walk the player; a tap cancels a readied move.
 
 use bevy::prelude::*;
 
@@ -30,6 +30,8 @@ pub struct Swipe {
     /// The tracked finger travelled far enough to swipe: lifting it is not
     /// a tap.
     swiped: bool,
+    /// A finger lifted without swiping, not yet answered.
+    tapped: bool,
 }
 
 impl Swipe {
@@ -40,8 +42,7 @@ impl Swipe {
     }
 }
 
-/// A finger lifted without swiping is a tap, which does nothing yet (it is
-/// kept apart from a swipe for a later cancel).
+/// A finger lifted without swiping is a tap (`tap_cancels`).
 pub fn read_swipes(
     time: Res<Time>,
     touches: Res<Touches>,
@@ -72,6 +73,7 @@ pub fn read_swipes(
         return;
     };
     let Some(touch) = touches.get_pressed(id) else {
+        swipe.tapped |= !swipe.swiped;
         swipe.origin = None;
         swipe.held = None;
         swipe.swiped = false;
@@ -126,6 +128,21 @@ pub fn swipe_commands(
         command.active = true;
         // A swipe is fresh; a finger kept down walking on is not.
         command.repeat = swipe.pending.is_none();
+        command.at_once = false;
         swipe.pending = None;
+    }
+}
+
+/// A tap cancels the player's readied move (`Cancel`).
+pub fn tap_cancels(
+    mut swipe: ResMut<Swipe>,
+    mut cancels: MessageWriter<Cancel>,
+    players: Query<Entity, (With<Player>, With<Active>, Without<DestroyRequested>)>,
+) {
+    if !std::mem::take(&mut swipe.tapped) {
+        return;
+    }
+    for player in &players {
+        cancels.write(Cancel(player));
     }
 }

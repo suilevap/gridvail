@@ -47,6 +47,9 @@ pub struct MoveCommand {
     /// kept down), not a fresh press: walking treats both alike, but a
     /// second input of a maneuver must be fresh.
     pub repeat: bool,
+    /// Made as it is, never readied first (`Readies`): an agent decides
+    /// deliberately and has nothing to see first.
+    pub at_once: bool,
 }
 
 /// What the player means to do with the movement input they are holding:

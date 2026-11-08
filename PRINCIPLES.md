@@ -334,9 +334,11 @@ Staggered after an impact, exposed for a turn after a stagger.
 
 ### Previews: what an action would do, before doing it
 
-**Today.** Marks show a wound-up strike, but nothing shows what a move
-would do (which attack it makes, where bodies end up), which is likely part of why fights feel hard
-to predict (`COMBAT.md`).
+**Today.** Marks show a wound-up strike. A move of the player's that
+would strike is held for a moment first (`Readied`), its wind-up playing
+and the cells it strikes marked, and can be cancelled; but nothing yet
+shows where bodies would end up, which is likely part of why fights feel
+hard to predict (`COMBAT.md`).
 
 **General.** Resolvers split into a pure plan and an apply step (a
 movement pass, damage). A preview runs the plan for a candidate action without
@@ -344,7 +346,8 @@ applying it and marks the result: where bodies would end up, what would be
 hit. Any action that goes through the general mechanisms can then be
 previewed with no code of its own.
 
-**First users.** The player's four attacks, as their anticipation.
+**First users.** The player's readied attacks: where the target is
+knocked and where the player is left, marked during the hold.
 
 ### Not yet
 

@@ -48,7 +48,12 @@ impl Plugin for ChoreographyPlugin {
             .add_systems(
                 Update,
                 (
-                    (wind_up_aims, unwind_dropped_aims),
+                    (
+                        wind_up_aims,
+                        unwind_dropped_aims,
+                        wind_up_readied,
+                        unwind_dropped_readied,
+                    ),
                     (start_maneuver_swings, start_weapon_swings, hold_attackers),
                     (play_swings, streak_swings, time_blows),
                     (
@@ -219,28 +224,76 @@ pub fn unwind_dropped_aims(
     }
 }
 
-/// An attacker swings, whole, as its maneuver looks, through the
-/// maneuver's cells.
+/// The swing of `attack`, as its maneuver looks, through its cells; none
+/// when it makes no gesture.
+fn maneuver_swing(
+    attack: &Attack,
+    maneuvers: &Maneuvers,
+    looks: &ManeuverLooks,
+) -> Option<GestureShape> {
+    let area = &maneuvers.get(attack.relation).area;
+    area_swing(looks.get(attack.relation), area, attack.facing)
+}
+
+/// A readied attack winds up as it will swing, over the time it is held:
+/// its anticipation is its preview.
+pub fn wind_up_readied(
+    time: Res<Time>,
+    mut wind_ups: MessageWriter<WindUp>,
+    readied: Query<(Entity, &Readied, &Maneuvers, &ManeuverLooks), Changed<Readied>>,
+) {
+    for (actor, readied, maneuvers, looks) in &readied {
+        let Some(shape) = maneuver_swing(&readied.attack, maneuvers, looks) else {
+            continue;
+        };
+        wind_ups.write(WindUp {
+            entity: actor,
+            shape,
+            secs: (readied.until - time.elapsed_secs()).max(0.0),
+        });
+    }
+}
+
+/// A readied attack dropped without being made (cancelled, or a move
+/// that walks in its place) eases back.
+pub fn unwind_dropped_readied(
+    timing: Res<Timing>,
+    mut releases: MessageWriter<Release>,
+    mut dropped: RemovedComponents<Readied>,
+    mut attacks: MessageReader<Attack>,
+) {
+    let made: HashSet<Entity> = attacks.read().map(|attack| attack.actor).collect();
+    for entity in dropped.read().filter(|entity| !made.contains(entity)) {
+        releases.write(Release {
+            entity,
+            secs: timing.0.unwind_secs,
+            strike: false,
+        });
+    }
+}
+
+/// An attacker swings as its maneuver looks, through the maneuver's
+/// cells: released from its wind-up when it was readied, else whole.
 pub fn start_maneuver_swings(
     mut attacks: MessageReader<Attack>,
     mut swings: MessageWriter<SwingStarts>,
+    mut readied: RemovedComponents<Readied>,
     actors: Query<(&Maneuvers, &ManeuverLooks)>,
 ) {
+    let readied: HashSet<Entity> = readied.read().collect();
     for attack in attacks.read() {
         let Ok((maneuvers, looks)) = actors.get(attack.actor) else {
             continue;
         };
-        let look = looks.get(attack.relation);
-        let area = &maneuvers.get(attack.relation).area;
-        let Some(shape) = area_swing(look, area, attack.facing) else {
+        let Some(shape) = maneuver_swing(attack, maneuvers, looks) else {
             continue;
         };
         swings.write(SwingStarts {
             entity: attack.actor,
             dir: attack.facing,
-            look: *look,
+            look: *looks.get(attack.relation),
             shape,
-            released: false,
+            released: readied.contains(&attack.actor),
         });
     }
 }

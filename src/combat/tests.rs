@@ -91,7 +91,7 @@ fn actor(app: &mut App, dir: IVec2) -> Entity {
                 target: dir,
                 relative: true,
                 active: true,
-                repeat: false,
+                ..default()
             },
         ))
         .id();

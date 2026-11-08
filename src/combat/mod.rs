@@ -6,6 +6,11 @@
 //!   target becomes an `Attack`, which hits what is in its cells in order,
 //!   knocks it the way the swing goes, and moves (`Follow`) and turns
 //!   (`Turn`) the actor as the maneuver says;
+//! - `ready_attacks` and `cancel_readied`: an actor that `Readies` (the
+//!   player) holds a move that would attack for a moment first
+//!   (`Readied`), shown as it would be made (`mark_readied`, and its
+//!   wind-up in `choreography`), and makes it then, unless a `Cancel` or
+//!   another move comes first;
 //! - `ready_weapons` and `strike`: a `UseWeapon` (from the AI) aims a
 //!   `Weapon` (`Telegraph`) and owes its wind-up (`Delay`), with the
 //!   `Strike` `Scheduled` for when it is paid; the strike hits each cell of
@@ -42,13 +47,16 @@ impl Plugin for CombatPlugin {
             .init_resource::<ImpactDamage>()
             .add_message::<Hit>()
             .add_message::<Attack>()
+            .add_message::<Cancel>()
             .add_message::<UseWeapon>()
             .add_scheduled_message::<Strike>()
             .add_systems(
                 Update,
                 (
                     strike.in_set(ActionStage::Ongoing),
-                    choose_attacks.in_set(ActionStage::Decide),
+                    (cancel_readied, ready_attacks, choose_attacks)
+                        .chain()
+                        .in_set(ActionStage::Decide),
                     (perform_attacks, ready_weapons).in_set(ActionStage::Effects),
                     (hits_deal_damage, critical_hits, collisions_deal_damage)
                         .in_set(ActionStage::Hits),
@@ -57,7 +65,9 @@ impl Plugin for CombatPlugin {
             )
             .add_systems(
                 Update,
-                mark_strikes.in_set(MarkCells).in_set(GamePhase::Visibility),
+                (mark_strikes, mark_readied)
+                    .in_set(MarkCells)
+                    .in_set(GamePhase::Visibility),
             );
     }
 }

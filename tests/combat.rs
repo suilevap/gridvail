@@ -27,8 +27,19 @@ impl Game {
         Self::with(map, |kinds| kinds.player_mut().hp = player_hp)
     }
 
-    /// The map with the kinds of actor changed by `setup` first.
+    /// The map with the kinds of actor changed by `setup` first. The
+    /// player's attacks are made at once, not readied first (the tests of
+    /// readying use `readying`).
     fn with(map: &'static str, setup: impl FnOnce(&mut ActorKinds)) -> Self {
+        Self::readying(map, |kinds| {
+            kinds.player_mut().readies = None;
+            setup(kinds);
+        })
+    }
+
+    /// The map with the kinds of actor changed by `setup` first, the
+    /// player's attacks readied as the bundled player's are.
+    fn readying(map: &'static str, setup: impl FnOnce(&mut ActorKinds)) -> Self {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .insert_resource(Services::new(ServiceSet {
@@ -45,6 +56,21 @@ impl Game {
         game.app.update();
         game.frames(5);
         game
+    }
+
+    /// The attack the player has readied, if any.
+    fn readied(&mut self) -> Option<Attack> {
+        let world = self.app.world_mut();
+        world
+            .query_filtered::<&Readied, With<Player>>()
+            .iter(world)
+            .next()
+            .map(|readied| readied.attack)
+    }
+
+    fn marked(&self) -> Vec<IVec2> {
+        let marks = self.app.world().resource::<CellMarks>();
+        marks.0.iter().map(|(cell, _)| *cell).collect()
     }
 
     fn frames(&mut self, n: usize) {
@@ -424,4 +450,71 @@ fn a_lethal_blow_still_knocks_its_target_before_it_dies() {
         1,
         "the dead body did not hit the far one"
     );
+}
+
+/// Frames (of 16ms) the bundled player's readied attack is held for, and a
+/// few more.
+const READIED_FRAMES: usize = 25;
+
+#[test]
+fn a_move_that_would_attack_is_readied_and_shown_then_made() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    game.press(UP);
+    let readied = game.readied().expect("not readied");
+    assert_eq!(readied.relation, Relation::Forward);
+    assert_eq!(game.player_pos(), BEHIND, "made before it was shown");
+    assert_eq!(game.enemy_at(FRONT).expect("hit too soon").1, 2);
+    assert!(
+        game.marked().contains(&FRONT),
+        "what it strikes is not shown"
+    );
+    game.frames(READIED_FRAMES);
+    assert!(game.readied().is_none());
+    assert_eq!(game.player_pos(), FRONT, "never made");
+    assert_eq!(
+        game.enemy_at(FRONT + IVec2::NEG_Y * 2).expect("knocked").1,
+        1
+    );
+}
+
+#[test]
+fn a_cancel_drops_the_readied_attack_and_takes_no_turn() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    game.press(UP);
+    assert!(game.readied().is_some());
+    game.press(KeyCode::Space);
+    assert!(game.readied().is_none(), "not dropped");
+    game.frames(READIED_FRAMES);
+    let (pos, _, tokens, _) = game.player();
+    assert_eq!((pos, tokens), (BEHIND, 1), "the dropped move was made");
+    assert_eq!(game.enemy_at(FRONT).expect("left alone").1, 2);
+}
+
+#[test]
+fn the_same_move_again_makes_the_readied_attack_at_once() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    game.press(UP);
+    game.press(UP);
+    assert_eq!(game.player_pos(), FRONT, "not made at once");
+    assert_eq!(
+        game.enemy_at(FRONT + IVec2::NEG_Y * 2).expect("knocked").1,
+        1
+    );
+}
+
+#[test]
+fn another_move_takes_the_readied_attacks_place() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    game.press(UP);
+    // Backing off strikes nothing, so it is made at once, in place of the
+    // lunge.
+    game.press(DOWN);
+    assert!(game.readied().is_none());
+    game.frames(READIED_FRAMES);
+    assert_eq!(game.player_pos(), BEHIND + IVec2::Y);
+    assert_eq!(game.enemy_at(FRONT).expect("left alone").1, 2);
 }

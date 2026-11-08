@@ -181,7 +181,14 @@ and renderers must not import it.
   - `combat/`: `choose_attacks` reads a move by an actor with `Maneuvers`
     from where it faces (`Relation`: forward, left, right, back); when the
     maneuver for that way has a target in its `Area`, the move becomes an
-    `Attack` (its action for the turn) instead of a walk.
+    `Attack` (its action for the turn) instead of a walk. An actor that
+    `Readies` (the player, by its data) has `ready_attacks` hold such a
+    move first (`Readied`, a component, so the turn does not start) for
+    its seconds, shown by its yellow marks (`mark_readied`) and its
+    wind-up (`choreography`); then it is made, or at once if the same
+    move comes again. A `Cancel` (Space, a tap) drops it, another move
+    takes its place, and a move made `at_once` (the agent API) is never
+    held.
     `perform_attacks` answers it: a `Hit` for each target in order (only
     the first if it stops there), a `Knock` the way the swing goes through
     its cell plus the actor's step (the blow carries it), a `Follow`

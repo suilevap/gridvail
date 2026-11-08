@@ -24,6 +24,7 @@ pub struct TouchControlPlugin;
 impl Plugin for TouchControlPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Swipe>()
+            .add_message::<Cancel>()
             .init_resource::<Pinch>()
             .init_resource::<ControlScheme>()
             .add_systems(
@@ -34,7 +35,7 @@ impl Plugin for TouchControlPlugin {
             )
             .add_systems(
                 Update,
-                swipe_commands
+                (swipe_commands, tap_cancels)
                     .after(player_input)
                     .before(move_commands)
                     .in_set(PlayerCommands)

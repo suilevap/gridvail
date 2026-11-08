@@ -115,6 +115,13 @@ pub struct Maneuver {
     pub turn: bool,
 }
 
+impl Maneuver {
+    /// It does something to what it meets: hits or knocks it.
+    pub fn strikes(&self) -> bool {
+        self.hit > 0 || self.knock > 0
+    }
+}
+
 /// The moves an actor makes when one of them meets a target, one for each
 /// `Relation` of the move to where it faces (a fighting style, a weapon's
 /// moves). A move that meets none is a plain step.
@@ -146,6 +153,26 @@ pub struct Attack {
     pub facing: IVec2,
     pub dir: IVec2,
 }
+
+/// An actor whose moves that would attack are readied first: held for
+/// `0` seconds, the attack shown as it would be made, before it is made,
+/// so the player sees what a move will do and can drop it (`Cancel`).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct Readies(pub f32);
+
+/// A move that would attack, held: the `attack` it would make, made once
+/// the game's elapsed time reaches `until` (or sooner, if the same move
+/// is made again). A new move in its place readies (or walks) instead.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct Readied {
+    pub attack: Attack,
+    pub until: f32,
+}
+
+/// `entity` drops the move it has readied: nothing is made, and no turn is
+/// taken. Written by input (a tap, a key).
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cancel(pub Entity);
 
 /// An attack landed on `target`: a maneuver's hit or a weapon's strike.
 /// What it costs the target is up to whoever reads it (base damage,

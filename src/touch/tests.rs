@@ -15,7 +15,8 @@ fn touch_app() -> (App, Entity) {
             PreUpdate,
             (read_swipes, read_pinch).after(bevy::input::InputSystems),
         )
-        .add_systems(Update, swipe_commands);
+        .add_message::<Cancel>()
+        .add_systems(Update, (swipe_commands, tap_cancels));
     let player = app
         .world_mut()
         .spawn((
@@ -188,7 +189,22 @@ fn a_tap_takes_no_step() {
     touch(&mut app, TouchPhase::Started, 100.0, 100.0);
     touch(&mut app, TouchPhase::Moved, 104.0, 102.0);
     touch(&mut app, TouchPhase::Ended, 104.0, 102.0);
+    let cancels = app.world().resource::<Messages<Cancel>>();
+    assert_eq!(
+        cancels.iter_current_update_messages().collect::<Vec<_>>(),
+        [&Cancel(player)],
+        "a tap cancels"
+    );
     assert_eq!(step_taken(&mut app, player), None);
+}
+
+#[test]
+fn a_swipe_cancels_nothing() {
+    let (mut app, _) = touch_app();
+    touch(&mut app, TouchPhase::Started, 100.0, 100.0);
+    touch(&mut app, TouchPhase::Moved, 160.0, 100.0);
+    touch(&mut app, TouchPhase::Ended, 160.0, 100.0);
+    assert!(app.world().resource::<Messages<Cancel>>().is_empty());
 }
 
 #[test]

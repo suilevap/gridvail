@@ -260,6 +260,7 @@ fn move_player(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
     pending.relative = true;
     pending.active = true;
     pending.repeat = false;
+    pending.at_once = true;
     Ok(json!({ "accepted": true }))
 }
 
