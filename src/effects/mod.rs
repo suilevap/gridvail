@@ -36,14 +36,10 @@ impl Plugin for EffectsPlugin {
     }
 }
 
-/// Every effect, by id (its place here), with its name. The bundled ones
-/// by default, in the order their ids give (`content::effects::bundled_id`);
+/// Every effect's spec, by its `EffectId`. The bundled ones by default;
 /// change it (or insert another) to change how effects look.
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
-pub struct EffectLibrary {
-    names: Vec<String>,
-    specs: Vec<EffectSpec>,
-}
+pub struct EffectLibrary(Vec<Option<EffectSpec>>);
 
 impl EffectLibrary {
     /// Every effect in `assets/effects`.
@@ -51,30 +47,18 @@ impl EffectLibrary {
         Self::read(BUNDLED_EFFECTS.iter().copied())
     }
 
-    /// The effects in `(name, text)` files, each with its place as its id.
-    pub fn read<'a>(files: impl IntoIterator<Item = (&'a str, &'a str)>) -> Result<Self, String> {
-        let mut library = Self::default();
-        for (name, text) in files {
-            library
-                .specs
-                .push(data::read(&format!("effect `{name}`"), text)?);
-            library.names.push(name.to_string());
+    /// The effects in `(id, text)` files.
+    pub fn read<'a>(files: impl IntoIterator<Item = (EffectId, &'a str)>) -> Result<Self, String> {
+        let mut library = Self(vec![None; EffectId::ALL.len()]);
+        for (id, text) in files {
+            library.0[id as usize] = Some(data::read(&format!("effect {id:?}"), text)?);
         }
         Ok(library)
     }
 
-    /// The effect `id`, if there is one.
+    /// The effect `id`, if this library has it.
     pub fn get(&self, id: EffectId) -> Option<&EffectSpec> {
-        self.specs.get(id.0 as usize)
-    }
-
-    /// The id of the effect called `name` (for reading data and tests: play
-    /// goes by id).
-    pub fn id(&self, name: &str) -> Option<EffectId> {
-        self.names
-            .iter()
-            .position(|known| known == name)
-            .map(|place| EffectId(place as u16))
+        self.0.get(id as usize).and_then(Option::as_ref)
     }
 }
 

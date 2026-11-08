@@ -1,24 +1,14 @@
 //! Effects, one file each in `assets/effects` (`<name>.ron`): what an
 //! effect throws off, as emitters of particles. Plain data, read with the
-//! generic `data::read`; a new effect is a new file, which the roster can
-//! then name (a weapon's `streak`, an actor's `bleeds`).
+//! generic `data::read`; a new effect is a new file, which `build.rs` makes
+//! an `EffectId` variant (`blood.ron` is `Blood`) that code and data name
+//! it by (a weapon's `streak`, an actor's `bleeds`).
 
 use serde::Deserialize;
 
 use crate::model::EffectId;
 
 include!(concat!(env!("OUT_DIR"), "/bundled_effects.rs"));
-
-/// The id of the bundled effect called `name`: its place among the files
-/// in `assets/effects`, in name order. A name nobody wrote is an error, so
-/// data naming one fails when it is read.
-pub fn bundled_id(name: &str) -> Result<EffectId, String> {
-    BUNDLED_EFFECTS
-        .iter()
-        .position(|(file, _)| *file == name)
-        .map(|place| EffectId(place as u16))
-        .ok_or_else(|| format!("no effect called `{name}` in assets/effects"))
-}
 
 /// One effect: every emitter plays when it is asked for.
 #[derive(Deserialize, Clone, Debug, PartialEq)]

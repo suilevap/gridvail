@@ -9,7 +9,7 @@ use bevy::math::IVec2;
 use serde::Deserialize;
 
 use super::art;
-use crate::model::Swing;
+use crate::model::{EffectId, Swing};
 
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct Roster {
@@ -29,11 +29,11 @@ pub struct WeaponSpec {
     /// all `x`).
     pub art: String,
     /// How it is swung (a thrust when not given), and the streak it leaves
-    /// (an effect in `assets/effects`; none when not given).
+    /// (an effect, by its `EffectId`; none when not given).
     #[serde(default)]
     pub swing: Option<SwingSpec>,
     #[serde(default)]
-    pub streak: Option<String>,
+    pub streak: Option<EffectId>,
 }
 
 impl WeaponSpec {
@@ -100,7 +100,7 @@ pub struct MoveSpec {
     #[serde(default)]
     pub swing: Option<SwingSpec>,
     #[serde(default)]
-    pub streak: Option<String>,
+    pub streak: Option<EffectId>,
 }
 
 impl MoveSpec {
@@ -150,10 +150,10 @@ pub struct ActorSpec {
     pub weapon: Option<String>,
     #[serde(default)]
     pub moves: Option<String>,
-    /// What a blow knocks out of it (an effect in `assets/effects`;
-    /// nothing when not given).
+    /// What a blow knocks out of it (an effect, by its `EffectId`; nothing
+    /// when not given).
     #[serde(default)]
-    pub bleeds: Option<String>,
+    pub bleeds: Option<EffectId>,
 }
 
 #[cfg(test)]

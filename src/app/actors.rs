@@ -9,7 +9,6 @@ use crate::ai::{enemy_tree, hunter_tree};
 pub use crate::content::actors::Tree;
 use crate::content::actors::{MoveSpec, Roster, StanceSpec, SwingSpec};
 use crate::content::data;
-use crate::content::effects::bundled_id;
 use crate::model::*;
 
 const ROSTER_TEXT: &str = include_str!("../../assets/rules/actors.ron");
@@ -83,16 +82,10 @@ impl ActorKinds {
                 turn: spec.turn,
             })
         };
-        // Effects are named in data and played by id: a name nobody wrote
-        // fails here, when the roster is read.
-        let effect = |name: &Option<String>| name.as_deref().map(bundled_id).transpose();
-        let look_of =
-            |swing: Option<SwingSpec>, streak: &Option<String>| -> Result<SwingLook, String> {
-                Ok(SwingLook {
-                    swing: swing.map(SwingSpec::swing),
-                    streak: effect(streak)?,
-                })
-            };
+        let look_of = |swing: Option<SwingSpec>, streak: Option<EffectId>| SwingLook {
+            swing: swing.map(SwingSpec::swing),
+            streak,
+        };
         let mut kinds = HashMap::default();
         for (&glyph, actor) in &roster.actors {
             let weapon = match actor.weapon.as_deref() {
@@ -114,7 +107,7 @@ impl ActorKinds {
                         // A weapon is swung, a thrust when not said.
                         WeaponLook(SwingLook {
                             swing: Some(spec.swing.map(SwingSpec::swing).unwrap_or_default()),
-                            ..look_of(None, &spec.streak)?
+                            ..look_of(None, spec.streak)
                         }),
                     ))
                 }
@@ -134,10 +127,10 @@ impl ActorKinds {
                             back: move_of(&spec.back)?,
                         },
                         ManeuverLooks {
-                            forward: look_of(spec.forward.swing, &spec.forward.streak)?,
-                            left: look_of(spec.left.swing, &spec.left.streak)?,
-                            right: look_of(spec.right.swing, &spec.right.streak)?,
-                            back: look_of(spec.back.swing, &spec.back.streak)?,
+                            forward: look_of(spec.forward.swing, spec.forward.streak),
+                            left: look_of(spec.left.swing, spec.left.streak),
+                            right: look_of(spec.right.swing, spec.right.streak),
+                            back: look_of(spec.back.swing, spec.back.streak),
                         },
                     ))
                 }
@@ -150,7 +143,7 @@ impl ActorKinds {
                     hp: actor.hp,
                     weapon,
                     maneuvers,
-                    bleeds: effect(&actor.bleeds)?,
+                    bleeds: actor.bleeds,
                 },
             );
         }
@@ -207,16 +200,14 @@ mod tests {
     }
 
     #[test]
-    fn effects_are_named_in_data_and_resolved_when_the_roster_is_read() {
-        let library = crate::effects::EffectLibrary::bundled().unwrap();
+    fn effects_are_named_by_their_ids_in_data() {
         let guard = ActorKinds::default().get('e').clone();
-        assert_eq!(guard.bleeds, library.id("blood"));
+        assert_eq!(guard.bleeds, Some(EffectId::Blood));
         let (_, look) = guard.weapon.unwrap();
-        assert_eq!(look.0.streak, library.id("swoosh"));
-
-        let mut roster: Roster = data::read("actors.ron", ROSTER_TEXT).unwrap();
-        roster.actors.get_mut(&'e').unwrap().bleeds = Some("bloood".into());
-        let error = ActorKinds::from_roster(&roster).unwrap_err();
-        assert!(error.contains("bloood"), "{error}");
+        assert_eq!(look.0.streak, Some(EffectId::Swoosh));
+        // A name nobody wrote fails to read.
+        let text = ROSTER_TEXT.replacen("bleeds: Blood", "bleeds: Bloood", 1);
+        let error = data::read::<Roster>("actors.ron", &text).unwrap_err();
+        assert!(error.contains("Bloood"), "{error}");
     }
 }

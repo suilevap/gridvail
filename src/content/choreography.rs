@@ -3,8 +3,10 @@
 
 use serde::Deserialize;
 
+use crate::model::EffectId;
+
 /// Seconds and cells for one exchange of blows (see `choreography`).
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct ChoreographySpec {
     /// A whole swing, from the wind-up to settling back.
     pub swing_secs: f32,
@@ -27,9 +29,8 @@ pub struct ChoreographySpec {
     pub kill_strength: i32,
     pub impact_strength: i32,
     /// After the blow lands, when a knocked body's slam into something
-    /// plays, and the effect it plays there (an effect in
-    /// `assets/effects`; none when not given).
+    /// plays, and the effect it plays there (none when not given).
     pub impact_gap: f32,
     #[serde(default)]
-    pub impact_effect: Option<String>,
+    pub impact_effect: Option<EffectId>,
 }

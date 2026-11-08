@@ -26,7 +26,6 @@ use bevy::prelude::*;
 use crate::animation::{ObjectAnimation, SWING_CONTACT, SWING_WOUND};
 use crate::content::choreography::ChoreographySpec;
 use crate::content::data;
-use crate::content::effects::bundled_id;
 use crate::model::*;
 use crate::schedule::{ActionStage, GamePhase};
 
@@ -74,29 +73,14 @@ impl Plugin for ChoreographyPlugin {
 }
 
 /// How fights are timed on screen: the bundled timings by default; change
-/// it (or insert another) to retime them. The slam's effect, named in the
-/// data, is resolved to its id when the data is read.
-#[derive(Resource, Clone, Debug, PartialEq)]
-pub struct Timing {
-    pub spec: ChoreographySpec,
-    pub impact_effect: Option<EffectId>,
-}
-
-impl Timing {
-    /// Timings read from `spec`, its effect names resolved.
-    pub fn read(spec: ChoreographySpec) -> Result<Self, String> {
-        let impact_effect = spec.impact_effect.as_deref().map(bundled_id).transpose()?;
-        Ok(Self {
-            spec,
-            impact_effect,
-        })
-    }
-}
+/// it (or insert another) to retime them.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct Timing(pub ChoreographySpec);
 
 impl Default for Timing {
     fn default() -> Self {
         data::read("choreography.ron", TIMING_TEXT)
-            .and_then(Self::read)
+            .map(Self)
             .unwrap_or_else(|error| panic!("{error}"))
     }
 }
@@ -104,32 +88,32 @@ impl Default for Timing {
 impl Timing {
     /// When a whole swing's blow lands.
     pub fn contact(&self) -> f32 {
-        self.spec.swing_secs * SWING_CONTACT
+        self.0.swing_secs * SWING_CONTACT
     }
 
     /// How long the rest of a wound-up swing takes once released, and when
     /// its blow lands.
     pub fn release_secs(&self) -> f32 {
-        self.spec.swing_secs * (1.0 - SWING_WOUND)
+        self.0.swing_secs * (1.0 - SWING_WOUND)
     }
 
     pub fn release_contact(&self) -> f32 {
-        self.spec.swing_secs * (SWING_CONTACT - SWING_WOUND)
+        self.0.swing_secs * (SWING_CONTACT - SWING_WOUND)
     }
 
     /// When a whole swing's strike starts, and how long its streak takes.
     pub fn strike_start(&self) -> f32 {
-        self.spec.swing_secs * SWING_WOUND
+        self.0.swing_secs * SWING_WOUND
     }
 
     pub fn streak_secs(&self) -> f32 {
-        self.release_contact() * self.spec.streak_stretch
+        self.release_contact() * self.0.streak_stretch
     }
 
     /// When a knocked body's slam into something plays: a moment after the
     /// blow, so it reads as a hit of its own.
     pub fn impact(&self) -> f32 {
-        self.contact() + self.spec.impact_gap
+        self.contact() + self.0.impact_gap
     }
 
     /// When a swing's blow lands, from when it starts.
@@ -212,7 +196,7 @@ pub fn wind_up_aims(
         wind_ups.write(WindUp {
             entity: wielder,
             shape,
-            secs: timing.spec.aim_secs,
+            secs: timing.0.aim_secs,
         });
     }
 }
@@ -228,7 +212,7 @@ pub fn unwind_dropped_aims(
     for entity in dropped.read().filter(|entity| !struck.contains(entity)) {
         releases.write(Release {
             entity,
-            secs: timing.spec.unwind_secs,
+            secs: timing.0.unwind_secs,
             strike: false,
         });
     }
@@ -294,7 +278,7 @@ pub fn hold_attackers(
     for attack in attacks.read() {
         holds.write(HoldMoves {
             entity: attack.actor,
-            secs: timing.contact() + timing.spec.follow_gap,
+            secs: timing.contact() + timing.0.follow_gap,
         });
     }
 }
@@ -317,7 +301,7 @@ pub fn play_swings(
             gestures.write(Gesture {
                 entity: swing.entity,
                 shape: swing.shape,
-                secs: timing.spec.swing_secs,
+                secs: timing.0.swing_secs,
                 delay: 0.0,
             });
         }
@@ -416,7 +400,7 @@ pub fn fling_struck(
     for blow in blows.read() {
         flings.write(Fling {
             entity: blow.target,
-            secs: timing.spec.fling_secs,
+            secs: timing.0.fling_secs,
         });
     }
 }
@@ -426,9 +410,9 @@ fn shake(entity: Entity, toward: Vec2, delay: f32, timing: &Timing) -> Gesture {
     Gesture {
         entity,
         shape: GestureShape::Shake {
-            toward: toward.normalize_or_zero() * timing.spec.shake_reach,
+            toward: toward.normalize_or_zero() * timing.0.shake_reach,
         },
-        secs: timing.spec.shake_secs,
+        secs: timing.0.shake_secs,
         delay,
     }
 }
@@ -457,7 +441,7 @@ pub fn bleed_struck(
             continue;
         };
         let bonus = if blow.killed {
-            timing.spec.kill_strength
+            timing.0.kill_strength
         } else {
             0
         };
@@ -526,7 +510,7 @@ pub fn bleed_impacts(
             toward: grid.delta(from.0, at.0).as_vec2(),
             swing: None,
             secs: 0.0,
-            strength: timing.spec.impact_strength,
+            strength: timing.0.impact_strength,
             delay: timing.impact(),
         });
     }
@@ -543,7 +527,7 @@ pub fn slam_impacts(
     remains: Query<(Entity, &Remains)>,
     positions: Query<&Pos>,
 ) {
-    let Some(effect) = timing.impact_effect else {
+    let Some(effect) = timing.0.impact_effect else {
         return;
     };
     for collision in collisions.read() {
@@ -557,7 +541,7 @@ pub fn slam_impacts(
             toward: grid.delta(from.0, at.0).as_vec2(),
             swing: None,
             secs: 0.0,
-            strength: timing.spec.impact_strength,
+            strength: timing.0.impact_strength,
             delay: timing.impact(),
         });
     }
@@ -606,7 +590,7 @@ pub fn leave_remains(
         });
         flings.write(Fling {
             entity: remains,
-            secs: timing.spec.fling_secs,
+            secs: timing.0.fling_secs,
         });
     }
 }
