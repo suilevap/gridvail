@@ -182,7 +182,7 @@ and renderers must not import it.
     from where it faces (`Relation`: forward, left, right, back); when the
     maneuver for that way has a target in its `Area`, the move becomes an
     `Attack` (its action for the turn) instead of a walk. An actor that
-    `Readies` (the player, by its data) has `ready_attacks` hold such a
+    `Readies` (the player, with `--ready`; off by default) has `ready_attacks` hold such a
     move first (`Readied`, a component, so the turn does not start) for
     its seconds, shown by its cyan marks (`mark_readied`) and its
     wind-up (`choreography`); then it is made, or at once if the same
