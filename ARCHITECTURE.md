@@ -257,11 +257,12 @@ and renderers must not import it.
   changes nothing in the simulation.
 - `effects/` plays effects, which are data: one RON file each in
   `assets/effects` (`content::effects`), bundled by `build.rs` like the
-  maps, so a new effect is a new file and the roster names it. Names are
-  data only: they become an `EffectId` (the effect's place among the
-  bundled files, `content::effects::bundled_id`) when the roster or the
-  timings are read, so a misspelled name fails then, and requests
-  (`PlayEffect`), `Bleeds` and looks carry ids, not strings. An effect
+  maps, so a new effect is a new file and the roster names it. `build.rs`
+  also makes each file a variant of the `EffectId` enum (`blood.ron` is
+  `EffectId::Blood`), which code names effects by and data too (`bleeds:
+  Blood`, read by serde): a name nobody wrote fails to compile or to
+  read, and requests (`PlayEffect`), `Bleeds` and looks carry the enum,
+  never a string. An effect
   is emitters, each throwing off `Particle`s (short-lived glyphs off the
   grid) from a point along the blow or along the swing, with their count
   (and more per point of strength), speed and drag, life and how long

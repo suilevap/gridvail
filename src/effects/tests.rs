@@ -30,11 +30,6 @@ fn particles(app: &mut App) -> Vec<Particle> {
     query.iter(app.world()).copied().collect()
 }
 
-/// The bundled effect called `name`.
-fn bundled(name: &str) -> EffectId {
-    crate::content::effects::bundled_id(name).unwrap()
-}
-
 fn request(effect: EffectId, entity: Entity) -> PlayEffect {
     PlayEffect {
         effect,
@@ -48,20 +43,18 @@ fn request(effect: EffectId, entity: Entity) -> PlayEffect {
 }
 
 #[test]
-fn every_bundled_effect_reads() {
+fn every_effect_file_is_an_id_and_reads() {
     let library = EffectLibrary::bundled().unwrap();
-    for name in ["blood", "swoosh", "slam"] {
-        let id = library.id(name).expect(name);
-        assert!(library.get(id).is_some());
-        // The same id the data is resolved to.
-        assert_eq!(Ok(id), crate::content::effects::bundled_id(name));
+    for id in EffectId::ALL {
+        assert!(library.get(id).is_some(), "{id:?}");
     }
 }
 
 #[test]
-fn a_new_effect_is_only_data() {
+fn how_an_effect_looks_is_only_data() {
+    // Blood that looks like dust: a library read from other text.
     let library = EffectLibrary::read([(
-        "dust",
+        EffectId::Blood,
         "(emitters: [(count: 3, from: Point(ahead: 0.0, spread: 3.14), \
           speed: (1.0, 2.0), life: (0.5, 0.5), glyphs: Pick(['.']), \
           colors: [(120, 120, 120)])])",
@@ -70,8 +63,8 @@ fn a_new_effect_is_only_data() {
     let mut app = app();
     app.insert_resource(library);
     let crate_ = app.world_mut().spawn(Pos(IVec2::new(4, 4))).id();
-    let dust = app.world().resource::<EffectLibrary>().id("dust").unwrap();
-    app.world_mut().write_message(request(dust, crate_));
+    app.world_mut()
+        .write_message(request(EffectId::Blood, crate_));
     frames(&mut app, 2);
     let dust = particles(&mut app);
     assert_eq!(dust.len(), 3);
@@ -87,7 +80,7 @@ fn blood_is_thrown_the_way_the_blow_went_and_lies_then_fades() {
     app.world_mut().write_message(PlayEffect {
         strength: 2,
         delay: 0.1,
-        ..request(bundled("blood"), target)
+        ..request(EffectId::Blood, target)
     });
     frames(&mut app, 2);
     assert!(
@@ -122,7 +115,7 @@ fn a_sweep_streaks_from_the_side_it_starts_on_to_the_other() {
             across: Vec2::Y,
         }),
         secs: 0.2,
-        ..request(bundled("swoosh"), wielder)
+        ..request(EffectId::Swoosh, wielder)
     });
     frames(&mut app, 2);
     let first = particles(&mut app);
@@ -148,10 +141,10 @@ fn a_new_map_clears_every_particle() {
     let target = app.world_mut().spawn(Pos(IVec2::new(4, 4))).id();
     app.world_mut().write_message(PlayEffect {
         delay: 0.5,
-        ..request(bundled("blood"), target)
+        ..request(EffectId::Blood, target)
     });
     app.world_mut()
-        .write_message(request(bundled("blood"), target));
+        .write_message(request(EffectId::Blood, target));
     frames(&mut app, 2);
     assert!(!particles(&mut app).is_empty());
     app.world_mut().write_message(MapLoaded::default());

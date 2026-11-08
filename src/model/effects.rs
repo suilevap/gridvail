@@ -55,12 +55,7 @@ impl Particle {
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct ParticleDelay(pub f32);
 
-/// An effect, by its place among the effects read: for the bundled ones,
-/// the files in `assets/effects` in name order. Data names effects, and
-/// names are resolved to ids when the data is read, so a misspelled name
-/// fails then, and nothing in play carries or looks up a string.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct EffectId(pub u16);
+include!(concat!(env!("OUT_DIR"), "/effect_ids.rs"));
 
 /// Play the effect `effect` (a file in `assets/effects`) from where
 /// `entity` is shown, its way `toward`, `delay` seconds from now. A swing

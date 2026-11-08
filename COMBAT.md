@@ -230,7 +230,8 @@ they meet, debris and dust thrown back off what it hit), so the slam's
 own damage reads as a second hit: that is why a knock into a wall can
 down an alert enemy at once. Effects are data: each is a file in
 `assets/effects` (`swoosh.ron`, `blood.ron`, `slam.ron`), and the roster names them
-(a weapon's or move's `streak`, an actor's `bleeds`), so a new look (a
+(a weapon's or move's `streak`, an actor's `bleeds`, by the effect's
+`EffectId` variant: `blood.ron` is `Blood`), so a new look (a
 crate's splinters, a robot's sparks) is a new file and a roster line.
 
 Still to come, each its own step once needed: hit points shown on

@@ -6,21 +6,22 @@
     // and how they are swung (how far, in cells: `Thrust` straight
     // at the target, `Sweep` in an arc across the front, `Hook` out and
     // pulled back; a thrust when not given), and the streak each leaves (an
-    // effect in `assets/effects`; none when not given).
+    // effect, named by its file in `assets/effects` in UpperCamelCase:
+    // `swoosh.ron` is `Swoosh`; none when not given).
     weapons: {
         // The cell in front.
-        "jab": (damage: 1, windup: 1, swing: Thrust(reach: 0.55), streak: "swoosh", art: "
+        "jab": (damage: 1, windup: 1, swing: Thrust(reach: 0.55), streak: Swoosh, art: "
             x
             @
         "),
         // The whole row in front: stepping aside is no escape.
-        "sweep": (damage: 1, windup: 1, swing: Sweep(reach: 0.6), streak: "swoosh",
+        "sweep": (damage: 1, windup: 1, swing: Sweep(reach: 0.6), streak: Swoosh,
             art: "
             123
             .@.
         "),
         // Two cells straight ahead: stepping back is no escape.
-        "spear": (damage: 1, windup: 1, swing: Thrust(reach: 0.95), streak: "swoosh",
+        "spear": (damage: 1, windup: 1, swing: Thrust(reach: 0.95), streak: Swoosh,
             art: "
             2
             1
@@ -45,7 +46,7 @@
         "blade": (
             // Into what is ahead, knocking it on and taking its cell.
             forward: (name: "lunge", hit: 1, knock: 1, stance: Follow,
-                swing: Thrust(reach: 0.6), streak: "swoosh", art: "
+                swing: Thrust(reach: 0.6), streak: Swoosh, art: "
                 1
                 @
             "),
@@ -53,12 +54,12 @@
             // to face it: what is ahead is swept aside, what is beside is
             // swept back, out of the cell stepped into.
             left: (name: "sweep left", hit: 1, knock: 1, stance: Step, turn: true,
-                swing: Sweep(reach: 0.55), streak: "swoosh", art: "
+                swing: Sweep(reach: 0.55), streak: Swoosh, art: "
                 21
                 3@
             "),
             right: (name: "sweep right", hit: 1, knock: 1, stance: Step, turn: true,
-                swing: Sweep(reach: 0.55), streak: "swoosh", art: "
+                swing: Sweep(reach: 0.55), streak: Swoosh, art: "
                 12
                 @3
             "),
@@ -72,11 +73,11 @@
 
     // Actors by map glyph: a name, the behaviour they run (the player runs
     // none), hit points, their weapon or moves, and what a blow knocks out
-    // of them (an effect in `assets/effects`).
+    // of them (an effect, named as for streaks: `blood.ron` is `Blood`).
     actors: {
-        'p': (name: "player", hp: 2, moves: "blade", bleeds: "blood"),
-        'e': (name: "guard", tree: Enemy, hp: 2, weapon: "sweep", bleeds: "blood"),
-        's': (name: "spearman", tree: Enemy, hp: 2, weapon: "spear", bleeds: "blood"),
-        'h': (name: "hunter", tree: Hunter, hp: 2, weapon: "jab", bleeds: "blood"),
+        'p': (name: "player", hp: 2, moves: "blade", bleeds: Blood),
+        'e': (name: "guard", tree: Enemy, hp: 2, weapon: "sweep", bleeds: Blood),
+        's': (name: "spearman", tree: Enemy, hp: 2, weapon: "spear", bleeds: Blood),
+        'h': (name: "hunter", tree: Hunter, hp: 2, weapon: "jab", bleeds: Blood),
     },
 )

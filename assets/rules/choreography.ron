@@ -24,7 +24,7 @@
     impact_strength: 1,
     // A knocked body's slam into a wall or another body plays this long
     // after the blow lands, so it reads as a hit of its own (it does
-    // damage of its own), with this effect where they meet.
+    // damage of its own), with this effect where they meet (`slam.ron`).
     impact_gap: 0.08,
-    impact_effect: "slam",
+    impact_effect: Slam,
 )
