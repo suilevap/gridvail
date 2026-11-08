@@ -6,10 +6,6 @@
 
 use serde::Deserialize;
 
-use crate::model::EffectId;
-
-include!(concat!(env!("OUT_DIR"), "/bundled_effects.rs"));
-
 /// One effect: every emitter plays when it is asked for.
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct EffectSpec {

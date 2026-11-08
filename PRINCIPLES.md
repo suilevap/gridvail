@@ -111,12 +111,14 @@ The mechanisms the game should converge on are listed under
 
 ### 8. Data, not constants
 
-Stats, patterns and tunables live in `assets/rules/` (the actor roster:
-kinds, hit points, weapons drawn as art, move sets; how fights are timed
-on screen), are read by `content/` into plain specs, and are turned into
-components by `app`. How things look follows the same rule: effects are
-one file each in `assets/effects`, and the roster names them, so a new
-look is a new file. Code
+Stats, patterns and tunables live in `assets/` (kinds of actor, weapons
+drawn as art and fighting styles, one file each in `actors/`, `weapons/`
+and `moves/`; how fights are timed on screen in `rules/`), are read by
+`content/` into plain specs, and are turned into components by `app`. How
+things look follows the same rule: effects are one file each in
+`assets/effects`. Things of a kind are catalogs, named by generated ids,
+never by strings (see [Data](#data-one-format-and-prefabs)), so a new
+thing is a new file. Code
 keeps a default only where data would add nothing. Data files share one
 format read by one generic reader, so a new file or field is a new type,
 not a new parser (see [Data](#data-one-format-and-prefabs)). Tunables a system reads
@@ -268,8 +270,11 @@ for the parity tests).
 
 **Built** (`content/data.rs`, `content/art.rs`): `data::read` reads any
 RON file into any `Deserialize` type; `art::cells` reads shapes drawn as
-text. The actor roster (`assets/rules/actors.ron`) is read that way, with
-no parser of its own. **Not yet:** prefabs; `ActorKind::equip` still
+text. Catalogs (`content/catalog.rs`): things of a kind, one file each in
+a folder of `assets`, named by an id enum `build.rs` generates (a variant
+per file) in code and data alike, read by one generic `Catalog<Id, Spec>`;
+effects, weapons, fighting styles and kinds of actor are catalogs, and a
+new kind is a folder plus one line in `build.rs`. **Not yet:** prefabs; `ActorKind::equip` still
 converts by hand. **Still to absorb:** the statures parser, the spawn
 constants in `app/map.rs`.
 

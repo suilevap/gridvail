@@ -1,0 +1,13 @@
+// A weapon (`content::actors::WeaponSpec`): its damage, the turns it is
+// wound up between aiming and the strike, the cells it covers (drawn with
+// the wielder `@` facing up, each struck cell a digit in the order the
+// swing goes through them, or all `x`), how it is swung (`Thrust` straight
+// at the target, `Sweep` in an arc across the front, `Hook` out and pulled
+// back, `reach` cells out; a thrust when not given) and the streak it
+// leaves (an effect: `Swoosh` is `assets/effects/swoosh.ron`).
+//
+// The jab: the cell in front.
+(damage: 1, windup: 1, swing: Thrust(reach: 0.55), streak: Swoosh, art: "
+    x
+    @
+")

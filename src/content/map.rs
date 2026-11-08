@@ -23,7 +23,7 @@ use bevy::prelude::*;
 pub enum SpawnKind {
     Wall,
     Player,
-    /// An actor of the kind its glyph names in the actor roster: any
+    /// An actor of the kind its glyph names in `assets/actors`: any
     /// lowercase letter without a meaning of its own.
     Actor(char),
     Electricity,

@@ -41,7 +41,7 @@ beside the `@`): forward, left, right or back.
 
 ## The attacks: one for each way
 
-An attack is data (the blade's in `assets/rules/actors.ron`): the cells it
+An attack is data (the blade's in `assets/moves/blade.ron`): the cells it
 strikes, drawn as art with digits for the order its swing goes through
 them, its damage, how far it knocks each target (the way the swing travels
 through its cell, plus one cell the way the player steps: the blow
@@ -154,7 +154,7 @@ Out, roughly in the order they would follow:
   before anyone acts in it. The player gets exactly one action in between:
   step off, or knock the striker so its blow lands elsewhere.
 - **Strike patterns decide the answer.** Each weapon strikes its own cells
-  (drawn as art in `assets/rules/actors.ron`). Against a guard's sweep (the
+  (drawn as art in `assets/weapons`). Against a guard's sweep (the
   row in front) stepping aside does not help; a lunge (it flies two cells,
   so its sweep covers the row ahead of the player) and backing off are
   safe, a sweep is not (it steps the player along the row it sweeps). Against a spearman's spear (two cells
@@ -195,7 +195,7 @@ predictable. To look into separately; possible causes, none decided yet:
 The simulation settles a blow in one frame; the animation plays it in
 order (`src/choreography/`):
 
-1. the attacker swings as its weapon or move says in the roster
+1. the attacker swings as its weapon or move says in its data
    (`swing`): a thrust straight at the target (a spear reaches further),
    a sweep in an arc across the front, round the way its cells go, or a
    hook that reaches out and pulls back; a move with no swing (backing
@@ -229,10 +229,11 @@ body plays a slam a moment after the blow (`slam.ron`: a hard flash where
 they meet, debris and dust thrown back off what it hit), so the slam's
 own damage reads as a second hit: that is why a knock into a wall can
 down an alert enemy at once. Effects are data: each is a file in
-`assets/effects` (`swoosh.ron`, `blood.ron`, `slam.ron`), and the roster names them
+`assets/effects` (`swoosh.ron`, `blood.ron`, `slam.ron`), and kinds of actor, weapons and moves name them
 (a weapon's or move's `streak`, an actor's `bleeds`, by the effect's
 `EffectId` variant: `blood.ron` is `Blood`), so a new look (a
-crate's splinters, a robot's sparks) is a new file and a roster line.
+crate's splinters, a robot's sparks) is a new file and a line in the
+data that names it.
 
 Still to come, each its own step once needed: hit points shown on
 enemies, decals that last, camera shake or hit-stop, sound.
@@ -251,12 +252,12 @@ Small modules that share only data and messages (see `ARCHITECTURE.md`):
   order), whether it stops at the first target, damage, knock, `Stance`
   and turn. `choose_attacks` turns a move that meets a target into an
   `Attack`; `perform_attacks` answers it. A new fighting style is a new
-  `moves` block in the roster.
+  file in `assets/moves`.
 - **Weapons own their strikes.** A `Weapon` (an `Area`, damage, wind-up)
   on any actor answers `UseWeapon`: it aims (`Telegraph`), owes its
   wind-up in turns (`Delay`) with the `Strike` scheduled for when that is
   paid, then strikes its area. The AI only decides to attack. New patterns
-  are new art in the roster.
+  are new art in a weapon's file.
 - **Time is general.** An actor in `Debt` sits out its turns until paid,
   and any message can wait on that (`Scheduled`). A wind-up is one user; a
   stun or a stagger is a `Delay` with nothing scheduled.
@@ -270,8 +271,9 @@ Small modules that share only data and messages (see `ARCHITECTURE.md`):
   whatever sent it. Hits, critical hits and collisions are separate small systems that each send their share; a hazard, fire or a fall can send
   `Damage` too.
 - **Who is who is data.** Actor kinds, by map glyph, name their
-  behaviour, hit points and weapon or moves (`assets/rules/actors.ron`),
-  read by the one generic RON reader: a new data file needs only a type.
+  behaviour, hit points and weapon or moves (`assets/actors`), each a file
+  named by a generated id, read by the one generic RON reader: a new
+  thing is a new file, a new kind of thing a folder.
 - **Input is intent.** Keys, swipes and the agent API all write the same
   `MoveCommand`; nothing reads devices.
 - Still to come: actions in progress (aiming, with a charge), built on the

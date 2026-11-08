@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use super::{GestureShape, Rgb};
+use super::{EffectId, GestureShape, Rgb};
 
 /// A short-lived glyph that is only shown (a drop of blood, a stroke of a
 /// swing): anywhere between cells, off the map grid, blocking nothing. It
@@ -54,8 +54,6 @@ impl Particle {
 /// A particle that has not appeared yet: seconds until it does.
 #[derive(Component, Clone, Copy, Debug, PartialEq)]
 pub struct ParticleDelay(pub f32);
-
-include!(concat!(env!("OUT_DIR"), "/effect_ids.rs"));
 
 /// Play the effect `effect` (a file in `assets/effects`) from where
 /// `entity` is shown, its way `toward`, `delay` seconds from now. A swing

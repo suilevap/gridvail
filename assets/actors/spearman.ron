@@ -1,0 +1,2 @@
+// A kind of actor (see `player.ron`). The spearman: two cells ahead.
+(glyph: 's', tree: Enemy, hp: 2, weapon: Spear, bleeds: Blood)

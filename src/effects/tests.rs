@@ -45,7 +45,7 @@ fn request(effect: EffectId, entity: Entity) -> PlayEffect {
 #[test]
 fn every_effect_file_is_an_id_and_reads() {
     let library = EffectLibrary::bundled().unwrap();
-    for id in EffectId::ALL {
+    for &id in EffectId::ALL {
         assert!(library.get(id).is_some(), "{id:?}");
     }
 }
