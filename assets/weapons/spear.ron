@@ -1,0 +1,7 @@
+// A weapon (see `jab.ron`). The spear: two cells straight ahead, nearer
+// first; stepping back is no escape.
+(damage: 1, windup: 1, swing: Thrust(reach: 0.95), streak: Swoosh, art: "
+    2
+    1
+    @
+")

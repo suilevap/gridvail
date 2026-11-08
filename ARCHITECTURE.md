@@ -199,11 +199,21 @@ and renderers must not import it.
   - Who is who comes from data. `content::data::read` reads any RON file
     into any type that derives `Deserialize`, so a new data file is a new
     type, with no parser; `content::art` reads shapes drawn as text art.
-    The roster (`assets/rules/actors.ron`: actor kinds by map glyph, their
-    behaviour, hit points, weapon or moves; weapons with their area drawn
-    as art; move sets) is read that way into `content::actors` types, and
-    `app::ActorKinds` equips each actor spawned from a map glyph with what
-    its kind names.
+    Things of a kind are **catalogs** (`content::catalog`): one file each
+    in a folder of `assets` (`effects`, `weapons`, `moves`, `actors`).
+    `build.rs` makes each folder an id enum, a variant per file
+    (`assets/weapons/sweep.ron` is `WeaponId::Sweep`, implementing
+    `model::CatalogId`), and bundles the texts; `Catalog<Id, Spec>` reads
+    them through the generic reader and keeps them by id. Code and data
+    name things by those ids, never by a string (an actor says `weapon:
+    Sweep`), so a name nobody wrote fails to compile or to read. A new
+    thing is a new file; a new kind is a new folder, a line in
+    `build.rs`'s `CATALOGS` and the spec type its files read into. Kinds
+    of actor (by map glyph, behaviour, hit points, weapon or fighting
+    style) read into `content::actors` types, and `app::ActorKinds` equips
+    each actor spawned from a map glyph with what its kind names. Maps
+    stay named (a map names the next by file), and single files (the
+    choreography timings, the tile rules) stay files.
 - `lighting/` contains light blending and light colour: a `LightCell` keeps
   a level per kind of light, summed over every light of that kind; each
   kind has a gradient baked into a 256-entry lookup table (`LightLut`), and
@@ -257,12 +267,10 @@ and renderers must not import it.
   changes nothing in the simulation.
 - `effects/` plays effects, which are data: one RON file each in
   `assets/effects` (`content::effects`), bundled by `build.rs` like the
-  maps, so a new effect is a new file and the roster names it. `build.rs`
-  also makes each file a variant of the `EffectId` enum (`blood.ron` is
-  `EffectId::Blood`), which code names effects by and data too (`bleeds:
-  Blood`, read by serde): a name nobody wrote fails to compile or to
-  read, and requests (`PlayEffect`), `Bleeds` and looks carry the enum,
-  never a string. An effect
+  maps, as a catalog: a new effect is a new file, `EffectId::Blood` for
+  `blood.ron`, which kinds of actor and weapons name (`bleeds: Blood`)
+  and requests (`PlayEffect`), `Bleeds` and looks carry, never a string.
+  An effect
   is emitters, each throwing off `Particle`s (short-lived glyphs off the
   grid) from a point along the blow or along the swing, with their count
   (and more per point of strength), speed and drag, life and how long

@@ -1,7 +1,7 @@
 //! Combat through the real `GamePlugin` on small maps: moves that meet
 //! something attack it (lunge, sweeps, backing off), plain walks, impacts,
 //! critical hits, wound-up strikes, strike patterns and friendly fire. The
-//! player starts facing north. Actors are the bundled roster's: `e` a guard
+//! player starts facing north. Actors are the bundled kinds: `e` a guard
 //! with a sweep (the row in front), `s` a spearman (two cells ahead).
 
 use bevy::prelude::*;
@@ -27,7 +27,7 @@ impl Game {
         Self::with(map, |kinds| kinds.player_mut().hp = player_hp)
     }
 
-    /// The map with the roster changed by `setup` first.
+    /// The map with the kinds of actor changed by `setup` first.
     fn with(map: &'static str, setup: impl FnOnce(&mut ActorKinds)) -> Self {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)

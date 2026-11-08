@@ -1,5 +1,6 @@
-//! Kinds of actor, by map glyph, from the roster in
-//! `assets/rules/actors.ron`: what each is made of when spawned.
+//! Kinds of actor, by map glyph, from the catalogs of actors, weapons and
+//! fighting styles (`assets/actors`, `assets/weapons`, `assets/moves`):
+//! what each is made of when spawned.
 
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
@@ -7,11 +8,9 @@ use flatbt_bevy::prelude::Behavior;
 
 use crate::ai::{enemy_tree, hunter_tree};
 pub use crate::content::actors::Tree;
-use crate::content::actors::{MoveSpec, Roster, StanceSpec, SwingSpec};
-use crate::content::data;
+use crate::content::actors::{ActorSpec, MoveSpec, MovesSpec, StanceSpec, SwingSpec, WeaponSpec};
+use crate::content::catalog::Catalog;
 use crate::model::*;
-
-const ROSTER_TEXT: &str = include_str!("../../assets/rules/actors.ron");
 
 /// One kind of actor: its stats and what it fights with.
 #[derive(Clone, Debug, PartialEq)]
@@ -55,15 +54,21 @@ impl ActorKind {
     }
 }
 
-/// Every kind of actor, by map glyph. The bundled roster by default; change
-/// it (or insert another) before the map is built to change who is who.
+/// Every kind of actor, by map glyph. The bundled catalogs by default;
+/// change it (or insert another) before the map is built to change who is
+/// who.
 #[derive(Resource, Clone, Debug, PartialEq)]
 pub struct ActorKinds(pub HashMap<char, ActorKind>);
 
 impl ActorKinds {
-    /// The kinds a roster describes; every weapon and move set an actor
-    /// names must be in it.
-    pub fn from_roster(roster: &Roster) -> Result<Self, String> {
+    /// The kinds the actors catalog describes, with the weapons and
+    /// fighting styles they name, which must be in theirs; no two kinds
+    /// share a glyph.
+    pub fn from_catalogs(
+        actors: &Catalog<ActorId, ActorSpec>,
+        weapons: &Catalog<WeaponId, WeaponSpec>,
+        styles: &Catalog<MovesId, MovesSpec>,
+    ) -> Result<Self, String> {
         let move_of = |spec: &MoveSpec| -> Result<Maneuver, String> {
             let cells = spec
                 .cells()
@@ -87,17 +92,17 @@ impl ActorKinds {
             streak,
         };
         let mut kinds = HashMap::default();
-        for (&glyph, actor) in &roster.actors {
-            let weapon = match actor.weapon.as_deref() {
+        for (id, actor) in actors.iter() {
+            let name = id.file();
+            let weapon = match actor.weapon {
                 None => None,
-                Some(name) => {
-                    let spec = roster
-                        .weapons
-                        .get(name)
-                        .ok_or_else(|| format!("{} names no known weapon `{name}`", actor.name))?;
+                Some(weapon) => {
+                    let spec = weapons
+                        .get(weapon)
+                        .ok_or_else(|| format!("{name} names no known weapon {weapon:?}"))?;
                     let cells = spec
                         .cells()
-                        .map_err(|error| format!("weapon `{name}`: {error}"))?;
+                        .map_err(|error| format!("weapon {weapon:?}: {error}"))?;
                     Some((
                         Weapon {
                             area: Area(cells),
@@ -112,13 +117,12 @@ impl ActorKinds {
                     ))
                 }
             };
-            let maneuvers = match actor.moves.as_deref() {
+            let maneuvers = match actor.moves {
                 None => None,
-                Some(name) => {
-                    let spec = roster
-                        .moves
-                        .get(name)
-                        .ok_or_else(|| format!("{} names no known moves `{name}`", actor.name))?;
+                Some(style) => {
+                    let spec = styles
+                        .get(style)
+                        .ok_or_else(|| format!("{name} names no known moves {style:?}"))?;
                     Some((
                         Maneuvers {
                             forward: move_of(&spec.forward)?,
@@ -135,34 +139,37 @@ impl ActorKinds {
                     ))
                 }
             };
-            kinds.insert(
-                glyph,
-                ActorKind {
-                    name: actor.name.clone(),
-                    tree: actor.tree,
-                    hp: actor.hp,
-                    weapon,
-                    maneuvers,
-                    bleeds: actor.bleeds,
-                },
-            );
+            let kind = ActorKind {
+                name: name.to_string(),
+                tree: actor.tree,
+                hp: actor.hp,
+                weapon,
+                maneuvers,
+                bleeds: actor.bleeds,
+            };
+            if let Some(other) = kinds.insert(actor.glyph, kind) {
+                return Err(format!(
+                    "{name} and {} share the glyph `{}`",
+                    other.name, actor.glyph
+                ));
+            }
         }
         Ok(Self(kinds))
     }
 
-    /// The kind spawned for `glyph`; a map naming one the roster lacks
+    /// The kind spawned for `glyph`; a map naming one no kind has
     /// cannot be played.
     pub fn get(&self, glyph: char) -> &ActorKind {
         self.0
             .get(&glyph)
-            .unwrap_or_else(|| panic!("map: no actor kind for `{glyph}` in the roster"))
+            .unwrap_or_else(|| panic!("map: no actor kind for `{glyph}` in assets/actors"))
     }
 
     /// The player's kind (`p`).
     pub fn player_mut(&mut self) -> &mut ActorKind {
         self.0
             .get_mut(&'p')
-            .expect("the roster has the player, `p`")
+            .expect("assets/actors has the player, `p`")
     }
 
     /// Changes every kind but the player's.
@@ -175,8 +182,10 @@ impl ActorKinds {
 
 impl Default for ActorKinds {
     fn default() -> Self {
-        data::read::<Roster>("actors.ron", ROSTER_TEXT)
-            .and_then(|roster| Self::from_roster(&roster))
+        Catalog::bundled()
+            .and_then(|actors| {
+                Self::from_catalogs(&actors, &Catalog::bundled()?, &Catalog::bundled()?)
+            })
             .unwrap_or_else(|error| panic!("actors: {error}"))
     }
 }
@@ -184,9 +193,10 @@ impl Default for ActorKinds {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::content::catalog::Bundled;
 
     #[test]
-    fn the_bundled_roster_has_the_player_and_armed_enemies() {
+    fn the_bundled_kinds_have_the_player_and_armed_enemies() {
         let mut kinds = ActorKinds::default();
         assert!(kinds.player_mut().maneuvers.is_some());
         for glyph in ['e', 'h', 's'] {
@@ -206,8 +216,22 @@ mod tests {
         let (_, look) = guard.weapon.unwrap();
         assert_eq!(look.0.streak, Some(EffectId::Swoosh));
         // A name nobody wrote fails to read.
-        let text = ROSTER_TEXT.replacen("bleeds: Blood", "bleeds: Bloood", 1);
-        let error = data::read::<Roster>("actors.ron", &text).unwrap_err();
+        let text =
+            ActorId::TEXTS[ActorId::Guard.index()].replacen("bleeds: Blood", "bleeds: Bloood", 1);
+        let error =
+            Catalog::<ActorId, ActorSpec>::read([(ActorId::Guard, text.as_str())]).unwrap_err();
         assert!(error.contains("Bloood"), "{error}");
+    }
+
+    #[test]
+    fn no_two_kinds_share_a_glyph() {
+        let actors = Catalog::read([
+            (ActorId::Guard, "(glyph: 'e', hp: 2)"),
+            (ActorId::Spearman, "(glyph: 'e', hp: 2)"),
+        ])
+        .unwrap();
+        let error = ActorKinds::from_catalogs(&actors, &Catalog::default(), &Catalog::default())
+            .unwrap_err();
+        assert!(error.contains("glyph"), "{error}");
     }
 }

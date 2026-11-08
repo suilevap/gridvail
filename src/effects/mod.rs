@@ -10,8 +10,8 @@ use bevy::prelude::*;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
-use crate::content::data;
-use crate::content::effects::{EffectSpec, EmitterSpec, GlyphSpec, SourceSpec, BUNDLED_EFFECTS};
+use crate::content::catalog::Catalog;
+use crate::content::effects::{EffectSpec, EmitterSpec, GlyphSpec, SourceSpec};
 use crate::model::*;
 use crate::schedule::GamePhase;
 
@@ -36,31 +36,10 @@ impl Plugin for EffectsPlugin {
     }
 }
 
-/// Every effect's spec, by its `EffectId`. The bundled ones by default;
-/// change it (or insert another) to change how effects look.
-#[derive(Resource, Clone, Debug, Default, PartialEq)]
-pub struct EffectLibrary(Vec<Option<EffectSpec>>);
-
-impl EffectLibrary {
-    /// Every effect in `assets/effects`.
-    pub fn bundled() -> Result<Self, String> {
-        Self::read(BUNDLED_EFFECTS.iter().copied())
-    }
-
-    /// The effects in `(id, text)` files.
-    pub fn read<'a>(files: impl IntoIterator<Item = (EffectId, &'a str)>) -> Result<Self, String> {
-        let mut library = Self(vec![None; EffectId::ALL.len()]);
-        for (id, text) in files {
-            library.0[id as usize] = Some(data::read(&format!("effect {id:?}"), text)?);
-        }
-        Ok(library)
-    }
-
-    /// The effect `id`, if this library has it.
-    pub fn get(&self, id: EffectId) -> Option<&EffectSpec> {
-        self.0.get(id as usize).and_then(Option::as_ref)
-    }
-}
+/// Every effect's spec, by its `EffectId`: the effects catalog. The bundled
+/// one by default; change it (or insert another) to change how effects
+/// look.
+pub type EffectLibrary = Catalog<EffectId, EffectSpec>;
 
 /// The effects' own random numbers, apart from the game's.
 #[derive(Resource)]

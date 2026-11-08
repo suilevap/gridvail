@@ -2,6 +2,7 @@
 
 pub mod actors;
 pub mod art;
+pub mod catalog;
 pub mod choreography;
 pub mod data;
 pub mod effects;

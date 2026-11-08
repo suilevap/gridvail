@@ -1,23 +1,13 @@
-//! The actor roster, `assets/rules/actors.ron`: kinds of actor by map glyph,
-//! the weapons they strike with and the moves they make. Plain data, read
-//! with the generic `data::read`; what to spawn from it is the game's
-//! business.
-
-use std::collections::BTreeMap;
+//! Who is who and what they fight with: kinds of actor (`assets/actors`),
+//! weapons (`assets/weapons`) and fighting styles (`assets/moves`), one
+//! file each, read as catalogs (`content::catalog`) and naming each other
+//! by id. Plain data; what to spawn from it is the game's business.
 
 use bevy::math::IVec2;
 use serde::Deserialize;
 
 use super::art;
-use crate::model::{EffectId, Swing};
-
-#[derive(Deserialize, Clone, Debug, PartialEq)]
-pub struct Roster {
-    pub weapons: BTreeMap<String, WeaponSpec>,
-    pub moves: BTreeMap<String, MovesSpec>,
-    /// By the map glyph that places them.
-    pub actors: BTreeMap<char, ActorSpec>,
-}
+use crate::model::{EffectId, MovesId, Swing, WeaponId};
 
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct WeaponSpec {
@@ -139,17 +129,20 @@ pub enum Tree {
     Hunter,
 }
 
+/// A kind of actor (its name is its file's).
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ActorSpec {
-    pub name: String,
+    /// The map glyph that places it.
+    pub glyph: char,
     /// The behaviour it runs, if any.
     #[serde(default)]
     pub tree: Option<Tree>,
     pub hp: i32,
+    /// Its weapon or its fighting style, if any.
     #[serde(default)]
-    pub weapon: Option<String>,
+    pub weapon: Option<WeaponId>,
     #[serde(default)]
-    pub moves: Option<String>,
+    pub moves: Option<MovesId>,
     /// What a blow knocks out of it (an effect, by its `EffectId`; nothing
     /// when not given).
     #[serde(default)]
@@ -161,61 +154,45 @@ mod tests {
     use super::*;
     use crate::content::data;
 
-    const ROSTER: &str = r#"(
-        weapons: {
-            "sweep": (damage: 1, windup: 2, art: "
-                123
-                .@.
-            "),
-        },
-        moves: {
-            "blade": (
-                forward: (name: "lunge", hit: 1, knock: 1, stance: Follow, art: "
-                    1
-                    @
-                "),
-                left: (name: "sweep left", hit: 1, knock: 1, turn: true, art: "
-                    21
-                    3@
-                "),
-                right: (name: "sweep right", hit: 1, knock: 1, turn: true, art: "
-                    12
-                    @3
-                "),
-                back: (name: "back off", stance: Step, art: "
-                    x
-                    @
-                "),
-            ),
-        },
-        actors: {
-            'e': (name: "guard", tree: Enemy, hp: 3, weapon: "sweep"),
-            'p': (name: "player", hp: 2, moves: "blade"),
-        },
-    )"#;
-
     #[test]
-    fn a_roster_is_read_by_the_generic_reader() {
-        let roster: Roster = data::read("roster", ROSTER).unwrap();
-        let sweep = &roster.weapons["sweep"];
+    fn weapons_styles_and_kinds_are_read_by_the_generic_reader() {
+        let sweep: WeaponSpec = data::read(
+            "sweep",
+            "(damage: 1, windup: 2, art: \"\n    123\n    .@.\n\")",
+        )
+        .unwrap();
         assert_eq!((sweep.damage, sweep.windup), (1, 2));
         assert_eq!(
             sweep.cells().unwrap(),
             vec![IVec2::new(1, -1), IVec2::new(1, 0), IVec2::new(1, 1)]
         );
-        let blade = &roster.moves["blade"];
-        assert_eq!((blade.back.hit, blade.back.knock), (0, 0));
-        assert_eq!(blade.back.stance, StanceSpec::Step);
-        assert_eq!(blade.forward.stance, StanceSpec::Follow);
-        assert!(blade.left.turn && !blade.forward.turn);
+        let back: MoveSpec = data::read(
+            "back off",
+            "(name: \"back off\", stance: Step, art: \"x\n@\")",
+        )
+        .unwrap();
         assert_eq!(
-            blade.left.cells().unwrap(),
+            (back.hit, back.knock, back.stance),
+            (0, 0, StanceSpec::Step)
+        );
+        let left: MoveSpec = data::read(
+            "sweep left",
+            "(name: \"sweep left\", hit: 1, turn: true, art: \"21\n3@\")",
+        )
+        .unwrap();
+        assert!(left.turn);
+        assert_eq!(
+            left.cells().unwrap(),
             vec![IVec2::X, IVec2::new(1, -1), IVec2::new(0, -1)],
             "ahead, ahead-left, left"
         );
-        let guard = &roster.actors[&'e'];
+        let guard: ActorSpec = data::read(
+            "guard",
+            "(glyph: 'e', tree: Enemy, hp: 3, weapon: Sweep, bleeds: Blood)",
+        )
+        .unwrap();
         assert_eq!(guard.tree, Some(Tree::Enemy));
-        assert_eq!(guard.weapon.as_deref(), Some("sweep"));
-        assert_eq!(roster.actors[&'p'].moves.as_deref(), Some("blade"));
+        assert_eq!(guard.weapon, Some(WeaponId::Sweep));
+        assert_eq!(guard.bleeds, Some(EffectId::Blood));
     }
 }

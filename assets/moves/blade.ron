@@ -1,0 +1,40 @@
+// A fighting style (`content::actors::MovesSpec`): a move for each way a
+// swipe can go from where the mover faces (forward, left, right, back). A
+// move plays when one of its cells (drawn as for weapons, the mover `@`
+// facing up) holds a target; otherwise the swipe is a plain step. It hits
+// each target in its cells in order (only the first, with `stop: true`) for
+// `hit` damage, and knocks each `knock` cells the way the swing goes
+// through its cell, plus one the way the mover steps, if it does (the blow
+// carries its step). `stance` is where it leaves the mover: `Stay`,
+// `Follow` into the cell the first knocked target leaves, or `Step` the way
+// of the swipe; with `turn` the mover turns to face the swipe. `swing` and
+// `streak` are how it looks, as for weapons (no swing when not given).
+//
+// The blade: every move moves the mover; an attack is a step that hits
+// what it meets.
+(
+    // Into what is ahead, knocking it on and taking its cell.
+    forward: (name: "lunge", hit: 1, knock: 1, stance: Follow,
+        swing: Thrust(reach: 0.6), streak: Swoosh, art: "
+        1
+        @
+    "),
+    // Round from ahead to the side, stepping that way and turning to face
+    // it: what is ahead is swept aside, what is beside is swept back, out
+    // of the cell stepped into.
+    left: (name: "sweep left", hit: 1, knock: 1, stance: Step, turn: true,
+        swing: Sweep(reach: 0.55), streak: Swoosh, art: "
+        21
+        3@
+    "),
+    right: (name: "sweep right", hit: 1, knock: 1, stance: Step, turn: true,
+        swing: Sweep(reach: 0.55), streak: Swoosh, art: "
+        12
+        @3
+    "),
+    // Facing something, a step back keeps facing it.
+    back: (name: "back off", stance: Step, art: "
+        x
+        @
+    "),
+)

@@ -491,7 +491,7 @@ fn spawn_player(
 /// Steps of detour an enemy takes rather than queue behind another actor.
 const ENEMY_CROWD_COST: u32 = 4;
 
-/// What every actor from the roster is made of: a walking, carrying,
+/// What every actor of a kind (`assets/actors`) is made of: a walking, carrying,
 /// token-taking body that can be picked and knocked about. Its kind adds
 /// the rest (`ActorKind::equip`).
 fn actor_body(pos: IVec2, cell_count: usize) -> impl Bundle {

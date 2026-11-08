@@ -1,0 +1,6 @@
+// A weapon (see `jab.ron`). The sweep: the whole row in front, left to
+// right; stepping aside is no escape.
+(damage: 1, windup: 1, swing: Sweep(reach: 0.6), streak: Swoosh, art: "
+    123
+    .@.
+")
