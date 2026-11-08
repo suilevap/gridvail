@@ -90,9 +90,9 @@ impl Game {
             .add_plugins(GamePlugin);
         // Scenarios are about where enemies go: everyone outlasts every
         // strike rather than going down (and the player starting over).
-        for kind in app.world_mut().resource_mut::<ActorKinds>().0.values_mut() {
-            kind.hp = 1000;
-        }
+        let mut kinds = app.world_mut().resource_mut::<ActorKinds>();
+        kinds.player.hp = 1000;
+        kinds.others_mut(|kind| kind.hp = 1000);
         let mut game = Self {
             app,
             map,

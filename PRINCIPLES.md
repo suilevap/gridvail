@@ -113,7 +113,7 @@ The mechanisms the game should converge on are listed under
 
 Stats, patterns and tunables live in `assets/` (kinds of actor, weapons
 drawn as art and fighting styles, one file each in `actors/`, `weapons/`
-and `moves/`; how fights are timed on screen in `rules/`), are read by
+and `styles/`; how fights are timed on screen in `rules/`), are read by
 `content/` into plain specs, and are turned into components by `app`. How
 things look follows the same rule: effects are one file each in
 `assets/effects`. Things of a kind are catalogs, named by generated ids,
@@ -407,7 +407,14 @@ it would help. Each item is its own change.
     keys, orders and strolls are filled by one `perceive` system.
     Perception per sense, each filling its own part, would let new senses
     (hearing, smell) be added alone. (Principles 1, 2.)
-11. **Presentation delays counted down in several places**
+11. **Tile rules are named by strings in code** (`Tile.rule`,
+    `DirectionTile.rule`: `"wall_rule"`, `"rail_rule"`,
+    `"direction_triangle_rule"`, `"direction_v_rule"`; `simulation/tiles.rs`
+    skips an unknown one silently). The rule files stay in the original
+    game's format, so they are not a catalog, but the names should be a
+    small enum (`TileRule::Wall | Rail`, `DirectionRule::Triangle | V`).
+    (Principle 8.)
+12. **Presentation delays counted down in several places**
     (`animation`'s `PendingGestures`, `HeldMoves` and `Flinging`;
     `effects`' `ParticleDelay`). Each counts seconds down on its own. One
     "after this many seconds" mechanism for shown things, as `Scheduled`

@@ -1,5 +1,5 @@
 //! Who is who and what they fight with: kinds of actor (`assets/actors`),
-//! weapons (`assets/weapons`) and fighting styles (`assets/moves`), one
+//! weapons (`assets/weapons`) and fighting styles (`assets/styles`), one
 //! file each, read as catalogs (`content::catalog`) and naming each other
 //! by id. Plain data; what to spawn from it is the game's business.
 
@@ -7,7 +7,7 @@ use bevy::math::IVec2;
 use serde::Deserialize;
 
 use super::art;
-use crate::model::{EffectId, MovesId, Swing, WeaponId};
+use crate::model::{EffectId, StyleId, Swing, WeaponId};
 
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct WeaponSpec {
@@ -43,7 +43,7 @@ fn frame_cells(drawn: &str) -> Result<Vec<IVec2>, String> {
 
 /// One move for each way a swipe can go from where the mover faces.
 #[derive(Deserialize, Clone, Debug, PartialEq)]
-pub struct MovesSpec {
+pub struct StyleSpec {
     pub forward: MoveSpec,
     pub left: MoveSpec,
     pub right: MoveSpec,
@@ -132,8 +132,10 @@ pub enum Tree {
 /// A kind of actor (its name is its file's).
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ActorSpec {
-    /// The map glyph that places it.
-    pub glyph: char,
+    /// The map glyph that places it: a lowercase letter without a meaning
+    /// of its own in maps. The player has none (maps place it with `p`).
+    #[serde(default)]
+    pub glyph: Option<char>,
     /// The behaviour it runs, if any.
     #[serde(default)]
     pub tree: Option<Tree>,
@@ -142,7 +144,7 @@ pub struct ActorSpec {
     #[serde(default)]
     pub weapon: Option<WeaponId>,
     #[serde(default)]
-    pub moves: Option<MovesId>,
+    pub style: Option<StyleId>,
     /// What a blow knocks out of it (an effect, by its `EffectId`; nothing
     /// when not given).
     #[serde(default)]

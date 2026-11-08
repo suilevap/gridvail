@@ -154,7 +154,7 @@ impl Game {
 /// one struck cell.
 fn jabbing_guards(kinds: &mut ActorKinds) {
     let jab = kinds.get('h').weapon.clone();
-    kinds.0.get_mut(&'e').unwrap().weapon = jab;
+    kinds.by_glyph.get_mut(&'e').unwrap().weapon = jab;
 }
 
 /// An enemy right of the player (to its right as it faces north), room to
@@ -270,7 +270,7 @@ fn an_enemy_knocked_into_another_hurts_both() {
     // and runs into the other.
     let mut game = Game::with("XXXXX\nX...X\nX.e.X\nX.e.X\nX.p.X\nXXXXX\n", |kinds| {
         kinds.player_mut().hp = 100;
-        kinds.0.get_mut(&'e').unwrap().hp = 4;
+        kinds.by_glyph.get_mut(&'e').unwrap().hp = 4;
     });
     // On their alert beat, while neither moves: the near one is caught off
     // guard (1 + 1) and takes the impact (1), the far one the impact.
@@ -370,14 +370,11 @@ XXXXXXX
             jabbing_guards(kinds);
             kinds.player_mut().hp = 100;
             let dummy = ActorKind {
-                name: "dummy".into(),
                 tree: None,
-                hp: 2,
                 weapon: None,
-                maneuvers: None,
-                bleeds: None,
+                ..kinds.get('e').clone()
             };
-            kinds.0.insert('d', dummy);
+            kinds.by_glyph.insert('d', dummy);
         },
     );
     let (a, b) = (IVec2::new(3, 2), IVec2::new(5, 3));

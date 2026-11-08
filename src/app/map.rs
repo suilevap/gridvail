@@ -466,7 +466,7 @@ fn spawn_player(
             },
         ),
     ));
-    kinds.get('p').equip(&mut player);
+    kinds.player.equip(&mut player);
     let player = player.id();
     // Bound 'i' direction marker, one step ahead of the player
     // (the original light source belongs to the player).

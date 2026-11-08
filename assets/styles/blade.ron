@@ -1,4 +1,4 @@
-// A fighting style (`content::actors::MovesSpec`): a move for each way a
+// A fighting style (`content::actors::StyleSpec`): a move for each way a
 // swipe can go from where the mover faces (forward, left, right, back). A
 // move plays when one of its cells (drawn as for weapons, the mover `@`
 // facing up) holds a target; otherwise the swipe is a plain step. It hits

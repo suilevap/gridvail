@@ -108,7 +108,7 @@ next to this file.
   data, one file per thing: kinds of actor in `assets/actors` (their map
   glyph, any lowercase letter without a meaning of its own, behaviour,
   hit points and weapon or fighting style), weapons in `assets/weapons`
-  (each pattern drawn as art) and fighting styles in `assets/moves`.
+  (each pattern drawn as art) and fighting styles in `assets/styles`.
   Fights show swing streaks, blood and slams, each a file in
   `assets/effects`. The build names each file by a generated id
   (`assets/weapons/sweep.ron` is `Sweep`), which data uses to name
@@ -322,7 +322,7 @@ tests/reference_parity.rs  independent C# FOV/light fixtures
 tools/generate_reference.py  regenerate fixtures from the pinned checkout
 assets/maps/       map1/2/3, map1_test, lightTest
 assets/rules/      wall + three direction rules, statures, fight timings
-assets/actors/     kinds of actor, one file each (weapons/, moves/, effects/ too)
+assets/actors/     kinds of actor, one file each (weapons/, styles/, effects/ too)
 assets/fonts/      Unscii-8 square pixel font (public domain)
 assets/shaders/    world-space procedural 3D surface material
 ```
@@ -352,7 +352,7 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 382 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 383 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1
