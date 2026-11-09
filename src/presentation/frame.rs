@@ -263,6 +263,58 @@ pub fn compose_frame(
     }
 }
 
+/// How a slam a mark foresees is drawn, on what would be slammed into.
+pub const SLAM_GLYPH: char = '╳';
+
+/// Adds what the marks in sight foresee to the frame's effects, above
+/// everything, once each mark has been planted, in its colour: an arrow
+/// where a body it sends would end up, pointing the way it would come, and
+/// `SLAM_GLYPH` on what it would slam into. Through a portal, where the
+/// player sees those cells, turned with it.
+pub fn compose_mark_arrows(
+    grid: Res<MapGrid>,
+    (marks, ages): (Option<Res<CellMarks>>, Option<Res<MarkAges>>),
+    mut buffers: ResMut<RenderBuffers>,
+) {
+    for &(cell, mark) in marks.iter().flat_map(|marks| &marks.0) {
+        let Some(sent) = mark.sent else {
+            continue;
+        };
+        let planted = ages
+            .as_ref()
+            .and_then(|ages| ages.0.get(&cell))
+            .is_some_and(|age| *age >= mark.delay);
+        if !planted {
+            continue;
+        }
+        let end = cell + sent.to;
+        let arrow = (sent.to != IVec2::ZERO).then_some((end, Some(sent.way)));
+        let slam = sent.slams.then_some((end + sent.way, None));
+        for (at, way) in arrow.into_iter().chain(slam) {
+            let at = grid.safe_pos(at);
+            let Some(world) = grid.idx(at) else {
+                continue;
+            };
+            let mut frame = buffers.seen_first[world];
+            while frame != RenderBuffers::NO_CELL {
+                let index = frame as usize;
+                if let Some(seen) = buffers.seen[index] {
+                    let inverse = seen.transform.inverse();
+                    buffers.effects.push(EffectCell {
+                        position: inverse.apply_point(at.as_vec2()),
+                        ch: SLAM_GLYPH,
+                        arrow: way.map(|way| inverse.turn_vec(way.as_vec2())),
+                        color: mark.tint,
+                        alpha: 1.0,
+                        ..default()
+                    });
+                }
+                frame = buffers.seen_next[index];
+            }
+        }
+    }
+}
+
 /// Lights frame cell `cell` at `position`, seen now through `seen` or else
 /// remembered: an empty one becomes floor (or a portal's threshold), and an
 /// object's glyph takes the light's colour (or a portal's).
@@ -448,6 +500,7 @@ pub fn compose_effects(
                     stroke: particle.stroke.map(|way| inverse.turn_vec(way)),
                     color: particle.shown_color(),
                     alpha: particle.alpha(),
+                    ..default()
                 });
             }
             frame = buffers.seen_next[index];

@@ -572,9 +572,11 @@ fn place_effect_sprites(
             }
             continue;
         };
-        let ch = effect
-            .stroke
-            .map_or(effect.ch, |way| stroke_glyph(quarter * way));
+        let ch = match (effect.arrow, effect.stroke) {
+            (Some(way), _) => arrow_glyph(quarter * way),
+            (None, Some(way)) => stroke_glyph(quarter * way),
+            (None, None) => effect.ch,
+        };
         if text.0.chars().ne(std::iter::once(ch)) {
             text.0.clear();
             text.0.push(ch);

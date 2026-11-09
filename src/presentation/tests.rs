@@ -737,3 +737,59 @@ fn particles_in_sight_are_listed_where_they_are_and_strokes_keep_their_way() {
     assert_eq!(effects[0].position, Vec2::new(5.3, 4.0));
     assert_eq!(effects[0].stroke, Some(Vec2::Y));
 }
+
+#[test]
+fn a_marks_arrow_is_drawn_where_a_body_ends_up_and_its_slam_beyond_once_planted() {
+    let mut app = test_app::headless();
+    app.insert_resource(DynamicLight::sized(64))
+        .insert_resource(RenderBuffers::new(8, 8))
+        .insert_resource(RevealAll);
+    let mut view = PlayerView::with_radius(4);
+    view.pos = IVec2::new(1, 1);
+    app.world_mut()
+        .spawn((Player(0), Pos(IVec2::new(1, 1)), view, visibility(&[])));
+    let mark = CellMark {
+        ground: RenderCell {
+            ch: 'x',
+            color: RED,
+            depth: 0,
+        },
+        tint: RED,
+        delay: 0.0,
+        sent: None,
+    };
+    let cell = IVec2::new(4, 3);
+    let up = |to: i32, slams| Sent {
+        to: IVec2::new(0, -to),
+        way: IVec2::NEG_Y,
+        slams,
+    };
+    app.insert_resource(CellMarks(vec![
+        // Two cells up, then into something.
+        (cell, mark.sending(up(2, true))),
+        // Not planted yet: nothing.
+        (IVec2::new(5, 5), mark.after(1.0).sending(up(1, false))),
+        // Nothing sent: nothing.
+        (IVec2::new(2, 2), mark),
+    ]));
+    let ages = [
+        (cell, 0.5),
+        (IVec2::new(5, 5), 0.5),
+        (IVec2::new(2, 2), 0.5),
+    ];
+    app.insert_resource(MarkAges(ages.into_iter().collect()));
+    app.world_mut().run_system_once(compose_frame).unwrap();
+    app.world_mut().run_system_once(compose_effects).unwrap();
+    app.world_mut()
+        .run_system_once(compose_mark_arrows)
+        .unwrap();
+    let effects = &app.world().resource::<RenderBuffers>().effects;
+    assert_eq!(effects.len(), 2);
+    assert_eq!(effects[0].position, Vec2::new(4.0, 1.0));
+    assert_eq!(effects[0].arrow.map(arrow_glyph), Some('↑'));
+    assert_eq!(
+        (effects[1].position, effects[1].arrow),
+        (Vec2::new(4.0, 0.0), None)
+    );
+    assert_eq!(effects[1].ch, SLAM_GLYPH);
+}
