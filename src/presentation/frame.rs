@@ -263,18 +263,21 @@ pub fn compose_frame(
     }
 }
 
-/// Adds the arrows of the marks in sight to the frame's effects, above
-/// everything: one in the cell what is marked would end up in, pointing
-/// the way it would come (over a wall, it would slam into it), in the
-/// mark's colour, once the mark has been planted. Through a portal, where
-/// the player sees that cell, turned with it.
+/// How a slam a mark foresees is drawn, on what would be slammed into.
+pub const SLAM_GLYPH: char = '╳';
+
+/// Adds what the marks in sight foresee to the frame's effects, above
+/// everything, once each mark has been planted, in its colour: an arrow
+/// where a body it sends would end up, pointing the way it would come, and
+/// `SLAM_GLYPH` on what it would slam into. Through a portal, where the
+/// player sees those cells, turned with it.
 pub fn compose_mark_arrows(
     grid: Res<MapGrid>,
     (marks, ages): (Option<Res<CellMarks>>, Option<Res<MarkAges>>),
     mut buffers: ResMut<RenderBuffers>,
 ) {
     for &(cell, mark) in marks.iter().flat_map(|marks| &marks.0) {
-        let Some(way) = mark.arrow else {
+        let Some(sent) = mark.sent else {
             continue;
         };
         let planted = ages
@@ -284,25 +287,30 @@ pub fn compose_mark_arrows(
         if !planted {
             continue;
         }
-        let step = way.signum();
-        let through = grid.safe_pos(cell + way);
-        let Some(world) = grid.idx(through) else {
-            continue;
-        };
-        let mut frame = buffers.seen_first[world];
-        while frame != RenderBuffers::NO_CELL {
-            let index = frame as usize;
-            if let Some(seen) = buffers.seen[index] {
-                let inverse = seen.transform.inverse();
-                buffers.effects.push(EffectCell {
-                    position: inverse.apply_point(through.as_vec2()),
-                    arrow: Some(inverse.turn_vec(step.as_vec2())),
-                    color: mark.tint,
-                    alpha: 1.0,
-                    ..default()
-                });
+        let end = cell + sent.to;
+        let arrow = (sent.to != IVec2::ZERO).then_some((end, Some(sent.way)));
+        let slam = sent.slams.then_some((end + sent.way, None));
+        for (at, way) in arrow.into_iter().chain(slam) {
+            let at = grid.safe_pos(at);
+            let Some(world) = grid.idx(at) else {
+                continue;
+            };
+            let mut frame = buffers.seen_first[world];
+            while frame != RenderBuffers::NO_CELL {
+                let index = frame as usize;
+                if let Some(seen) = buffers.seen[index] {
+                    let inverse = seen.transform.inverse();
+                    buffers.effects.push(EffectCell {
+                        position: inverse.apply_point(at.as_vec2()),
+                        ch: SLAM_GLYPH,
+                        arrow: way.map(|way| inverse.turn_vec(way.as_vec2())),
+                        color: mark.tint,
+                        alpha: 1.0,
+                        ..default()
+                    });
+                }
+                frame = buffers.seen_next[index];
             }
-            frame = buffers.seen_next[index];
         }
     }
 }

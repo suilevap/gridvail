@@ -44,7 +44,8 @@ forward, left, right or back.
   are marked cyan (lamps light nothing cyan, so it stands out) in the
   order it swings through them, and each body it would knock gets a cyan
   arrow where it would end up, pointing the way it would come (two cells
-  on for a lunge; an arrow over a wall means a slam into it), and the turn's timeout waits, up to 3s
+  on for a lunge), and a cyan `╳` on whatever it would slam into on the
+  way (a wall, a door, another body), and the turn's timeout waits, up to 3s
   (`readies` in `assets/actors/player.ron`, `--ready` / `?ready=`; 0
   makes attacks on the press, as before). Pointing another way (the
   finger slid aside from wherever it is, another key pressed) aims that way's attack, backing

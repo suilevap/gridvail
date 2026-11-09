@@ -12,7 +12,7 @@ pub const STRIKE_MARK: CellMark = CellMark {
     },
     tint: RED,
     delay: 0.0,
-    arrow: None,
+    sent: None,
 };
 /// How a cell a readied attack will strike is marked.
 pub const READY_MARK: CellMark = CellMark {
@@ -23,7 +23,7 @@ pub const READY_MARK: CellMark = CellMark {
     },
     tint: CYAN,
     delay: 0.0,
-    arrow: None,
+    sent: None,
 };
 /// How long after a weapon's first cell is marked the next one is, in the
 /// order it swings through them.
@@ -114,7 +114,8 @@ pub fn mark_strikes(
 
 /// Marks every cell an aimed attack will strike, planted in the order it
 /// swings through them, the way a weapon's are; a cell with a body that
-/// would be knocked also gets the way it would go.
+/// would be knocked also gets where it would go, and what it would slam
+/// into on the way.
 pub fn mark_readied(
     grid: Res<MapGrid>,
     marks: Option<ResMut<CellMarks>>,
@@ -132,12 +133,43 @@ pub fn mark_readied(
         let knocks = maneuver.knocks(pos.0, attack.facing, attack.dir);
         for (rank, (cell, knock)) in knocks.enumerate() {
             let cell = grid.safe_pos(cell);
-            let knocked = grid
+            let body = grid
                 .get(cell)
-                .is_some_and(|body| body != actor && movable.contains(body));
+                .filter(|&body| body != actor && movable.contains(body));
             let mark = READY_MARK.after(rank as f32 * STRIKE_MARK_STEP);
-            let mark = if knocked { mark.toward(knock) } else { mark };
+            let mark = match body {
+                Some(body) if knock != IVec2::ZERO => {
+                    mark.sending(knocked_path(&grid, cell, knock, body))
+                }
+                _ => mark,
+            };
             marks.0.push((cell, mark));
         }
+    }
+}
+
+/// Where `body`, knocked from `from` by `knock`, would go: a cell a pass,
+/// as the physics moves it, until something stands in the way (anything
+/// on the grid but itself), where it stops and slams into it.
+pub fn knocked_path(grid: &MapGrid, from: IVec2, knock: IVec2, body: Entity) -> Sent {
+    let (mut at, mut left) = (from, knock);
+    let mut way = knock.clamp(IVec2::NEG_ONE, IVec2::ONE);
+    while left != IVec2::ZERO {
+        way = left.clamp(IVec2::NEG_ONE, IVec2::ONE);
+        let next = grid.safe_pos(at + way);
+        if grid.get(next).is_some_and(|other| other != body) {
+            return Sent {
+                to: grid.delta(from, at),
+                way,
+                slams: true,
+            };
+        }
+        at = next;
+        left -= way;
+    }
+    Sent {
+        to: grid.delta(from, at),
+        way,
+        slams: false,
     }
 }

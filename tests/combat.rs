@@ -578,30 +578,31 @@ fn the_turn_waits_for_an_aim_up_to_its_limit() {
     assert!(game.readied().is_some(), "the aim was dropped");
 }
 
-/// The arrow the player's aimed attack draws on `cell`, if any.
-fn arrow_on(game: &Game, cell: IVec2) -> Option<IVec2> {
+/// Where the player's aimed attack would send what stands on `cell`.
+fn sent_from(game: &Game, cell: IVec2) -> Option<Sent> {
     let marks = game.app.world().resource::<CellMarks>();
     marks
         .0
         .iter()
         .find(|(at, _)| *at == cell)
-        .and_then(|(_, mark)| mark.arrow)
+        .and_then(|(_, mark)| mark.sent)
 }
 
 #[test]
-fn an_aimed_attack_shows_the_way_each_body_would_be_knocked() {
+fn an_aimed_attack_shows_where_each_body_would_be_knocked() {
     let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
     game.until_aware();
     hold(&mut game, UP, 5);
     // A lunge: knocked on by the swing and by the step it carries.
-    assert_eq!(arrow_on(&game, FRONT), Some(IVec2::NEG_Y * 2));
-    // Cells with nothing to knock show no arrow.
+    let sent = sent_from(&game, FRONT).expect("not shown");
+    assert_eq!((sent.to, sent.slams), (IVec2::NEG_Y * 2, false));
+    // Cells with nothing to knock show nothing sent.
     let marks = game.app.world().resource::<CellMarks>();
     assert_eq!(
         marks
             .0
             .iter()
-            .filter(|(_, mark)| mark.arrow.is_some())
+            .filter(|(_, mark)| mark.sent.is_some())
             .count(),
         1
     );
@@ -619,5 +620,21 @@ fn a_sweep_shows_the_body_beside_knocked_back_round_out_of_the_way() {
     let mut game = Game::readying(OPEN, |kinds| kinds.player_mut().hp = 100);
     game.until_aware();
     hold(&mut game, RIGHT, 5);
-    assert_eq!(arrow_on(&game, ENEMY), Some(IVec2::ONE));
+    let sent = sent_from(&game, ENEMY).expect("not shown");
+    assert_eq!((sent.to, sent.slams), (IVec2::ONE, false));
+}
+
+#[test]
+fn an_aimed_attack_shows_a_body_stopped_by_a_wall_and_slamming_into_it() {
+    // A lunge would knock the guard two cells on; one on is the wall.
+    let mut game = Game::readying("XXXXX\nX...X\nX.e.X\nX.p.X\nXXXXX\n", |kinds| {
+        kinds.player_mut().hp = 100;
+    });
+    game.until_aware();
+    hold(&mut game, UP, 5);
+    let sent = sent_from(&game, IVec2::new(2, 2)).expect("not shown");
+    assert_eq!(
+        (sent.to, sent.way, sent.slams),
+        (IVec2::NEG_Y, IVec2::NEG_Y, true)
+    );
 }

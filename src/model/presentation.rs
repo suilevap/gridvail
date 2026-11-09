@@ -263,8 +263,8 @@ pub fn is_hex_pos(p: IVec2) -> bool {
 }
 
 /// How a marked cell is drawn: whatever stands there in `tint`, or, when
-/// nothing does, the floor as `ground`, with an `arrow` the way what is
-/// there would be sent, if any. Both keep their own colours (light
+/// nothing does, the floor as `ground`, and where what is there would be
+/// `sent`, if anywhere. Both keep their own colours (light
 /// does not change them). A mark is planted: `delay` seconds after its
 /// cell is first marked it grows in (`MARK_GROWTH`), so the cells of one
 /// mark can appear in an order.
@@ -273,9 +273,18 @@ pub struct CellMark {
     pub ground: RenderCell,
     pub tint: Rgb,
     pub delay: f32,
-    /// The way (and how far) what stands there would be sent (a knock),
-    /// drawn as an arrow where it would end up.
-    pub arrow: Option<IVec2>,
+    /// Where what stands there would be sent (a knock), if anywhere.
+    pub sent: Option<Sent>,
+}
+
+/// Where a body would be sent: to `to` (from where it stands), going
+/// `way`, and whether it would then slam into what stops it, the next cell
+/// `way`. Shown as an arrow where it ends up and a mark where it slams.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Sent {
+    pub to: IVec2,
+    pub way: IVec2,
+    pub slams: bool,
 }
 
 impl CellMark {
@@ -284,10 +293,10 @@ impl CellMark {
         Self { delay, ..self }
     }
 
-    /// The same mark, with an arrow the way `way` (none for zero).
-    pub fn toward(self, way: IVec2) -> Self {
+    /// The same mark, sending what stands there as `sent` says.
+    pub const fn sending(self, sent: Sent) -> Self {
         Self {
-            arrow: (way != IVec2::ZERO).then_some(way),
+            sent: Some(sent),
             ..self
         }
     }
