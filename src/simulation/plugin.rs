@@ -2,8 +2,8 @@ use bevy::prelude::*;
 use rand::SeedableRng;
 
 use crate::model::{
-    Collision, CollisionBuffer, ControlScheme, Follow, Knock, MapGrid, PortalCrossings, SharedRng,
-    Swap, Tile, TokenTimer, Turn, TurnPacing, TurnState,
+    Cancel, Collision, CollisionBuffer, ControlScheme, Follow, Knock, MapGrid, PortalCrossings,
+    SharedRng, Swap, Tile, TokenTimer, Turn, TurnPacing, TurnState,
 };
 use crate::schedule::{ActionStage, GamePhase, PlayerCommands, StartupPhase};
 
@@ -33,6 +33,7 @@ impl Plugin for SimulationPlugin {
             .init_resource::<CommitBuffer>()
             .init_resource::<super::room_plans::RoomPlanners>()
             .insert_resource(SharedRng(rand::rngs::StdRng::seed_from_u64(self.rng_seed)))
+            .add_message::<Cancel>()
             .add_message::<Knock>()
             .add_message::<Follow>()
             .add_message::<Swap>()
@@ -108,7 +109,7 @@ impl Plugin for SimulationPlugin {
                     sync_portals,
                     turn_tick,
                     recharge_tokens,
-                    player_input.in_set(PlayerCommands),
+                    (player_input, cancel_keys).in_set(PlayerCommands),
                     move_commands,
                     update_direction,
                     movement,

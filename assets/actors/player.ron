@@ -4,5 +4,9 @@
 // (none for the player), its hit points, its weapon (`Sweep` is
 // `assets/weapons/sweep.ron`) or fighting style (`Blade` is
 // `assets/styles/blade.ron`), and what a blow knocks out of it (an
-// effect: `Blood` is `assets/effects/blood.ron`).
-(hp: 2, style: Blade, bleeds: Blood)
+// effect: `Blood` is `assets/effects/blood.ron`), and how its attacks are
+// made: on release. A move that would strike, held, is only aimed: shown as
+// it would be made, and pointed elsewhere to aim another; letting go makes
+// it (a quick flick strikes at once). The turn waits for an aim up to
+// `readies` seconds.
+(hp: 2, style: Blade, bleeds: Blood, readies: 3.0)

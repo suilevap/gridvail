@@ -26,6 +26,7 @@ pub struct ActorKind {
     pub weapon: Option<(Weapon, WeaponLook)>,
     pub maneuvers: Option<(Maneuvers, ManeuverLooks)>,
     pub bleeds: Option<EffectId>,
+    pub readies: Option<f32>,
 }
 
 impl ActorKind {
@@ -41,6 +42,9 @@ impl ActorKind {
         }
         if let Some(effect) = self.bleeds {
             actor.insert(Bleeds(effect));
+        }
+        if let Some(secs) = self.readies {
+            actor.insert(Readies(secs));
         }
         match self.tree {
             Some(Tree::Enemy) => {
@@ -175,6 +179,7 @@ impl ActorKinds {
                     None => None,
                 },
                 bleeds: actor.bleeds,
+                readies: actor.readies,
             };
             match (id == PLAYER, actor.glyph) {
                 (true, None) => player = Some(kind),

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::lighting::RED;
+use crate::lighting::{CYAN, RED};
 use crate::model::*;
 
 /// How a cell about to be struck is marked.
@@ -11,6 +11,16 @@ pub const STRIKE_MARK: CellMark = CellMark {
         depth: 0,
     },
     tint: RED,
+    delay: 0.0,
+};
+/// How a cell a readied attack will strike is marked.
+pub const READY_MARK: CellMark = CellMark {
+    ground: RenderCell {
+        ch: '×',
+        color: CYAN,
+        depth: 0,
+    },
+    tint: CYAN,
     delay: 0.0,
 };
 /// How long after a weapon's first cell is marked the next one is, in the
@@ -95,6 +105,28 @@ pub fn mark_strikes(
     for (pos, weapon, telegraph) in &wielders {
         for (rank, cell) in weapon.area.cells(pos.0, telegraph.dir).enumerate() {
             let mark = STRIKE_MARK.after(rank as f32 * STRIKE_MARK_STEP);
+            marks.0.push((grid.safe_pos(cell), mark));
+        }
+    }
+}
+
+/// Marks every cell an aimed attack will strike, planted in the order it
+/// swings through them, the way a weapon's are.
+pub fn mark_readied(
+    grid: Res<MapGrid>,
+    marks: Option<ResMut<CellMarks>>,
+    actors: Query<(&Pos, &Maneuvers, &Readied), Without<DestroyRequested>>,
+) {
+    let Some(mut marks) = marks else {
+        return;
+    };
+    for (pos, maneuvers, readied) in &actors {
+        let Some(attack) = readied.attack else {
+            continue;
+        };
+        let area = &maneuvers.get(attack.relation).area;
+        for (rank, cell) in area.cells(pos.0, attack.facing).enumerate() {
+            let mark = READY_MARK.after(rank as f32 * STRIKE_MARK_STEP);
             marks.0.push((grid.safe_pos(cell), mark));
         }
     }

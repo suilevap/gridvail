@@ -23,9 +23,9 @@ and the cut taken for the first playable version (MVP). The MVP is in
 
 ## Controls: every move is read from where you face
 
-There is no picking and nothing to cancel. Each move (a swipe, an arrow)
-is one action, read relative to the way the player faces (the marker
-beside the `@`): forward, left, right or back.
+There is no picking. Each move (a swipe, an arrow) is one action, read
+relative to the way the player faces (the marker beside the `@`):
+forward, left, right or back.
 
 - **The weapon has an attack for each way.** An attack plays when one of
   its cells holds a target (anything with hit points); it takes the turn.
@@ -37,6 +37,22 @@ beside the `@`): forward, left, right or back.
   always one step that way.
 - **Next to an enemy the player is engaged:** the moves toward it attack.
   Walking past one can sweep it.
+- **An attack is made on release.** A move whose attack hits or knocks
+  is made when its key (or finger) lets go, the way it then points. A
+  quick flick, or a tap of a key, strikes at once. Held, the attack is
+  only aimed: the player winds up as it would swing, the cells it strikes
+  are marked cyan (lamps light nothing cyan, so it stands out) in the
+  order it swings through them, and the turn's timeout waits, up to 3s
+  (`readies` in `assets/actors/player.ron`, `--ready` / `?ready=`; 0
+  makes attacks on the press, as before). Pointing another way (the
+  finger slid aside from wherever it is, another key pressed) aims that way's attack, backing
+  off too; pointing where it meets nothing aims nothing, and letting go
+  then makes nothing and takes no turn. Space cancels an aim (the key
+  held on from it does nothing more until a fresh press). Plain walks are
+  made on the press, as before: only a move that would strike waits for
+  the release. The first try held every attack for a fixed 0.5s–0.8s
+  with a tap to cancel: the control and the preview were liked, but
+  fights felt slower; on release, a quick player loses no time.
 - **A timeout never acts for the player.** The turn passes like a wait.
 
 ## The attacks: one for each way
@@ -131,8 +147,8 @@ In:
 
 Out, roughly in the order they would follow:
 
-- A preview of the attack a move will make, played as its anticipation,
-  with a tap to cancel.
+- The rest of the preview: where the target is knocked and where the
+  player is left, marked while the attack is held.
 - Strikes meeting in a cell from opposite directions as a block or parry.
 - Slowdown while a gesture is in progress; the one-stroke L gesture.
 - Momentum: knocked bodies flying several cells, impacts passing force on,
@@ -170,7 +186,8 @@ Out, roughly in the order they would follow:
 - **Facing starts north**, so a swipe is read from somewhere on the first
   move.
 - **Knobs.** `--turn SECONDS` (or `?turn=` on the web) sets how long a turn
-  waits for the player; `--hp N` the player's hit points.
+  waits for the player; `--hp N` the player's hit points; `--ready
+  SECONDS` how long an attack is held, shown, before it is made.
 - **Found while building it.** Enemies see all around them, so one is
   rarely unaware when the player gets next to it. Critical hits mostly land
   on the `!` beat, or from darkness and around corners. Sight that depends
@@ -183,9 +200,9 @@ predictable. To look into separately; possible causes, none decided yet:
 
 - **The patterns.** A sweep or a spear may be hard to read from the glyph
   alone, and a pattern shows only once the enemy winds up.
-- **Missing feedback on a move.** Nothing shows which attack a move will
-  make: where the target and the player would end up, and which cells
-  would then be struck.
+- **Missing feedback on a move.** A held attack now shows its swing and
+  the cells it strikes, and can be cancelled; it does not yet show where
+  the target and the player would end up.
 - **Missing motion.** Knockbacks, swaps and strikes could animate, so the
   player sees what happened and why. A first step is in: each exchange is
   choreographed (below).

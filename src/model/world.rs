@@ -233,6 +233,11 @@ impl Exit {
     pub const GLYPH: char = '>';
 }
 
+/// Something is being decided (the player holds an attack to look at it):
+/// while anything has this, the turn's timeout waits.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HoldsTurn;
+
 /// While present, the game plays something to watch (the intro): the
 /// player's keys move nothing and no new turn starts.
 #[derive(Resource, Clone, Copy, Debug, Default)]

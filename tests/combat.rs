@@ -27,8 +27,19 @@ impl Game {
         Self::with(map, |kinds| kinds.player_mut().hp = player_hp)
     }
 
-    /// The map with the kinds of actor changed by `setup` first.
+    /// The map with the kinds of actor changed by `setup` first. The
+    /// player's attacks are made at once, not readied first (the tests of
+    /// readying use `readying`).
     fn with(map: &'static str, setup: impl FnOnce(&mut ActorKinds)) -> Self {
+        Self::readying(map, |kinds| {
+            kinds.player_mut().readies = None;
+            setup(kinds);
+        })
+    }
+
+    /// The map with the kinds of actor changed by `setup` first, the
+    /// player's attacks readied for `READY_SECS`.
+    fn readying(map: &'static str, setup: impl FnOnce(&mut ActorKinds)) -> Self {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .insert_resource(Services::new(ServiceSet {
@@ -40,11 +51,28 @@ impl Game {
             )))
             .insert_resource(MapText(map))
             .add_plugins(GamePlugin);
-        setup(&mut app.world_mut().resource_mut::<ActorKinds>());
+        let mut kinds = app.world_mut().resource_mut::<ActorKinds>();
+        kinds.player_mut().readies = Some(READY_SECS);
+        setup(&mut kinds);
         let mut game = Self { app };
         game.app.update();
         game.frames(5);
         game
+    }
+
+    /// The attack the player aims, if any.
+    fn readied(&mut self) -> Option<Attack> {
+        let world = self.app.world_mut();
+        world
+            .query_filtered::<&Readied, With<Player>>()
+            .iter(world)
+            .next()
+            .and_then(|readied| readied.attack)
+    }
+
+    fn marked(&self) -> Vec<IVec2> {
+        let marks = self.app.world().resource::<CellMarks>();
+        marks.0.iter().map(|(cell, _)| *cell).collect()
     }
 
     fn frames(&mut self, n: usize) {
@@ -424,4 +452,128 @@ fn a_lethal_blow_still_knocks_its_target_before_it_dies() {
         1,
         "the dead body did not hit the far one"
     );
+}
+
+/// How long the turn waits for an aimed attack in the tests of readying,
+/// and frames (of 16ms) past that.
+const READY_SECS: f32 = 0.5;
+const PAST_READY: usize = 40;
+
+/// Holds `key` down (with any already held) for `frames`: pressed on the
+/// first, held on after.
+fn hold(game: &mut Game, key: KeyCode, frames: usize) {
+    keys(game).press(key);
+    game.frames(1);
+    keys(game).clear();
+    game.frames(frames.saturating_sub(1));
+}
+
+/// Lets every key go, and lets what follows settle.
+fn let_go(game: &mut Game) {
+    keys(game).reset_all();
+    game.frames(4);
+}
+
+fn keys(game: &mut Game) -> Mut<'_, ButtonInput<KeyCode>> {
+    game.app.world_mut().resource_mut::<ButtonInput<KeyCode>>()
+}
+
+#[test]
+fn a_tapped_key_strikes_at_once() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    game.press(UP);
+    game.frames(2);
+    assert!(game.readied().is_none());
+    assert_eq!(game.player_pos(), FRONT, "the lunge was not made");
+    assert_eq!(
+        game.enemy_at(FRONT + IVec2::NEG_Y * 2).expect("knocked").1,
+        1
+    );
+}
+
+#[test]
+fn a_held_key_aims_and_shows_the_attack_and_letting_go_makes_it() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    hold(&mut game, UP, 20);
+    let aimed = game.readied().expect("not aimed");
+    assert_eq!(aimed.relation, Relation::Forward);
+    assert_eq!(game.player_pos(), BEHIND, "made while held");
+    assert_eq!(game.enemy_at(FRONT).expect("hit while held").1, 2);
+    assert!(
+        game.marked().contains(&FRONT),
+        "what it strikes is not shown"
+    );
+    let_go(&mut game);
+    assert!(game.readied().is_none());
+    assert_eq!(game.player_pos(), FRONT, "not made on letting go");
+    assert_eq!(
+        game.enemy_at(FRONT + IVec2::NEG_Y * 2).expect("knocked").1,
+        1
+    );
+}
+
+#[test]
+fn pointing_another_way_while_held_aims_that_way_and_letting_go_makes_it() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    hold(&mut game, UP, 5);
+    // A second key pressed while the first is still down: the sweep right.
+    hold(&mut game, RIGHT, 5);
+    assert_eq!(game.readied().expect("not aimed").relation, Relation::Right);
+    let_go(&mut game);
+    let (pos, _, _, facing) = game.player();
+    assert_eq!((pos, facing), (BEHIND + IVec2::X, IVec2::X), "not swept");
+}
+
+#[test]
+fn letting_go_aimed_at_nothing_makes_nothing_and_takes_no_turn() {
+    // Facing north, the enemy east of the player: right sweeps it, left
+    // meets nothing.
+    let mut game = Game::readying(OPEN, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    hold(&mut game, RIGHT, 5);
+    assert!(game
+        .readied()
+        .is_some_and(|aimed| aimed.relation == Relation::Right));
+    hold(&mut game, LEFT, 5);
+    assert!(game.readied().is_none(), "aimed at nothing");
+    assert!(!game.marked().contains(&ENEMY), "still shown");
+    let_go(&mut game);
+    let (pos, _, tokens, _) = game.player();
+    assert_eq!((pos, tokens), (PLAYER, 1), "something was made");
+    assert_eq!(game.enemy_at(ENEMY).expect("left alone").1, 2);
+}
+
+#[test]
+fn a_cancel_drops_the_aim_and_the_key_held_on_does_nothing() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    hold(&mut game, UP, 5);
+    assert!(game.readied().is_some());
+    keys(&mut game).press(KeyCode::Space);
+    game.frames(1);
+    keys(&mut game).release(KeyCode::Space);
+    game.frames(PAST_READY);
+    assert!(game.readied().is_none(), "aimed again by the held key");
+    let_go(&mut game);
+    let (pos, _, tokens, _) = game.player();
+    assert_eq!((pos, tokens), (BEHIND, 1), "made after all");
+    assert_eq!(game.enemy_at(FRONT).expect("left alone").1, 2);
+    game.press(UP);
+    assert_eq!(game.player_pos(), FRONT, "a fresh press was withheld");
+}
+
+#[test]
+fn the_turn_waits_for_an_aim_up_to_its_limit() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    hold(&mut game, UP, 2);
+    let aimed = game.timer();
+    game.frames(10);
+    assert_eq!(game.timer(), aimed, "the timeout ran on");
+    game.frames(PAST_READY);
+    assert!(game.timer() > aimed, "the timeout waited past its limit");
+    assert!(game.readied().is_some(), "the aim was dropped");
 }

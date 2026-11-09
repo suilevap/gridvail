@@ -15,6 +15,16 @@ type Mover = (
     &'static Tokens,
 );
 
+/// An actor that readies its moves, what its input holds, the attack it
+/// aims, if any, and whether a cancel withholds what is held on.
+type Readier = (
+    Mover,
+    &'static Readies,
+    &'static MoveIntent,
+    Option<&'static Readied>,
+    Has<Withheld>,
+);
+
 /// A move about to be carried out this frame.
 fn ready(command: &MoveCommand, tokens: &Tokens, turn: &TurnState) -> bool {
     command.active
@@ -24,11 +34,33 @@ fn ready(command: &MoveCommand, tokens: &Tokens, turn: &TurnState) -> bool {
         && !turn.simulation
 }
 
-/// A move by an actor with `Maneuvers` becomes its maneuver for that way
-/// from where it faces, when one of the maneuver's cells holds a target
-/// (anything with `Health` but itself): an `Attack`, its action for the
-/// turn, and the move becomes a wait. A move that meets nothing is left to
-/// walk.
+/// The attack a move `dir` by `actor` (at `pos`, facing `facing`) makes:
+/// its maneuver for that way from where it faces, when one of the
+/// maneuver's cells holds a target (anything with `Health` but itself).
+fn attack_of(
+    (actor, pos, facing, maneuvers): (Entity, &Pos, &Facing, &Maneuvers),
+    dir: IVec2,
+    grid: &MapGrid,
+    targets: &Query<(), Target>,
+) -> Option<Attack> {
+    let relation = Relation::of(facing.0, dir);
+    maneuvers
+        .get(relation)
+        .area
+        .cells(pos.0, facing.0)
+        .filter_map(|cell| grid.get(grid.safe_pos(cell)))
+        .any(|target| target != actor && targets.contains(target))
+        .then_some(Attack {
+            actor,
+            relation,
+            facing: facing.0,
+            dir,
+        })
+}
+
+/// A move by an actor with `Maneuvers` that meets a target becomes an
+/// `Attack`, its action for the turn, and the move becomes a wait. A move
+/// that meets nothing is left to walk.
 pub fn choose_attacks(
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
@@ -40,23 +72,113 @@ pub fn choose_attacks(
         if !ready(&command, tokens, &turn) {
             continue;
         }
-        let relation = Relation::of(facing.0, command.target);
-        let meets = maneuvers
-            .get(relation)
-            .area
-            .cells(pos.0, facing.0)
-            .filter_map(|cell| grid.get(grid.safe_pos(cell)))
-            .any(|target| target != actor && targets.contains(target));
-        if !meets {
+        let mover = (actor, pos, facing, maneuvers);
+        if let Some(attack) = attack_of(mover, command.target, &grid, &targets) {
+            attacks.write(attack);
+            command.target = IVec2::ZERO;
+        }
+    }
+}
+
+/// An actor that `Readies` aims a move that would strike instead of making
+/// it, while its input is held (`MoveIntent`): `Readied`, which the turn
+/// waits for (`HoldsTurn`) up to the actor's seconds. Pointing another way
+/// aims that way's attack (any attack, backing off too; none if it meets
+/// nothing). Letting go makes the aimed attack (it is then chosen as any
+/// move is, so if nothing is there any more it walks), or nothing when
+/// nothing is aimed. A move already let go (a flick, a tap of a key) is
+/// made at once, as is one made `at_once`. After a cancel, a move held on
+/// from before is not made until a fresh one comes.
+pub fn ready_attacks(
+    mut commands: Commands,
+    time: Res<Time>,
+    turn: Res<TurnState>,
+    grid: Res<MapGrid>,
+    mut actors: Query<Readier, Without<DestroyRequested>>,
+    targets: Query<(), Target>,
+) {
+    let now = time.elapsed_secs();
+    for (
+        (actor, pos, facing, maneuvers, mut command, tokens),
+        readies,
+        intent,
+        readied,
+        withheld,
+    ) in &mut actors
+    {
+        let mover = (actor, pos, facing, maneuvers);
+        let held = intent.held.map(|held| held.map);
+        if withheld {
+            if ready(&command, tokens, &turn) && !command.repeat {
+                commands.entity(actor).remove::<Withheld>();
+            } else {
+                command.active = false;
+                continue;
+            }
+        }
+        if let Some(readied) = readied {
+            command.active = false;
+            match held {
+                // Let go: made as aimed.
+                None => {
+                    if let Some(attack) = readied.attack {
+                        command.target = attack.dir;
+                        command.active = true;
+                        command.relative = true;
+                        command.repeat = false;
+                    }
+                    commands.entity(actor).remove::<(Readied, HoldsTurn)>();
+                }
+                Some(dir) => {
+                    if dir != readied.dir {
+                        commands.entity(actor).insert(Readied {
+                            dir,
+                            attack: attack_of(mover, dir, &grid, &targets),
+                            ..*readied
+                        });
+                    }
+                    if now - readied.since >= readies.0 {
+                        commands.entity(actor).remove::<HoldsTurn>();
+                    }
+                }
+            }
             continue;
         }
-        attacks.write(Attack {
-            actor,
-            relation,
-            facing: facing.0,
-            dir: command.target,
-        });
-        command.target = IVec2::ZERO;
+        if !ready(&command, tokens, &turn) || command.at_once || held != Some(command.target) {
+            continue;
+        }
+        let Some(attack) = attack_of(mover, command.target, &grid, &targets) else {
+            continue;
+        };
+        if maneuvers.get(attack.relation).strikes() {
+            commands.entity(actor).insert((
+                Readied {
+                    dir: command.target,
+                    attack: Some(attack),
+                    since: now,
+                },
+                HoldsTurn,
+            ));
+            command.active = false;
+            command.target = IVec2::ZERO;
+        }
+    }
+}
+
+/// A `Cancel` drops the move its actor readied, and withholds what is held
+/// on from it (`Withheld`).
+pub fn cancel_readied(
+    mut commands: Commands,
+    mut cancels: MessageReader<Cancel>,
+    readied: Query<(), With<Readied>>,
+) {
+    for &Cancel(actor) in cancels.read() {
+        if readied.contains(actor) {
+            commands
+                .entity(actor)
+                .remove::<(Readied, HoldsTurn)>()
+                .insert(Withheld);
+        }
     }
 }
 

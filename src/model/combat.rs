@@ -115,6 +115,13 @@ pub struct Maneuver {
     pub turn: bool,
 }
 
+impl Maneuver {
+    /// It does something to what it meets: hits or knocks it.
+    pub fn strikes(&self) -> bool {
+        self.hit > 0 || self.knock > 0
+    }
+}
+
 /// The moves an actor makes when one of them meets a target, one for each
 /// `Relation` of the move to where it faces (a fighting style, a weapon's
 /// moves). A move that meets none is a plain step.
@@ -146,6 +153,34 @@ pub struct Attack {
     pub facing: IVec2,
     pub dir: IVec2,
 }
+
+/// An actor whose attacks are made on release: a move that would strike,
+/// while its input is held (`MoveIntent`), is only aimed (`Readied`), shown
+/// as it would be made, and made when the input lets go, the way it then
+/// points. A quick flick strikes at once; holding on looks first. The turn
+/// waits for an aim up to `0` seconds.
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct Readies(pub f32);
+
+/// An attack being aimed: the way `dir` the input points, the `attack` a
+/// move that way would make (none when it meets nothing: letting go then
+/// makes nothing), and when the aim began (the game's elapsed seconds).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct Readied {
+    pub dir: IVec2,
+    pub attack: Option<Attack>,
+    pub since: f32,
+}
+
+/// A readied move was cancelled: a move held on from it (a key or finger
+/// kept down) is not made, until a fresh one.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Withheld;
+
+/// `entity` drops the move it has readied: nothing is made, and no turn is
+/// taken. Written by input (a tap, a key).
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cancel(pub Entity);
 
 /// An attack landed on `target`: a maneuver's hit or a weapon's strike.
 /// What it costs the target is up to whoever reads it (base damage,

@@ -293,3 +293,88 @@ fn the_killed_bleed_through_their_remains_and_more() {
     assert_eq!(bled[0].1.entity, remains);
     assert_eq!(bled[0].1.strength, 1 + timing(&app).0.kill_strength);
 }
+
+/// An actor with sweeping moves that look like sweeps to the left, and
+/// the attack it readies.
+fn readying(app: &mut App) -> (Entity, Attack) {
+    let actor = app
+        .world_mut()
+        .spawn((
+            Pos(IVec2::new(2, 2)),
+            sweeping_moves(),
+            ManeuverLooks {
+                left: SwingLook {
+                    swing: Some(Swing::Sweep { reach: 0.5 }),
+                    streak: None,
+                },
+                ..default()
+            },
+        ))
+        .id();
+    let attack = Attack {
+        actor,
+        relation: Relation::Left,
+        facing: IVec2::X,
+        dir: IVec2::NEG_Y,
+    };
+    (actor, attack)
+}
+
+#[test]
+fn an_aimed_attack_winds_up_then_is_released_into_its_swing() {
+    let mut app = app();
+    let (actor, attack) = readying(&mut app);
+    app.world_mut().entity_mut(actor).insert(Readied {
+        dir: attack.dir,
+        attack: Some(attack),
+        since: 0.0,
+    });
+    app.update();
+    let wind_ups = sent::<WindUp>(&app);
+    assert_eq!(wind_ups.len(), 1);
+    assert!(matches!(wind_ups[0].shape, GestureShape::Sweep { .. }));
+    // Made: no longer readied, and the attack swings from its wind-up.
+    app.world_mut().entity_mut(actor).remove::<Readied>();
+    app.world_mut().write_message(attack);
+    app.update();
+    let releases = sent::<Release>(&app);
+    assert!(releases.len() == 1 && releases[0].strike, "not released");
+    assert!(sent::<Gesture>(&app).is_empty(), "swung whole");
+}
+
+#[test]
+fn a_dropped_aim_eases_back() {
+    let mut app = app();
+    let (actor, attack) = readying(&mut app);
+    app.world_mut().entity_mut(actor).insert(Readied {
+        dir: attack.dir,
+        attack: Some(attack),
+        since: 0.0,
+    });
+    app.update();
+    app.world_mut().entity_mut(actor).remove::<Readied>();
+    app.update();
+    let releases = sent::<Release>(&app);
+    assert!(
+        releases.len() == 1 && !releases[0].strike,
+        "did not ease back"
+    );
+}
+
+#[test]
+fn an_aim_at_nothing_eases_back() {
+    let mut app = app();
+    let (actor, _) = readying(&mut app);
+    app.world_mut().entity_mut(actor).insert(Readied {
+        dir: IVec2::NEG_X,
+        attack: None,
+        since: 0.0,
+    });
+    app.update();
+    assert!(sent::<WindUp>(&app).is_empty());
+    let releases = sent::<Release>(&app);
+    assert!(
+        releases.len() == 1 && !releases[0].strike,
+        "did not ease back"
+    );
+}

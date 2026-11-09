@@ -15,13 +15,15 @@ fn touch_app() -> (App, Entity) {
             PreUpdate,
             (read_swipes, read_pinch).after(bevy::input::InputSystems),
         )
-        .add_systems(Update, swipe_commands);
+        .add_message::<Cancel>()
+        .add_systems(Update, (swipe_intent, swipe_commands, tap_cancels));
     let player = app
         .world_mut()
         .spawn((
             Player(0),
             Active,
             MoveCommand::default(),
+            MoveIntent::default(),
             Tokens {
                 count: 0,
                 recharge: 1,
@@ -188,7 +190,22 @@ fn a_tap_takes_no_step() {
     touch(&mut app, TouchPhase::Started, 100.0, 100.0);
     touch(&mut app, TouchPhase::Moved, 104.0, 102.0);
     touch(&mut app, TouchPhase::Ended, 104.0, 102.0);
+    let cancels = app.world().resource::<Messages<Cancel>>();
+    assert_eq!(
+        cancels.iter_current_update_messages().collect::<Vec<_>>(),
+        [&Cancel(player)],
+        "a tap cancels"
+    );
     assert_eq!(step_taken(&mut app, player), None);
+}
+
+#[test]
+fn a_swipe_cancels_nothing() {
+    let (mut app, _) = touch_app();
+    touch(&mut app, TouchPhase::Started, 100.0, 100.0);
+    touch(&mut app, TouchPhase::Moved, 160.0, 100.0);
+    touch(&mut app, TouchPhase::Ended, 160.0, 100.0);
+    assert!(app.world().resource::<Messages<Cancel>>().is_empty());
 }
 
 #[test]
@@ -203,4 +220,41 @@ fn a_swipe_is_fresh_and_a_finger_kept_down_repeats() {
     touch(&mut app, TouchPhase::Moved, 161.0, 100.0);
     assert_eq!(step_taken(&mut app, player), Some(IVec2::X), "held");
     assert!(repeat(&app), "walking on is not a fresh input");
+}
+
+#[test]
+fn a_finger_kept_down_holds_where_it_points_until_it_lifts() {
+    let (mut app, player) = touch_app();
+    let held = |app: &App| {
+        app.world()
+            .get::<MoveIntent>(player)
+            .unwrap()
+            .held
+            .map(|held| held.map)
+    };
+    touch(&mut app, TouchPhase::Started, 100.0, 100.0);
+    touch(&mut app, TouchPhase::Moved, 160.0, 100.0);
+    assert_eq!(held(&app), Some(IVec2::X));
+    // Slid back the other way: it points there now.
+    touch(&mut app, TouchPhase::Moved, 40.0, 100.0);
+    assert_eq!(held(&app), Some(IVec2::NEG_X));
+}
+
+#[test]
+fn a_finger_turns_the_way_it_last_moved_not_from_where_it_landed() {
+    let (mut app, player) = touch_app();
+    let held = |app: &App| {
+        app.world()
+            .get::<MoveIntent>(player)
+            .unwrap()
+            .held
+            .map(|held| held.map)
+    };
+    touch(&mut app, TouchPhase::Started, 100.0, 100.0);
+    touch(&mut app, TouchPhase::Moved, 100.0, 50.0);
+    assert_eq!(held(&app), Some(IVec2::NEG_Y));
+    // Slid sideways from up there, still above where it landed: it points
+    // aside now, without coming back down first.
+    touch(&mut app, TouchPhase::Moved, 130.0, 50.0);
+    assert_eq!(held(&app), Some(IVec2::X));
 }
