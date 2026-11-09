@@ -66,7 +66,7 @@ impl Goal {
 /// when there is nothing to do.
 pub fn hunter_tree() -> impl BehaviorNode<EnemyMind, EnemyAct> {
     select((
-        guard(EnemyMind::next_to_player, leaf(attack)),
+        guard(EnemyMind::can_strike, leaf(attack)),
         goals::<12, _, _>(
             |_: &EnemyMind| Goal::FollowOrder,
             goal_match!(|goal: &Goal| {

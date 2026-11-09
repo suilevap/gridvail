@@ -34,7 +34,7 @@ pub fn enemy_tree() -> impl BehaviorNode<EnemyMind, EnemyAct> {
                     guard(
                         EnemyMind::sees_player,
                         if_else(
-                            EnemyMind::next_to_player,
+                            EnemyMind::can_strike,
                             leaf(attack),
                             select((
                                 // A fresh path whenever the player strays from
@@ -206,10 +206,10 @@ pub fn enemy_tick(mind: &EnemyMind, _: TickAt) -> Tick {
     }
 }
 
-/// Bump into the adjacent player.
+/// Use its weapon the way it would catch the player (`EnemyMind::strike`).
 pub(super) fn attack(mind: &mut EnemyMind) -> NodeResult<EnemyAct> {
-    match mind.player {
-        Some(player) => NodeResult::Running(EnemyAct::Attack(player - mind.pos)),
+    match mind.strike {
+        Some(dir) => NodeResult::Running(EnemyAct::Attack(dir)),
         None => NodeResult::Failure,
     }
 }

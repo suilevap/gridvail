@@ -1,0 +1,2 @@
+// A kind of actor (see `player.ron`): the glaiver, with a glaive.
+(glyph: 'g', tree: Enemy, hp: 2, weapon: Glaive, bleeds: Blood)

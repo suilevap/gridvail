@@ -283,3 +283,48 @@ mod trees {
         assert!(!app.world().get::<MoveCommand>(enemy).unwrap().active);
     }
 }
+
+mod strikes {
+    use bevy::prelude::*;
+
+    use crate::ai::best_strike;
+    use crate::model::{Area, MapGrid};
+
+    /// The cell in front (a jab).
+    fn jab() -> Area {
+        Area(vec![IVec2::X])
+    }
+
+    fn strike(area: &Area, player: IVec2) -> Option<(IVec2, bool)> {
+        let grid = MapGrid::new(9, 9);
+        best_strike(area, IVec2::new(4, 4), player, &grid, |_| true)
+    }
+
+    #[test]
+    fn a_player_in_reach_is_struck_where_it_stands() {
+        assert_eq!(strike(&jab(), IVec2::new(5, 4)), Some((IVec2::X, true)));
+    }
+
+    #[test]
+    fn a_player_one_step_short_of_reach_is_struck_where_it_would_step() {
+        // Two cells east: the jab east covers the cell it would step into.
+        assert_eq!(strike(&jab(), IVec2::new(6, 4)), Some((IVec2::X, false)));
+        // A corner away: the jab east or south covers a step; the nearer
+        // way to the player wins a tie.
+        assert!(strike(&jab(), IVec2::new(5, 5)).is_some_and(|(_, catches)| !catches));
+        // Further off, nothing to strike at.
+        assert_eq!(strike(&jab(), IVec2::new(7, 4)), None);
+    }
+
+    #[test]
+    fn catching_the_player_beats_covering_its_steps() {
+        // Ahead-left and left of the wielder (as it faces), and the cell in
+        // front: facing east, north-east and north of it, then east.
+        let scythe = Area(vec![IVec2::new(1, -1), IVec2::new(0, -1), IVec2::X]);
+        let (dir, catches) = strike(&scythe, IVec2::new(5, 3)).unwrap();
+        assert!(catches);
+        assert!(scythe
+            .cells(IVec2::new(4, 4), dir)
+            .any(|cell| cell == IVec2::new(5, 3)));
+    }
+}

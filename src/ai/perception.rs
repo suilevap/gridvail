@@ -123,6 +123,64 @@ pub fn perceive_objectives(
     }
 }
 
+/// How much catching the player where it stands counts against the
+/// cells it might step into: more than all of them.
+const CAUGHT: u32 = 8;
+
+/// The way `area` (from `pos`) best catches the player at `player`, and
+/// whether it catches the player where it stands: one whose cells hold it,
+/// or failing that the most cells it could step into (`free`); none when
+/// no way catches either. Ties go to the way nearest the player's.
+pub fn best_strike(
+    area: &Area,
+    pos: IVec2,
+    player: IVec2,
+    grid: &MapGrid,
+    free: impl Fn(IVec2) -> bool,
+) -> Option<(IVec2, bool)> {
+    let toward = grid.delta(pos, player);
+    let steps =
+        [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y].map(|step| grid.safe_pos(player + step));
+    [IVec2::NEG_Y, IVec2::X, IVec2::Y, IVec2::NEG_X]
+        .into_iter()
+        .filter_map(|dir| {
+            let (mut caught, mut next) = (false, 0);
+            for cell in area.cells(pos, dir).map(|cell| grid.safe_pos(cell)) {
+                caught |= cell == player;
+                next += steps
+                    .iter()
+                    .filter(|&&step| step == cell && step != pos && free(step))
+                    .count() as u32;
+            }
+            let score = if caught { CAUGHT } else { 0 } + next;
+            (score > 0).then_some((score, dir.dot(toward), dir, caught))
+        })
+        .max_by_key(|&(score, near, ..)| (score, near))
+        .map(|(_, _, dir, caught)| (dir, caught))
+}
+
+/// Picks the way each enemy that sees the player would use its weapon
+/// (`EnemyMind::strike`, see `best_strike`): not only once the player is in
+/// its reach, but when one step would take it there, unless it just struck
+/// at a step the player did not take (`EnemyMind::feinted`): then it comes
+/// closer first.
+pub fn aim_strikes(grid: Res<MapGrid>, mut enemies: Query<(Option<&Weapon>, &mut EnemyMind)>) {
+    for (weapon, mut mind) in &mut enemies {
+        let mind = mind.bypass_change_detection();
+        let best = match (weapon, mind.player) {
+            (Some(weapon), Some(player)) => {
+                best_strike(&weapon.area, mind.pos, player, &grid, |cell| {
+                    grid.get(cell).is_none()
+                })
+            }
+            _ => None,
+        };
+        let best = best.filter(|&(_, catches)| catches || !mind.feinted);
+        mind.strike = best.map(|(dir, _)| dir);
+        mind.strike_catches = best.is_some_and(|(_, catches)| catches);
+    }
+}
+
 /// Turn each enemy's act into this turn's step, and an attack into using
 /// its weapon (the attack's step is a wait: the weapon takes the turn).
 ///
@@ -131,11 +189,19 @@ pub fn perceive_objectives(
 pub fn carry_out(
     nav: Res<NavMap>,
     mut weapons: MessageWriter<UseWeapon>,
-    mut enemies: Query<(Entity, &EnemyAct, &EnemyMind, &mut MoveCommand)>,
+    mut enemies: Query<(Entity, &EnemyAct, &mut EnemyMind, &mut MoveCommand)>,
 ) {
-    for (enemy, act, mind, mut command) in enemies.iter_mut() {
+    for (enemy, act, mut mind, mut command) in enemies.iter_mut() {
+        let mind = mind.bypass_change_detection();
         if !mind.has_turn {
             continue;
+        }
+        // A strike at a step not taken is a feint, until it acts otherwise
+        // (thinking is not acting yet).
+        match act {
+            EnemyAct::Attack(_) => mind.feinted = !mind.strike_catches,
+            EnemyAct::Think(_) => {}
+            _ => mind.feinted = false,
         }
         if let EnemyAct::Attack(dir) = act {
             weapons.write(UseWeapon {

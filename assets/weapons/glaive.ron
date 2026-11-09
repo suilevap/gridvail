@@ -1,0 +1,8 @@
+// A weapon (see `jab.ron`). The glaive: thrust two cells ahead, then a
+// hook to the cell ahead-right. Lopsided: from the left it can be
+// stepped round, from the right it cannot.
+(damage: 1, windup: 1, swing: Thrust(reach: 0.95), streak: Swoosh, art: "
+    2.
+    13
+    @.
+")

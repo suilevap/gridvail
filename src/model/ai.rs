@@ -59,6 +59,17 @@ pub struct EnemyMind {
     /// Keys lying on the map and where, nearest first (as the crow flies,
     /// so a near one may still be out of reach).
     pub keys: [Option<(Entity, IVec2)>; KNOWN_KEYS],
+    /// The way to use its weapon this turn, if any: one whose cells hold
+    /// the player, or failing that a cell the player could step into, so
+    /// coming at it head on walks into its swing (`ai::aim_strikes`).
+    pub strike: Option<IVec2>,
+    /// That way catches the player where it stands (not only a step it
+    /// might take).
+    pub strike_catches: bool,
+    /// Its last act was a strike at a step the player did not take: it
+    /// comes closer before it tries that again, so a player who keeps out
+    /// of reach is still sought out.
+    pub feinted: bool,
 }
 
 impl EnemyMind {
@@ -73,6 +84,12 @@ impl EnemyMind {
 
     pub fn next_to_player(&self) -> bool {
         self.player.is_some_and(|player| self.adjacent(player))
+    }
+
+    /// Its weapon would catch the player this turn, or the step the player
+    /// might take.
+    pub fn can_strike(&self) -> bool {
+        self.strike.is_some()
     }
 
     pub fn adjacent(&self, cell: IVec2) -> bool {
@@ -119,7 +136,7 @@ pub struct Hunter;
 pub enum EnemyAct {
     /// Just noticed the player: freezes for a beat.
     Alert,
-    /// Attacking the adjacent player, this way: using its weapon.
+    /// Using its weapon this way, to catch the player.
     Attack(IVec2),
     /// Nothing to do this turn.
     #[default]

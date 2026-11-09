@@ -255,7 +255,7 @@ mod tests {
     fn the_bundled_kinds_have_the_player_and_armed_enemies() {
         let kinds = ActorKinds::default();
         assert!(kinds.player.maneuvers.is_some());
-        for glyph in ['e', 'h', 's'] {
+        for glyph in ['e', 'h', 's', 'r', 'g', 'f'] {
             let kind = kinds.get(glyph);
             assert!(
                 kind.tree.is_some() && kind.weapon.is_some(),
