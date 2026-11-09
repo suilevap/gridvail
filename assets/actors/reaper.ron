@@ -1,0 +1,2 @@
+// A kind of actor (see `player.ron`): the reaper, with a scythe.
+(glyph: 'r', tree: Enemy, hp: 2, weapon: Scythe, bleeds: Blood)

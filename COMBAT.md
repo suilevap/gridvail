@@ -98,8 +98,16 @@ forward: lunge     left: sweep left    right: sweep right   back: back off
 
 ## Telegraphed enemy strikes
 
-- An alert enemy next to the player winds up for one turn and marks its
-  strike in red, then strikes on the next turn.
+- An alert enemy winds up for one turn and marks its strike in red, then
+  strikes on the next turn. It strikes the way its weapon catches the
+  player, or, when the player is one step short of its reach, the way
+  that catches the step the player would take: coming at it head on walks
+  into its swing. Such a strike at a step not taken is a feint: on its
+  next turn it comes closer instead of feinting again, so a player who
+  keeps out of reach is still sought out, and the moment after a feint
+  is the one to close in. (`ai::aim_strikes`; the way is chosen among
+  the four, catching the player first, then the most cells it could step
+  into.)
 - **The strike is a direction from the enemy, not a fixed cell.** If the
   enemy is moved, its strike moves with it and hits whatever is in the new
   cell: the player, another enemy (friendly fire), or nothing.
@@ -141,7 +149,7 @@ In:
 3. Telegraphed strikes relative to the enemy, with friendly fire.
 4. Player HP (default 2, knob), instant restart of the map on death (no
    intro).
-5. An arena map (`assets/maps/arena.txt`, 2–3 enemies, corridors) and a
+5. An arena map (`assets/maps/arena.txt`, one of each kind, corridors) and a
    step-timer knob (`turn=<seconds>`), so the pressure can be tuned on a
    phone from the preview link.
 6. Scenario tests for each attack, plain walks, a moved telegraph,
@@ -177,8 +185,13 @@ Out, roughly in the order they would follow:
   row in front) stepping aside does not help; a lunge (it flies two cells,
   so its sweep covers the row ahead of the player) and backing off are
   safe, a sweep is not (it steps the player along the row it sweeps). Against a spearman's spear (two cells
-  ahead) stepping back does not help, but stepping aside does. Two kinds
-  side by side ask for different answers at once. This answers the first
+  ahead) stepping back does not help, but stepping aside does. Lopsided
+  weapons ask which side to come from: the reaper's scythe (`r`: ahead,
+  ahead-left and left) can be slipped from the right, the glaiver's
+  glaive (`g`: one and two ahead, and ahead-right) from the left, and the
+  flailer's flail (`f`: the two corners ahead, not the cell in front) is
+  safe only straight on. Two kinds side by side ask for different answers
+  at once. This answers the first
   playtest: a fight with one enemy that only struck the cell in front was
   no challenge, since any move dodged it.
 - **Marks.** Whatever stands on a cell about to be struck is drawn red; an

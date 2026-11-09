@@ -104,7 +104,11 @@ next to this file.
   is no escape, but a lunge (it flies two cells on) or backing off
   leaves it; a
   spearman's (`s`) spear
-  reaches two cells ahead, so stepping back is no escape. Who is who is
+  reaches two cells ahead, so stepping back is no escape; a reaper's
+  (`r`) scythe, a glaiver's (`g`) glaive and a flailer's (`f`) flail are
+  lopsided, each safe only from one side. An enemy strikes not only at a
+  player in reach but at the step that would bring it in, then comes
+  closer if that was a feint. Who is who is
   data, one file per thing: kinds of actor in `assets/actors` (their map
   glyph, any lowercase letter without a meaning of its own, behaviour,
   hit points and weapon or fighting style), weapons in `assets/weapons`
@@ -354,7 +358,7 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 401 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 404 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

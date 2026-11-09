@@ -314,19 +314,33 @@ fn a_sighting_freezes_the_enemy_then_it_chases_and_attacks() {
         .unwrap();
     assert_eq!((glyph.ch, glyph.color), ('!', YELLOW));
 
-    game.turns(9);
+    game.turns(12);
     game.print("alert, chase, attack");
-    // Then one step closer every turn, and bumps once adjacent.
+    // Then one step closer every turn. One step short of reach, its sweep
+    // strikes where the player would step in (a feint, if the player does
+    // not); then it comes on, and strikes once the player is in reach.
+    let mut feinted = false;
     for turn in alert + 1..game.trace.len() {
         let (pos, act) = game.enemy(turn);
-        let before = manhattan(game.trace[turn - 1].enemies[0].1, player);
-        let expected = if before == 1 {
-            Act::Attack(IVec2::NEG_X)
-        } else {
-            Act::Hunt(Some(player))
+        let (before_pos, before_act) = game.enemy(turn - 1);
+        let before = manhattan(before_pos, player);
+        // A wound-up strike takes its turns; the act then stays as it was.
+        if act == before_act && pos == before_pos && matches!(act, Some(Act::Attack(_))) {
+            continue;
+        }
+        let expected = match before {
+            1 => Act::Attack(IVec2::NEG_X),
+            2 if !feinted => Act::Attack(IVec2::NEG_X),
+            _ => Act::Hunt(Some(player)),
         };
         assert_eq!(act, Some(expected), "turn {turn}");
-        assert_eq!(manhattan(pos, player), (before - 1).max(1), "turn {turn}");
+        feinted = before == 2 && !feinted;
+        let after = if matches!(expected, Act::Attack(_)) {
+            before
+        } else {
+            (before - 1).max(1)
+        };
+        assert_eq!(manhattan(pos, player), after, "turn {turn}");
     }
     assert!(game.player_hurt());
 }
@@ -447,10 +461,13 @@ fn chasers_step_around_each_other() {
     game.turns(14);
     game.print("three chasers");
     let last = game.trace.last().unwrap();
-    // Nobody queues behind an ally: each steps around and ends up attacking.
+    // Nobody queues behind an ally: each steps around and ends up
+    // attacking, from beside the player or a corner (a sweep reaches it
+    // there).
     for &(_, pos, act) in &last.enemies {
         assert!(matches!(act, Some(Act::Attack(_))), "{act:?}");
-        assert_eq!(manhattan(pos, last.player), 1, "{pos} vs {}", last.player);
+        let off = (pos - last.player).abs();
+        assert_eq!(off.max_element(), 1, "{pos} vs {}", last.player);
     }
 }
 

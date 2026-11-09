@@ -47,6 +47,7 @@ impl Plugin for AiPlugin {
                         order_hunters,
                         perceive,
                         perceive_objectives,
+                        aim_strikes,
                     )
                         .chain()
                         .after(share_paths)

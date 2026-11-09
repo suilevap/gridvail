@@ -1,0 +1,7 @@
+// A weapon (see `jab.ron`). The flail: the two cells ahead-left and
+// ahead-right, swung round over the one in front, which it misses.
+// Stepping straight at it is safe; coming in from the corners is not.
+(damage: 1, windup: 1, swing: Sweep(reach: 0.6), streak: Swoosh, art: "
+    1.2
+    .@.
+")
