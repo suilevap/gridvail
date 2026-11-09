@@ -577,3 +577,37 @@ fn the_turn_waits_for_an_aim_up_to_its_limit() {
     assert!(game.timer() > aimed, "the timeout waited past its limit");
     assert!(game.readied().is_some(), "the aim was dropped");
 }
+
+/// The arrow the player's aimed attack draws on `cell`, if any.
+fn arrow_on(game: &Game, cell: IVec2) -> Option<IVec2> {
+    let marks = game.app.world().resource::<CellMarks>();
+    marks
+        .0
+        .iter()
+        .find(|(at, _)| *at == cell)
+        .and_then(|(_, mark)| mark.arrow)
+}
+
+#[test]
+fn an_aimed_attack_shows_the_way_each_body_would_be_knocked() {
+    let mut game = Game::readying(AHEAD, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    hold(&mut game, UP, 5);
+    // A lunge: knocked on by the swing and by the step it carries.
+    assert_eq!(arrow_on(&game, FRONT), Some(IVec2::NEG_Y * 2));
+    let_go(&mut game);
+    assert!(
+        game.enemy_at(FRONT + IVec2::NEG_Y * 2).is_some(),
+        "not as shown"
+    );
+}
+
+#[test]
+fn a_sweep_shows_the_body_beside_knocked_back_round_out_of_the_way() {
+    // Facing north, the enemy east of the player: the sweep right sends it
+    // back round (south) and on the way the player steps (east).
+    let mut game = Game::readying(OPEN, |kinds| kinds.player_mut().hp = 100);
+    game.until_aware();
+    hold(&mut game, RIGHT, 5);
+    assert_eq!(arrow_on(&game, ENEMY), Some(IVec2::ONE));
+}

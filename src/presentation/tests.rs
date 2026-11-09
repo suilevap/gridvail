@@ -737,3 +737,52 @@ fn particles_in_sight_are_listed_where_they_are_and_strokes_keep_their_way() {
     assert_eq!(effects[0].position, Vec2::new(5.3, 4.0));
     assert_eq!(effects[0].stroke, Some(Vec2::Y));
 }
+
+#[test]
+fn a_marks_arrows_are_drawn_in_the_cells_it_would_fly_through_once_planted() {
+    let mut app = test_app::headless();
+    app.insert_resource(DynamicLight::sized(64))
+        .insert_resource(RenderBuffers::new(8, 8))
+        .insert_resource(RevealAll);
+    let mut view = PlayerView::with_radius(4);
+    view.pos = IVec2::new(1, 1);
+    app.world_mut()
+        .spawn((Player(0), Pos(IVec2::new(1, 1)), view, visibility(&[])));
+    let mark = CellMark {
+        ground: RenderCell {
+            ch: 'x',
+            color: RED,
+            depth: 0,
+        },
+        tint: RED,
+        delay: 0.0,
+        arrow: None,
+    };
+    let cell = IVec2::new(4, 3);
+    app.insert_resource(CellMarks(vec![
+        (cell, mark.toward(IVec2::new(0, -2))),
+        // Not planted yet: no arrow.
+        (IVec2::new(5, 5), mark.after(1.0).toward(IVec2::X)),
+        // No knock: no arrow.
+        (IVec2::new(2, 2), mark.toward(IVec2::ZERO)),
+    ]));
+    let ages = [
+        (cell, 0.5),
+        (IVec2::new(5, 5), 0.5),
+        (IVec2::new(2, 2), 0.5),
+    ];
+    app.insert_resource(MarkAges(ages.into_iter().collect()));
+    app.world_mut().run_system_once(compose_frame).unwrap();
+    app.world_mut().run_system_once(compose_effects).unwrap();
+    app.world_mut()
+        .run_system_once(compose_mark_arrows)
+        .unwrap();
+    let effects = &app.world().resource::<RenderBuffers>().effects;
+    // Two cells up: an arrow in each.
+    assert_eq!(effects.len(), 2);
+    assert_eq!(effects[0].position, Vec2::new(4.0, 2.0));
+    assert_eq!(effects[1].position, Vec2::new(4.0, 1.0));
+    assert!(effects
+        .iter()
+        .all(|effect| effect.arrow.map(arrow_glyph) == Some('↑')));
+}

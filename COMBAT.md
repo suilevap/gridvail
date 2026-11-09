@@ -42,7 +42,9 @@ forward, left, right or back.
   quick flick, or a tap of a key, strikes at once. Held, the attack is
   only aimed: the player winds up as it would swing, the cells it strikes
   are marked cyan (lamps light nothing cyan, so it stands out) in the
-  order it swings through them, and the turn's timeout waits, up to 3s
+  order it swings through them, with cyan arrows in each cell a body
+  there would be knocked through (two for a lunge's two cells; an arrow
+  over a wall means a slam into it), and the turn's timeout waits, up to 3s
   (`readies` in `assets/actors/player.ron`, `--ready` / `?ready=`; 0
   makes attacks on the press, as before). Pointing another way (the
   finger slid aside from wherever it is, another key pressed) aims that way's attack, backing

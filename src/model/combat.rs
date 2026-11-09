@@ -120,6 +120,31 @@ impl Maneuver {
     pub fn strikes(&self) -> bool {
         self.hit > 0 || self.knock > 0
     }
+
+    /// Each cell it plays on, from `pos` facing `facing` for a move `dir`,
+    /// in the order its swing goes, with how a body there is knocked: the
+    /// way the swing goes through the cell, `knock` times, plus the
+    /// mover's step when its stance takes it along (the blow carries it).
+    /// Zero when it does not knock.
+    pub fn knocks(
+        &self,
+        pos: IVec2,
+        facing: IVec2,
+        dir: IVec2,
+    ) -> impl Iterator<Item = (IVec2, IVec2)> + '_ {
+        let carried = match self.stance {
+            Stance::Stay => IVec2::ZERO,
+            Stance::Follow | Stance::Step => dir,
+        };
+        self.area.sweep(pos, facing).map(move |(cell, travel)| {
+            let knock = if self.knock > 0 {
+                travel * self.knock + carried
+            } else {
+                IVec2::ZERO
+            };
+            (cell, knock)
+        })
+    }
 }
 
 /// The moves an actor makes when one of them meets a target, one for each

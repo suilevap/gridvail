@@ -263,6 +263,52 @@ pub fn compose_frame(
     }
 }
 
+/// Adds the arrows of the marks in sight to the frame's effects, above
+/// everything: one in each cell what is marked would fly through (a knock
+/// of two cells, two arrows; over a wall, it would slam into it), in the
+/// mark's colour, once the mark has been planted. Through a portal, where
+/// the player sees those cells, turned with it.
+pub fn compose_mark_arrows(
+    grid: Res<MapGrid>,
+    (marks, ages): (Option<Res<CellMarks>>, Option<Res<MarkAges>>),
+    mut buffers: ResMut<RenderBuffers>,
+) {
+    for &(cell, mark) in marks.iter().flat_map(|marks| &marks.0) {
+        let Some(way) = mark.arrow else {
+            continue;
+        };
+        let planted = ages
+            .as_ref()
+            .and_then(|ages| ages.0.get(&cell))
+            .is_some_and(|age| *age >= mark.delay);
+        if !planted {
+            continue;
+        }
+        let step = way.signum();
+        for k in 1..=way.abs().max_element() {
+            let through = grid.safe_pos(cell + step * k);
+            let Some(world) = grid.idx(through) else {
+                continue;
+            };
+            let mut frame = buffers.seen_first[world];
+            while frame != RenderBuffers::NO_CELL {
+                let index = frame as usize;
+                if let Some(seen) = buffers.seen[index] {
+                    let inverse = seen.transform.inverse();
+                    buffers.effects.push(EffectCell {
+                        position: inverse.apply_point(through.as_vec2()),
+                        arrow: Some(inverse.turn_vec(step.as_vec2())),
+                        color: mark.tint,
+                        alpha: 1.0,
+                        ..default()
+                    });
+                }
+                frame = buffers.seen_next[index];
+            }
+        }
+    }
+}
+
 /// Lights frame cell `cell` at `position`, seen now through `seen` or else
 /// remembered: an empty one becomes floor (or a portal's threshold), and an
 /// object's glyph takes the light's colour (or a portal's).
@@ -448,6 +494,7 @@ pub fn compose_effects(
                     stroke: particle.stroke.map(|way| inverse.turn_vec(way)),
                     color: particle.shown_color(),
                     alpha: particle.alpha(),
+                    ..default()
                 });
             }
             frame = buffers.seen_next[index];

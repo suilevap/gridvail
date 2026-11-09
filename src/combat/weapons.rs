@@ -12,6 +12,7 @@ pub const STRIKE_MARK: CellMark = CellMark {
     },
     tint: RED,
     delay: 0.0,
+    arrow: None,
 };
 /// How a cell a readied attack will strike is marked.
 pub const READY_MARK: CellMark = CellMark {
@@ -22,6 +23,7 @@ pub const READY_MARK: CellMark = CellMark {
     },
     tint: CYAN,
     delay: 0.0,
+    arrow: None,
 };
 /// How long after a weapon's first cell is marked the next one is, in the
 /// order it swings through them.
@@ -111,7 +113,8 @@ pub fn mark_strikes(
 }
 
 /// Marks every cell an aimed attack will strike, planted in the order it
-/// swings through them, the way a weapon's are.
+/// swings through them, the way a weapon's are, each with an arrow the way
+/// a body there would be knocked.
 pub fn mark_readied(
     grid: Res<MapGrid>,
     marks: Option<ResMut<CellMarks>>,
@@ -124,9 +127,12 @@ pub fn mark_readied(
         let Some(attack) = readied.attack else {
             continue;
         };
-        let area = &maneuvers.get(attack.relation).area;
-        for (rank, cell) in area.cells(pos.0, attack.facing).enumerate() {
-            let mark = READY_MARK.after(rank as f32 * STRIKE_MARK_STEP);
+        let maneuver = maneuvers.get(attack.relation);
+        let knocks = maneuver.knocks(pos.0, attack.facing, attack.dir);
+        for (rank, (cell, knock)) in knocks.enumerate() {
+            let mark = READY_MARK
+                .after(rank as f32 * STRIKE_MARK_STEP)
+                .toward(knock);
             marks.0.push((grid.safe_pos(cell), mark));
         }
     }

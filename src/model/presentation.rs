@@ -263,7 +263,8 @@ pub fn is_hex_pos(p: IVec2) -> bool {
 }
 
 /// How a marked cell is drawn: whatever stands there in `tint`, or, when
-/// nothing does, the floor as `ground`. Both keep their own colours (light
+/// nothing does, the floor as `ground`, with an `arrow` the way what is
+/// there would be sent, if any. Both keep their own colours (light
 /// does not change them). A mark is planted: `delay` seconds after its
 /// cell is first marked it grows in (`MARK_GROWTH`), so the cells of one
 /// mark can appear in an order.
@@ -272,12 +273,23 @@ pub struct CellMark {
     pub ground: RenderCell,
     pub tint: Rgb,
     pub delay: f32,
+    /// The way (and how far) what stands there would be sent (a knock),
+    /// drawn as an arrow in each cell it would fly through.
+    pub arrow: Option<IVec2>,
 }
 
 impl CellMark {
     /// The same mark, planted `delay` seconds after its cell is marked.
     pub const fn after(self, delay: f32) -> Self {
         Self { delay, ..self }
+    }
+
+    /// The same mark, with an arrow the way `way` (none for zero).
+    pub fn toward(self, way: IVec2) -> Self {
+        Self {
+            arrow: (way != IVec2::ZERO).then_some(way),
+            ..self
+        }
     }
 }
 

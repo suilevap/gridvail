@@ -76,16 +76,25 @@ pub struct PlayEffect {
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bleeds(pub EffectId);
 
-/// One particle as the frame shows it: where (in frame cells, between
-/// cells), what (`ch`, or a stroke the way of `stroke`, in frame cells),
-/// and how much of it shows.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// One particle (or a mark's arrow) as the frame shows it: where (in frame
+/// cells, between cells), what (`ch`, or a stroke the way of `stroke`, or
+/// an arrow the way of `arrow`, in frame cells), and how much of it shows.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct EffectCell {
     pub position: Vec2,
     pub ch: char,
     pub stroke: Option<Vec2>,
+    pub arrow: Option<Vec2>,
     pub color: Rgb,
     pub alpha: f32,
+}
+
+/// The arrow drawn for `way` on screen, with y growing down the screen,
+/// to the nearest eighth of a turn.
+pub fn arrow_glyph(way: Vec2) -> char {
+    let angle = way.y.atan2(way.x).rem_euclid(std::f32::consts::TAU);
+    const ARROWS: [char; 8] = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
+    ARROWS[(angle / std::f32::consts::FRAC_PI_4).round() as usize % 8]
 }
 
 /// The line drawn for a stroke going `way` on screen, with y growing down
