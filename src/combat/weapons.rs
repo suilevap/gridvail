@@ -113,27 +113,31 @@ pub fn mark_strikes(
 }
 
 /// Marks every cell an aimed attack will strike, planted in the order it
-/// swings through them, the way a weapon's are, each with an arrow the way
-/// a body there would be knocked.
+/// swings through them, the way a weapon's are; a cell with a body that
+/// would be knocked also gets the way it would go.
 pub fn mark_readied(
     grid: Res<MapGrid>,
     marks: Option<ResMut<CellMarks>>,
-    actors: Query<(&Pos, &Maneuvers, &Readied), Without<DestroyRequested>>,
+    actors: Query<(Entity, &Pos, &Maneuvers, &Readied), Without<DestroyRequested>>,
+    movable: Query<(), (With<Movable>, Without<DestroyRequested>)>,
 ) {
     let Some(mut marks) = marks else {
         return;
     };
-    for (pos, maneuvers, readied) in &actors {
+    for (actor, pos, maneuvers, readied) in &actors {
         let Some(attack) = readied.attack else {
             continue;
         };
         let maneuver = maneuvers.get(attack.relation);
         let knocks = maneuver.knocks(pos.0, attack.facing, attack.dir);
         for (rank, (cell, knock)) in knocks.enumerate() {
-            let mark = READY_MARK
-                .after(rank as f32 * STRIKE_MARK_STEP)
-                .toward(knock);
-            marks.0.push((grid.safe_pos(cell), mark));
+            let cell = grid.safe_pos(cell);
+            let knocked = grid
+                .get(cell)
+                .is_some_and(|body| body != actor && movable.contains(body));
+            let mark = READY_MARK.after(rank as f32 * STRIKE_MARK_STEP);
+            let mark = if knocked { mark.toward(knock) } else { mark };
+            marks.0.push((cell, mark));
         }
     }
 }

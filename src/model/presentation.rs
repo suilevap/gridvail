@@ -274,7 +274,7 @@ pub struct CellMark {
     pub tint: Rgb,
     pub delay: f32,
     /// The way (and how far) what stands there would be sent (a knock),
-    /// drawn as an arrow in each cell it would fly through.
+    /// drawn as an arrow where it would end up.
     pub arrow: Option<IVec2>,
 }
 

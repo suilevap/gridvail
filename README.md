@@ -487,8 +487,8 @@ python3 -m http.server -d dist 8000
 On touch screens, swipe to take a step and keep the finger down to keep
 walking; slide it another way to turn (from wherever it is, the way it last moved). A swipe that would attack
 strikes when the finger lifts: a quick flick strikes at once, and a finger
-kept down aims, its cells marked cyan, with arrows where each body
-would be knocked, while the turn waits; slide it aside
+kept down aims, its cells marked cyan, with an arrow where each body
+would be knocked to, while the turn waits; slide it aside
 to aim another way, or to where it meets nothing to drop it (a key works
 the same: held, it aims; let go, it strikes; Space drops it). Two fingers pinch to zoom,
 and twisting them an eighth of a turn turns the view a quarter turn, like Q

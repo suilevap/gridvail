@@ -264,10 +264,10 @@ pub fn compose_frame(
 }
 
 /// Adds the arrows of the marks in sight to the frame's effects, above
-/// everything: one in each cell what is marked would fly through (a knock
-/// of two cells, two arrows; over a wall, it would slam into it), in the
+/// everything: one in the cell what is marked would end up in, pointing
+/// the way it would come (over a wall, it would slam into it), in the
 /// mark's colour, once the mark has been planted. Through a portal, where
-/// the player sees those cells, turned with it.
+/// the player sees that cell, turned with it.
 pub fn compose_mark_arrows(
     grid: Res<MapGrid>,
     (marks, ages): (Option<Res<CellMarks>>, Option<Res<MarkAges>>),
@@ -285,26 +285,24 @@ pub fn compose_mark_arrows(
             continue;
         }
         let step = way.signum();
-        for k in 1..=way.abs().max_element() {
-            let through = grid.safe_pos(cell + step * k);
-            let Some(world) = grid.idx(through) else {
-                continue;
-            };
-            let mut frame = buffers.seen_first[world];
-            while frame != RenderBuffers::NO_CELL {
-                let index = frame as usize;
-                if let Some(seen) = buffers.seen[index] {
-                    let inverse = seen.transform.inverse();
-                    buffers.effects.push(EffectCell {
-                        position: inverse.apply_point(through.as_vec2()),
-                        arrow: Some(inverse.turn_vec(step.as_vec2())),
-                        color: mark.tint,
-                        alpha: 1.0,
-                        ..default()
-                    });
-                }
-                frame = buffers.seen_next[index];
+        let through = grid.safe_pos(cell + way);
+        let Some(world) = grid.idx(through) else {
+            continue;
+        };
+        let mut frame = buffers.seen_first[world];
+        while frame != RenderBuffers::NO_CELL {
+            let index = frame as usize;
+            if let Some(seen) = buffers.seen[index] {
+                let inverse = seen.transform.inverse();
+                buffers.effects.push(EffectCell {
+                    position: inverse.apply_point(through.as_vec2()),
+                    arrow: Some(inverse.turn_vec(step.as_vec2())),
+                    color: mark.tint,
+                    alpha: 1.0,
+                    ..default()
+                });
             }
+            frame = buffers.seen_next[index];
         }
     }
 }

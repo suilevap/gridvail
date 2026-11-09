@@ -595,6 +595,16 @@ fn an_aimed_attack_shows_the_way_each_body_would_be_knocked() {
     hold(&mut game, UP, 5);
     // A lunge: knocked on by the swing and by the step it carries.
     assert_eq!(arrow_on(&game, FRONT), Some(IVec2::NEG_Y * 2));
+    // Cells with nothing to knock show no arrow.
+    let marks = game.app.world().resource::<CellMarks>();
+    assert_eq!(
+        marks
+            .0
+            .iter()
+            .filter(|(_, mark)| mark.arrow.is_some())
+            .count(),
+        1
+    );
     let_go(&mut game);
     assert!(
         game.enemy_at(FRONT + IVec2::NEG_Y * 2).is_some(),

@@ -185,9 +185,10 @@ and renderers must not import it.
     `Readies` (the player) makes such a move on release: while its input
     is held (`MoveIntent`, which keys and a finger kept down both write),
     `ready_attacks` only aims it (`Readied`, shown by its cyan marks,
-    `mark_readied`, each with an arrow the way a body there is knocked,
-    from `Maneuver::knocks`, which `perform_attacks` uses too;
-    `compose_mark_arrows` draws the arrows above the map, and its wind-up in `choreography`), re-aims it as the
+    `mark_readied`; a cell with a body to knock also gets the way it goes,
+    from `Maneuver::knocks`, which `perform_attacks` uses too, and
+    `compose_mark_arrows` draws it as an arrow where the body would end
+    up, above the map, and its wind-up in `choreography`), re-aims it as the
     input points elsewhere, and makes it when the input lets go; a move
     already let go (a flick) is made at once. A `Cancel` (Space) drops an
     aim, and a move made `at_once` (the agent API) is never aimed. While
