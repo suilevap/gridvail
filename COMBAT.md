@@ -112,6 +112,19 @@ forward: lunge     left: sweep left    right: sweep right   back: back off
   enemy is moved, its strike moves with it and hits whatever is in the new
   cell: the player, another enemy (friendly fire), or nothing.
 - A hit does not interrupt the wind-up.
+- **A swing across a wound-up strike turns it (a parry).** Where the
+  player's attack goes through a cell the strike will hit, and the two
+  blades go across each other there (a thrust's blade goes along its
+  line, a sweep's across its front), the strike is turned a quarter turn
+  to the side the swing came at it from, and lands there instead: on
+  nothing, a wall, or another enemy. Blades going along each other (a
+  lunge up the line of a jab, or along a sweeping blade) turn nothing, so
+  a parry asks for the right swing from the right side. A move that would
+  turn a strike is an attack even with nobody in reach, and while it is
+  aimed the cell where the blades meet shows a cyan `◆`. Only the strike
+  of an enemy the attack does not reach is turned: one it hits is moved
+  by the blow, its strike with it. Close in, a fight displaces; from a
+  step off, it parries (`combat::parries`).
 
 That makes each attack a different trade-off against an alert guard,
 whose sweep covers the row in front of it:
@@ -160,7 +173,7 @@ Out, roughly in the order they would follow:
 
 - The rest of the preview: where the target is knocked and where the
   player is left, marked while the attack is held.
-- Strikes meeting in a cell from opposite directions as a block or parry.
+- A parry or a strike into a wall staggering its wielder.
 - Slowdown while a gesture is in progress; the one-stroke L gesture.
 - Momentum: knocked bodies flying several cells, impacts passing force on,
   stagger.

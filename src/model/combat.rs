@@ -254,6 +254,14 @@ pub struct Weapon {
     pub windup: u8,
 }
 
+/// `wielder`'s wound-up strike is turned to strike `dir` instead (a
+/// parry).
+#[derive(Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Deflect {
+    pub wielder: Entity,
+    pub dir: IVec2,
+}
+
 /// Where a wound-up weapon will strike: a direction from its wielder, so
 /// moving the wielder moves the strike.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]

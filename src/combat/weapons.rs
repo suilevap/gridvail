@@ -3,6 +3,8 @@ use bevy::prelude::*;
 use crate::lighting::{CYAN, RED};
 use crate::model::*;
 
+use super::{parries, Striker};
+
 /// How a cell about to be struck is marked.
 pub const STRIKE_MARK: CellMark = CellMark {
     ground: RenderCell {
@@ -24,6 +26,15 @@ pub const READY_MARK: CellMark = CellMark {
     tint: CYAN,
     delay: 0.0,
     sent: None,
+};
+/// How a cell where an aimed attack would turn a strike is marked.
+pub const CLASH_MARK: CellMark = CellMark {
+    ground: RenderCell {
+        ch: '◆',
+        color: CYAN,
+        depth: 0,
+    },
+    ..READY_MARK
 };
 /// How long after a weapon's first cell is marked the next one is, in the
 /// order it swings through them.
@@ -115,12 +126,13 @@ pub fn mark_strikes(
 /// Marks every cell an aimed attack will strike, planted in the order it
 /// swings through them, the way a weapon's are; a cell with a body that
 /// would be knocked also gets where it would go, and what it would slam
-/// into on the way.
+/// into on the way; a cell where it would turn a strike, `CLASH_MARK`.
 pub fn mark_readied(
     grid: Res<MapGrid>,
     marks: Option<ResMut<CellMarks>>,
     actors: Query<(Entity, &Pos, &Maneuvers, &Readied), Without<DestroyRequested>>,
     movable: Query<(), (With<Movable>, Without<DestroyRequested>)>,
+    strikers: Query<Striker>,
 ) {
     let Some(mut marks) = marks else {
         return;
@@ -144,6 +156,11 @@ pub fn mark_readied(
                 _ => mark,
             };
             marks.0.push((cell, mark));
+        }
+        // Where it would turn a strike, over that strike's own mark.
+        let turned = parries(maneuver, pos.0, attack.facing, &grid, strikers.iter());
+        for (_, cell, _) in turned {
+            marks.0.push((cell, CLASH_MARK));
         }
     }
 }

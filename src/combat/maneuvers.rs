@@ -2,6 +2,8 @@ use bevy::prelude::*;
 
 use crate::model::*;
 
+use super::{parries, Striker};
+
 /// What can be attacked: anything with `Health` still there.
 type Target = (With<Health>, Without<DestroyRequested>);
 
@@ -34,31 +36,41 @@ fn ready(command: &MoveCommand, tokens: &Tokens, turn: &TurnState) -> bool {
         && !turn.simulation
 }
 
+/// What an attack can meet: anything to hit, and wound-up strikes to turn.
+type Meets<'w, 's> = (Query<'w, 's, (), Target>, Query<'w, 's, Striker>);
+
 /// The attack a move `dir` by `actor` (at `pos`, facing `facing`) makes:
 /// its maneuver for that way from where it faces, when one of the
-/// maneuver's cells holds a target (anything with `Health` but itself).
+/// maneuver's cells holds a target (anything with `Health` but itself), or
+/// its swing would turn a wound-up strike (a parry).
 fn attack_of(
     (actor, pos, facing, maneuvers): (Entity, &Pos, &Facing, &Maneuvers),
     dir: IVec2,
     grid: &MapGrid,
-    targets: &Query<(), Target>,
+    (targets, strikers): &Meets,
 ) -> Option<Attack> {
     let relation = Relation::of(facing.0, dir);
-    maneuvers
-        .get(relation)
+    let maneuver = maneuvers.get(relation);
+    let hits = maneuver
         .area
         .cells(pos.0, facing.0)
         .filter_map(|cell| grid.get(grid.safe_pos(cell)))
-        .any(|target| target != actor && targets.contains(target))
-        .then_some(Attack {
-            actor,
-            relation,
-            facing: facing.0,
-            dir,
-        })
+        .any(|target| target != actor && targets.contains(target));
+    let turns = || {
+        parries(maneuver, pos.0, facing.0, grid, strikers.iter())
+            .next()
+            .is_some()
+    };
+    (hits || turns()).then_some(Attack {
+        actor,
+        relation,
+        facing: facing.0,
+        dir,
+    })
 }
 
-/// A move by an actor with `Maneuvers` that meets a target becomes an
+/// A move by an actor with `Maneuvers` that meets a target (or turns a
+/// strike) becomes an
 /// `Attack`, its action for the turn, and the move becomes a wait. A move
 /// that meets nothing is left to walk.
 pub fn choose_attacks(
@@ -66,14 +78,14 @@ pub fn choose_attacks(
     grid: Res<MapGrid>,
     mut attacks: MessageWriter<Attack>,
     mut actors: Query<Mover, Without<DestroyRequested>>,
-    targets: Query<(), Target>,
+    meets: Meets,
 ) {
     for (actor, pos, facing, maneuvers, mut command, tokens) in &mut actors {
         if !ready(&command, tokens, &turn) {
             continue;
         }
         let mover = (actor, pos, facing, maneuvers);
-        if let Some(attack) = attack_of(mover, command.target, &grid, &targets) {
+        if let Some(attack) = attack_of(mover, command.target, &grid, &meets) {
             attacks.write(attack);
             command.target = IVec2::ZERO;
         }
@@ -95,7 +107,7 @@ pub fn ready_attacks(
     turn: Res<TurnState>,
     grid: Res<MapGrid>,
     mut actors: Query<Readier, Without<DestroyRequested>>,
-    targets: Query<(), Target>,
+    meets: Meets,
 ) {
     let now = time.elapsed_secs();
     for (
@@ -133,7 +145,7 @@ pub fn ready_attacks(
                     if dir != readied.dir {
                         commands.entity(actor).insert(Readied {
                             dir,
-                            attack: attack_of(mover, dir, &grid, &targets),
+                            attack: attack_of(mover, dir, &grid, &meets),
                             ..*readied
                         });
                     }
@@ -147,7 +159,7 @@ pub fn ready_attacks(
         if !ready(&command, tokens, &turn) || command.at_once || held != Some(command.target) {
             continue;
         }
-        let Some(attack) = attack_of(mover, command.target, &grid, &targets) else {
+        let Some(attack) = attack_of(mover, command.target, &grid, &meets) else {
             continue;
         };
         if maneuvers.get(attack.relation).strikes() {

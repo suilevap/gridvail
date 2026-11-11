@@ -108,7 +108,9 @@ next to this file.
   (`r`) scythe, a glaiver's (`g`) glaive and a flailer's (`f`) flail are
   lopsided, each safe only from one side. An enemy strikes not only at a
   player in reach but at the step that would bring it in, then comes
-  closer if that was a feint. Who is who is
+  closer if that was a feint. A swing across an enemy's wound-up strike,
+  from a step off, turns it a quarter turn (a parry, shown as `◆` while
+  aiming), maybe into another enemy. Who is who is
   data, one file per thing: kinds of actor in `assets/actors` (their map
   glyph, any lowercase letter without a meaning of its own, behaviour,
   hit points and weapon or fighting style), weapons in `assets/weapons`
@@ -358,7 +360,7 @@ cargo run -- --intro noise   # the map comes together from noise instead of the 
 cargo run -- --compass always   # compass: when-turned (default), always or off
 cargo run -- --walls leaning    # walls with height: flat (default), stacked or leaning
 cargo run -- --light smooth     # light: flat, smooth or glow (default; bloom and haze)
-cargo test --workspace   # 404 tests, including allocation and independent C# comparisons
+cargo test --workspace   # 409 tests, including allocation and independent C# comparisons
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ENEMY_TRACE=1 cargo test --test enemy_behavior -- --nocapture --test-threads=1

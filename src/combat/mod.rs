@@ -27,10 +27,12 @@
 
 mod hits;
 mod maneuvers;
+mod parries;
 mod weapons;
 
 pub use hits::*;
 pub use maneuvers::*;
+pub use parries::*;
 pub use weapons::*;
 
 use bevy::prelude::*;
@@ -48,6 +50,7 @@ impl Plugin for CombatPlugin {
             .add_message::<Hit>()
             .add_message::<Attack>()
             .add_message::<Cancel>()
+            .add_message::<Deflect>()
             .add_message::<UseWeapon>()
             .add_scheduled_message::<Strike>()
             .add_systems(
@@ -57,7 +60,12 @@ impl Plugin for CombatPlugin {
                     (cancel_readied, ready_attacks, choose_attacks)
                         .chain()
                         .in_set(ActionStage::Decide),
-                    (perform_attacks, ready_weapons).in_set(ActionStage::Effects),
+                    (
+                        perform_attacks,
+                        ready_weapons,
+                        (parry_strikes, deflect_strikes).chain(),
+                    )
+                        .in_set(ActionStage::Effects),
                     (hits_deal_damage, critical_hits, collisions_deal_damage)
                         .in_set(ActionStage::Hits),
                 )
@@ -65,7 +73,9 @@ impl Plugin for CombatPlugin {
             )
             .add_systems(
                 Update,
+                // A clash shows over the strike it turns.
                 (mark_strikes, mark_readied)
+                    .chain()
                     .in_set(MarkCells)
                     .in_set(GamePhase::Visibility),
             );
