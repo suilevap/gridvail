@@ -353,9 +353,10 @@ fn a_sweep_cannot_be_sidestepped_but_can_be_backed_away_from() {
 }
 
 #[test]
-fn a_spear_cannot_be_backed_away_from_but_can_be_sidestepped() {
-    assert!(dodge('s', LEFT), "stepping back escaped the spear");
+fn a_spear_is_sidestepped_or_turned_by_the_sweep_away_from_it() {
     assert!(!dodge('s', UP), "stepping aside did not escape the spear");
+    // Stepping back sweeps across the spear's reach, and turns it.
+    assert!(!dodge('s', LEFT), "the sweep back did not turn the spear");
 }
 
 /// Whether the player is hit when answering a guard's wound-up sweep, from
@@ -531,8 +532,12 @@ fn pointing_another_way_while_held_aims_that_way_and_letting_go_makes_it() {
 fn letting_go_aimed_at_nothing_makes_nothing_and_takes_no_turn() {
     // Facing north, the enemy east of the player: right sweeps it, left
     // meets nothing.
-    let mut game = Game::readying(OPEN, |kinds| kinds.player_mut().hp = 100);
-    game.until_aware();
+    // A dummy that strikes nothing, so no strike is there to turn.
+    let mut game = Game::readying(OPEN, |kinds| {
+        kinds.player_mut().hp = 100;
+        let guard = kinds.by_glyph.get_mut(&'e').unwrap();
+        (guard.tree, guard.weapon) = (None, None);
+    });
     hold(&mut game, RIGHT, 5);
     assert!(game
         .readied()
@@ -637,4 +642,75 @@ fn an_aimed_attack_shows_a_body_stopped_by_a_wall_and_slamming_into_it() {
         (sent.to, sent.way, sent.slams),
         (IVec2::NEG_Y, IVec2::NEG_Y, true)
     );
+}
+
+/// Jabbing guards, and `d` a dummy that only stands and bleeds.
+fn jabbing_guards_and_a_dummy(kinds: &mut ActorKinds) {
+    jabbing_guards(kinds);
+    kinds.player_mut().hp = 100;
+    let dummy = ActorKind {
+        tree: None,
+        weapon: None,
+        ..kinds.get('e').clone()
+    };
+    kinds.by_glyph.insert('d', dummy);
+}
+
+#[test]
+fn a_swing_across_a_strike_turns_it_and_the_player_takes_no_blow() {
+    // The guard two cells east jabs at the cell the player would step into.
+    let mut game = Game::with(
+        "XXXXXXX\nX.....X\nX.p.e.X\nX.....X\nXXXXXXX\n",
+        jabbing_guards_and_a_dummy,
+    );
+    let guard = IVec2::new(4, 2);
+    game.until_wound_up(guard);
+    assert_eq!(game.enemy_at(guard).unwrap().2, Some(IVec2::NEG_X));
+    // Facing north, the sweep right goes ahead, ahead-right, then down into
+    // that cell: across the jab, which turns south. The sweep is made
+    // though it meets nobody, and steps the player in.
+    let hp = game.player_hp();
+    game.press(RIGHT);
+    assert_eq!(
+        game.player_pos(),
+        IVec2::new(3, 2),
+        "the sweep was not made"
+    );
+    game.next_turn();
+    assert_eq!(game.player_hp(), hp, "struck after all");
+}
+
+#[test]
+fn a_turned_strike_lands_on_whoever_is_there_now() {
+    let mut game = Game::with(
+        "XXXXXXX\nX.....X\nX.p.e.X\nX...d.X\nXXXXXXX\n",
+        jabbing_guards_and_a_dummy,
+    );
+    let (guard, dummy) = (IVec2::new(4, 2), IVec2::new(4, 3));
+    game.until_wound_up(guard);
+    let before = game.enemy_at(dummy).expect("no dummy").1;
+    game.press(RIGHT);
+    game.next_turn();
+    assert!(
+        game.enemy_at(dummy).is_none_or(|(_, hp, _)| hp < before),
+        "the turned jab missed its friend"
+    );
+}
+
+#[test]
+fn a_swing_along_a_strikes_line_turns_nothing() {
+    // The guard two cells north jabs at the cell ahead of the player; a
+    // lunge goes straight up its line and cannot turn it.
+    let mut game = Game::with(
+        "XXXXX\nX.e.X\nX...X\nX.p.X\nXXXXX\n",
+        jabbing_guards_and_a_dummy,
+    );
+    let guard = IVec2::new(2, 1);
+    game.until_wound_up(guard);
+    assert_eq!(game.enemy_at(guard).unwrap().2, Some(IVec2::Y));
+    // So the lunge is a plain step into the jab, which lands.
+    let hp = game.player_hp();
+    game.press(UP);
+    game.next_turn();
+    assert!(game.player_hp() < hp, "turned head on");
 }

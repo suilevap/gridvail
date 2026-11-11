@@ -202,7 +202,13 @@ and renderers must not import it.
     it turns; `ready_weapons` answers a
     `UseWeapon` by aiming the `Weapon` (`Telegraph`, a direction from the
     wielder), then owing its wind-up with the `Strike` scheduled, and
-    `strike` hits every cell of the weapon's `Area`; `hits_deal_damage`,
+    `strike` hits every cell of the weapon's `Area`; `parry_strikes`
+    answers an `Attack` whose swing crosses a wound-up strike's blade (in
+    a cell it will hit, wielder not struck) with a `Deflect`, and
+    `deflect_strikes` turns that strike a quarter turn (its `Telegraph`
+    and the scheduled `Strike`); `parries` is shared with `attack_of`, so
+    such a move is an attack, and with `mark_readied`, which shows the
+    clash; `hits_deal_damage`,
     `critical_hits` (on `Exposed` targets, which the AI writes) and
     `collisions_deal_damage` turn what landed into `Damage`.
   - `damage/`: `Damage` comes off `Health`; what runs out has `Died` and is
