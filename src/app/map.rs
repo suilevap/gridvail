@@ -443,7 +443,7 @@ fn spawn_player(
             PrevPos(at),
         ),
         Glyph::new('@', 1, WHITE),
-        (Player(0), KeepOnDeath),
+        (Player(0), KeepOnDeath, PixelCharacter),
         Inventory::default(),
         Tokens::new(1),
         Friction(1),

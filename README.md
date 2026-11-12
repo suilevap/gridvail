@@ -340,7 +340,8 @@ direction, and where new foundational versus game-specific code belongs.
 
 See [SPRITE_ART_GUIDE.md](SPRITE_ART_GUIDE.md) for the player/enemy visual brief,
 four-direction sheet conventions, reusable generation prompt and production
-cleanup checks.
+cleanup checks. The player now uses a four-direction pixel trespasser with idle,
+walk, attack and hit poses, authored in `assets/characters/trespasser.ron`.
 
 ## Run and verify
 

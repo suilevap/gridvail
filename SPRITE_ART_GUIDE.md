@@ -34,10 +34,45 @@ sizes, consistent scale and a shared foot anchor. Leave padding for weapons.
 Use a plain dark background for concept review; request transparency for asset
 exports. No labels, scenery, ground shadows, bloom or baked lighting.
 
-The current game uses multiline symbol billboards in its 3D renderer. This guide
-sets the art direction for sprite concepts; it does not introduce a texture
-atlas loader or replace that renderer. Keep simulation coordinates, collisions,
-FOV and actor behaviour independent of visual assets.
+The player uses the four-direction pixel character described below. Other
+humanoids retain their symbol billboards. Simulation coordinates, collisions,
+FOV and actor behaviour remain independent of visual assets.
+
+## Implemented player: trespasser
+
+![Native-resolution player atlas](docs/art/trespasser-atlas.png)
+
+`assets/characters/trespasser.ron` contains the editable 24×32 pixel frames,
+palette and timing. The renderer packs them into a nearest-filtered RGBA atlas
+at startup; no image download or extra image codec is needed in the browser.
+The PNG above is a review export; the game reads the RON data.
+
+| Rows | Left, right, back, front |
+| --- | --- |
+| Columns 0–1 | Idle breathing |
+| Columns 2–5 | Four walk contacts, advanced by distance travelled |
+| Column 6 | Held attack preparation |
+| Columns 7–8 | Strike and recovery |
+| Column 9 | Hit reaction |
+
+The player receives `PixelCharacter` in its spawn composition. The renderer
+reads `AnimatedPos`, `Facing` and existing `WindUp`, `Release` and `Gesture`
+cues. It draws one reusable sprite per visible portal instance, rotates the
+selected direction with camera/portal turns and removes obsolete instances on
+map reload. Glyph output remains available to the agent API and headless runs.
+The pixel sprite replaces the visual player glyph in flat, stacked, leaning
+and native 3D-walls modes; enemies and gameplay are unchanged.
+
+To try it, run `cargo run -- --map assets/maps/arena.txt --reveal --hp 99`
+(or use `?map=arena&reveal&hp=99` in the web preview). Walk with WASD/arrows,
+stop to see idle, aim at an enemy and release to attack, and turn the camera
+with Q/E. Esc changes wall style; Z zooms in. The normal game supplies hit
+reactions, defeat/restart and map changes.
+
+When editing: keep 40 frames of exactly 24 columns × 32 rows, use only palette
+keys, retain transparent padding and the foot anchor, and update the review
+PNG after pixel changes. The content tests reject malformed dimensions and
+unknown pixels.
 
 ## Starting roster
 

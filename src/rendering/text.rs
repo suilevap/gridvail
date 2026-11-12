@@ -42,13 +42,22 @@ pub(super) struct MapCell(pub(super) usize);
 /// Text entity drawing one object at its animated position.
 #[derive(Component, Clone, Copy)]
 pub(super) struct ObjectSprite {
-    position: Vec2,
-    lift: f32,
+    pub(super) position: Vec2,
+    pub(super) lift: f32,
     pub(super) depth: u8,
     pub(super) shown: bool,
 }
 
 impl ObjectSprite {
+    pub(super) fn from_object(object: &ObjectCell) -> Self {
+        Self {
+            position: object.position,
+            lift: object.lift,
+            depth: object.cell.depth,
+            shown: false,
+        }
+    }
+
     /// Displayed position in grid cells.
     // Used by the 3D walls renderer, which the web build leaves out.
     #[cfg_attr(target_family = "wasm", allow(dead_code))]
@@ -414,6 +423,8 @@ pub(super) fn place_object_sprites(
     statures: Option<Res<GlyphStatures>>,
     own_statures: Query<&Stature>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
+    pixels: Option<Res<super::character::PixelAtlas>>,
+    characters: Query<(), With<PixelCharacter>>,
     mut drawn: Local<String>,
     mut sprites: Query<(
         &mut ObjectSprite,
@@ -430,6 +441,9 @@ pub(super) fn place_object_sprites(
     }
 
     for object in &buffers.objects {
+        if pixels.is_some() && characters.contains(object.entity) {
+            continue;
+        }
         // The perspective backend draws walls as meshes instead.
         if extruded_walls
             .as_ref()
