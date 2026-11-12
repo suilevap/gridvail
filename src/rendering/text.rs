@@ -423,7 +423,7 @@ pub(super) fn place_object_sprites(
     statures: Option<Res<GlyphStatures>>,
     own_statures: Query<&Stature>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
-    pixels: Option<Res<super::character::PixelAtlas>>,
+    pixels: Option<Res<super::character::CharacterImages>>,
     characters: Query<&PixelCharacter>,
     mut drawn: Local<String>,
     mut sprites: Query<(

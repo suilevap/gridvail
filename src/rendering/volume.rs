@@ -299,7 +299,7 @@ fn draw_wall_map(
     statures: Res<GlyphStatures>,
     own_statures: Query<&Stature>,
     (pixels, characters): (
-        Option<Res<super::character::PixelAtlas>>,
+        Option<Res<super::character::CharacterImages>>,
         Query<(), With<crate::model::PixelCharacter>>,
     ),
     mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility)>,

@@ -4,3 +4,7 @@
 .DS_Store
 /recordings
 /dist/
+
+# Python authoring tools
+__pycache__/
+*.pyc

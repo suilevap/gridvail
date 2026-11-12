@@ -341,8 +341,8 @@ direction, and where new foundational versus game-specific code belongs.
 See [SPRITE_ART_GUIDE.md](SPRITE_ART_GUIDE.md) for the player/enemy visual brief,
 four-direction sheet conventions, reusable generation prompt and production
 cleanup checks. The player and all enemy types use static four-direction
-sprites extracted directly from the approved roster, in
-`assets/characters/roster.png`. Each actor file selects its sprite look.
+sprites extracted from the approved reference. Each look has its own PNG in
+`assets/characters/`, with four directions per file. Actor data selects the look.
 
 ## Run and verify
 

@@ -1,2 +1,2 @@
-// Static atlas row: left, right, back, front.
-(row: 2, world_height: 45.0)
+// Four static views in the matching PNG: left, right, back, front.
+(world_height: 45.0)

@@ -35,18 +35,24 @@ impl Plugin for CharacterSpritePlugin {
                     .in_set(GamePhase::Output)
                     .in_set(CharacterOutput)
                     .after(super::text::place_object_sprites)
-                    .run_if(resource_exists::<PixelAtlas>),
+                    .run_if(resource_exists::<CharacterImages>),
             );
     }
 }
 
 /// Presence also enables replacement of the fallback glyph in other backends.
 #[derive(Resource)]
-pub(super) struct PixelAtlas {
-    image: Handle<Image>,
-    size: Vec2,
+pub(super) struct CharacterImages {
+    textures: Vec<CharacterTexture>,
     looks: Catalog<CharacterId>,
 }
+
+struct CharacterTexture {
+    image: Handle<Image>,
+    size: Vec2,
+}
+
+include!(concat!(env!("OUT_DIR"), "/character_images.rs"));
 
 #[derive(Resource, Default)]
 struct PixelInstances(HashMap<(Entity, u16), Entity>);
@@ -56,7 +62,7 @@ struct PixelInstance {
     source: Entity,
 }
 
-impl PixelAtlas {
+impl CharacterImages {
     pub(super) fn height(&self, look: CharacterId) -> f32 {
         self.looks
             .get(look)
@@ -80,19 +86,24 @@ fn decode_png(bytes: &[u8]) -> Image {
 fn setup(mut commands: Commands, images: Option<ResMut<Assets<Image>>>) {
     let Some(mut images) = images else { return };
     let looks = Catalog::<CharacterId>::bundled().expect("valid character catalog");
-    let image = decode_png(include_bytes!("../../assets/characters/roster.png"));
-    assert_eq!(image.width() % 4, 0, "four equal directional columns");
-    let cell = image.width() / 4;
-    assert_eq!(image.height() % cell, 0, "equal square cells");
-    for (_, look) in looks.iter() {
+    let mut textures = Vec::with_capacity(CharacterId::ALL.len());
+    for &(id, bytes) in CHARACTER_IMAGES {
+        assert_eq!(id.index(), textures.len(), "images follow catalog order");
+        let look = looks.get(id).expect("known character look");
         assert!(look.world_height.is_finite() && look.world_height > 0.0);
-        assert!(look.row < image.height() / cell, "look names an atlas row");
+        let image = decode_png(bytes);
+        assert_eq!(
+            image.width(),
+            image.height() * 4,
+            "four square directional cells"
+        );
+        let size = Vec2::splat(image.height() as f32);
+        textures.push(CharacterTexture {
+            image: images.add(image),
+            size,
+        });
     }
-    commands.insert_resource(PixelAtlas {
-        image: images.add(image),
-        size: Vec2::splat(cell as f32),
-        looks,
-    });
+    commands.insert_resource(CharacterImages { textures, looks });
 }
 
 fn drop_gone(
@@ -134,8 +145,14 @@ fn spawn_instances(world: &mut World) {
             .copied()
             .collect()
     };
-    let image = world.resource::<PixelAtlas>().image.clone();
     for object in missing {
+        let look = world
+            .get::<PixelCharacter>(object.entity)
+            .expect("sprite look")
+            .0;
+        let image = world.resource::<CharacterImages>().textures[look.index()]
+            .image
+            .clone();
         let entity = world
             .spawn((
                 PixelInstance {
@@ -173,7 +190,7 @@ fn direction_row(facing: IVec2, quarters: i32) -> usize {
 fn place_instances(
     buffers: Res<RenderBuffers>,
     camera: Res<ViewCamera>,
-    atlas: Res<PixelAtlas>,
+    images: Res<CharacterImages>,
     index: Res<PixelInstances>,
     (volume, extruded): (
         Option<Res<WallVolume>>,
@@ -209,12 +226,11 @@ fn place_instances(
         *drawn = ObjectSprite::from_object(object);
         drawn.shown = true;
         let row = direction_row(facing.0, camera.quarter_turns() + object.quarters as i32);
-        let corner = Vec2::new(
-            row as f32,
-            atlas.looks.get(look.0).expect("known look").row as f32,
-        ) * atlas.size;
-        sprite.rect = Some(Rect::from_corners(corner, corner + atlas.size));
-        sprite.custom_size = Some(atlas.size * (atlas.height(look.0) / atlas.size.y));
+        let texture = &images.textures[look.0.index()];
+        let corner = Vec2::new(row as f32, 0.0) * texture.size;
+        sprite.image = texture.image.clone();
+        sprite.rect = Some(Rect::from_corners(corner, corner + texture.size));
+        sprite.custom_size = Some(texture.size * (images.height(look.0) / texture.size.y));
         // Preserve the palette while responding to scene light and marks.
         sprite.color = Color::from(object.cell.color).with_alpha(object.height);
         transform.translation.z = 1.0 + drawn.depth as f32 * 0.1;
@@ -238,16 +254,25 @@ mod tests {
 
     #[test]
     fn all_sprite_pixels_come_directly_from_the_reference() {
-        let image = decode_png(include_bytes!("../../assets/characters/roster.png"));
         let source = decode_png(include_bytes!("../../docs/art/gridvail-sprite-roster.png"));
-        assert_eq!(image.size(), UVec2::new(1024, 1536));
-        let (pixels, original) = (image.data.unwrap(), source.data.unwrap());
-        for (row, feet) in [199_i32, 453, 664, 909, 1090, 1356].into_iter().enumerate() {
+        let original = source.data.unwrap();
+        for &(id, bytes) in CHARACTER_IMAGES {
+            let feet = match id {
+                CharacterId::Trespasser => 199_i32,
+                CharacterId::Watchman => 453,
+                CharacterId::Scavenger => 664,
+                CharacterId::FurnaceGuard => 909,
+                CharacterId::Hound => 1090,
+                CharacterId::Surveyor => 1356,
+            };
+            let image = decode_png(bytes);
+            assert_eq!(image.size(), UVec2::new(1024, 256));
+            let pixels = image.data.unwrap();
             for (column, pivot) in [162_i32, 425, 695, 960].into_iter().enumerate() {
                 let mut opaque = 0;
                 for y in 0..256 {
                     for x in 0..256 {
-                        let offset = ((row * 256 + y) * 1024 + column * 256 + x) * 4;
+                        let offset = (y * 1024 + column * 256 + x) * 4;
                         if pixels[offset + 3] == 0 {
                             continue;
                         }
@@ -262,7 +287,10 @@ mod tests {
                         );
                     }
                 }
-                assert!(opaque > 500, "complete character {row}, direction {column}");
+                assert!(
+                    opaque > 500,
+                    "complete character {id:?}, direction {column}"
+                );
             }
         }
     }
@@ -322,7 +350,7 @@ mod tests {
             assert!(object.shown);
             assert_eq!(*visibility, Visibility::Visible);
             assert_eq!(sprite.rect.unwrap().height(), 256.0);
-            // No fallback @ or extruded player is drawn on top of the atlas.
+            // No fallback @ or extruded player is drawn on top of the images.
             let mut text = world.query::<(&Text2d, &ObjectSprite)>();
             assert!(!text
                 .iter(world)
@@ -365,7 +393,7 @@ mod tests {
         }
     }
     #[test]
-    fn every_enemy_type_uses_its_configured_static_roster_row() {
+    fn every_enemy_type_uses_its_own_configured_image() {
         let mut app = boot_map("XXXXXXXXXXXX\nXpehfrsg...X\nX..........X\nXXXXXXXXXXXX");
         let world = app.world_mut();
         let actors: Vec<_> = world
@@ -377,9 +405,9 @@ mod tests {
         for (entity, look) in actors {
             let index = world.resource::<PixelInstances>();
             let sprite = world.get::<Sprite>(index.0[&(entity, 0)]).unwrap();
-            let atlas = world.resource::<PixelAtlas>();
-            let row = atlas.looks.get(look).unwrap().row;
-            assert_eq!(sprite.rect.unwrap().min.y, row as f32 * 256.0);
+            let images = world.resource::<CharacterImages>();
+            assert_eq!(sprite.image, images.textures[look.index()].image);
+            assert_eq!(sprite.rect.unwrap().min.y, 0.0);
         }
         let kinds = world.resource::<crate::app::ActorKinds>();
         for (glyph, expected) in [

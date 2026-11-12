@@ -18,6 +18,22 @@ const CATALOGS: &[(&str, &str, &str)] = &[
 ];
 
 fn main() {
+    let pngs = files("characters", "png");
+    let looks = files("characters", "ron");
+    assert_eq!(
+        pngs.iter().map(|p| &p.0).collect::<Vec<_>>(),
+        looks.iter().map(|p| &p.0).collect::<Vec<_>>(),
+        "one PNG per character look"
+    );
+    let mut images = String::from("const CHARACTER_IMAGES: &[(CharacterId, &[u8])] = &[\n");
+    for (name, path) in pngs {
+        images.push_str(&format!(
+            "(CharacterId::{}, include_bytes!({path:?})),\n",
+            variant(&name)
+        ));
+    }
+    images.push_str("];\n");
+    write("character_images.rs", &images);
     // Maps stay named: a map names the next by file, and the page and the
     // command line choose them by name.
     write("bundled_maps.rs", &maps_table(&files("maps", "txt")));
