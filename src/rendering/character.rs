@@ -1,17 +1,17 @@
-//! Four-direction pixel actors over the composed frame. Animation reads the
-//! existing movement and gesture cues; it never writes simulation state.
+//! Static four-direction sprites extracted from the approved generated roster.
+//! Only facing chooses the image; movement and combat keep their existing
+//! presentation without adding character animation state or cue consumers.
 
 use bevy::{
     asset::RenderAssetUsages,
-    image::ImageSampler,
+    image::{CompressedImageFormats, ImageSampler, ImageType},
     platform::collections::HashMap,
     prelude::*,
-    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
     sprite::Anchor,
 };
+use serde::Deserialize;
 
 use super::text::{ObjectSprite, CELL_SIZE};
-use crate::content::character::{CharacterSheet, FRAMES_PER_DIRECTION};
 use crate::model::*;
 use crate::schedule::{GamePhase, StartupPhase};
 
@@ -23,19 +23,7 @@ pub(super) struct CharacterOutput;
 impl Plugin for CharacterSpritePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PixelInstances>()
-            .add_message::<Gesture>()
-            .add_message::<WindUp>()
-            .add_message::<Release>()
-            .add_observer(attach_animation)
             .add_systems(Startup, setup.in_set(StartupPhase::Renderer))
-            .add_systems(
-                Update,
-                (take_cues, advance_animation)
-                    .chain()
-                    .after(GamePhase::Animation)
-                    .before(GamePhase::Presentation)
-                    .run_if(resource_exists::<PixelAtlas>),
-            )
             .add_systems(
                 Update,
                 (
@@ -58,8 +46,6 @@ pub(super) struct PixelAtlas {
     image: Handle<Image>,
     size: Vec2,
     world_height: f32,
-    idle_seconds: f32,
-    walk_frames_per_cell: f32,
 }
 
 #[derive(Resource, Default)]
@@ -70,134 +56,43 @@ struct PixelInstance {
     source: Entity,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-enum Clip {
-    #[default]
-    Rest,
-    Windup,
-    Strike,
-    Recover,
-    Hurt,
+#[derive(Deserialize)]
+struct CharacterLook {
+    world_height: f32,
 }
 
-#[derive(Component, Default)]
-struct CharacterAnimation {
-    last_position: Option<Vec2>,
-    distance: f32,
-    age: f32,
-    clip: Clip,
-    remaining: f32,
-    duration: f32,
-    frame: usize,
-}
-
-impl CharacterAnimation {
-    fn play(&mut self, clip: Clip, seconds: f32) {
-        self.clip = clip;
-        self.duration = seconds.max(0.0);
-        self.remaining = self.duration;
-    }
-
-    fn advance(&mut self, position: Vec2, dt: f32, atlas: &PixelAtlas) {
-        self.age += dt;
-        let travelled = self
-            .last_position
-            .map_or(0.0, |last| last.distance(position));
-        self.last_position = Some(position);
-        // Portal/wrap jumps are not steps across the intervening map.
-        let moving = travelled > 0.0001 && travelled < 1.5;
-        if moving {
-            self.distance += travelled;
-        }
-        self.remaining = (self.remaining - dt).max(0.0);
-        if self.clip != Clip::Windup && self.remaining == 0.0 {
-            self.clip = Clip::Rest;
-        }
-        self.frame = match self.clip {
-            Clip::Windup => 6,
-            Clip::Strike if self.remaining > self.duration * 0.35 => 7,
-            Clip::Strike | Clip::Recover => 8,
-            Clip::Hurt => 9,
-            Clip::Rest if moving => 2 + (self.distance * atlas.walk_frames_per_cell) as usize % 4,
-            Clip::Rest => (self.age / atlas.idle_seconds) as usize % 2,
-        };
-    }
-}
-
-fn attach_animation(add: On<Add, PixelCharacter>, mut commands: Commands) {
-    commands
-        .entity(add.entity)
-        .insert(CharacterAnimation::default());
+fn decode_png(bytes: &[u8]) -> Image {
+    Image::from_buffer(
+        bytes,
+        ImageType::Extension("png"),
+        CompressedImageFormats::NONE,
+        true,
+        ImageSampler::nearest(),
+        RenderAssetUsages::default(),
+    )
+    .expect("valid character PNG")
 }
 
 fn setup(mut commands: Commands, images: Option<ResMut<Assets<Image>>>) {
     let Some(mut images) = images else { return };
-    let sheet = CharacterSheet::bundled();
-    let mut image = Image::new(
-        Extent3d {
-            width: sheet.width * FRAMES_PER_DIRECTION as u32,
-            height: sheet.height * 4,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        sheet.pixels().expect("valid pixel atlas"),
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::default(),
+    let look: CharacterLook = crate::content::data::read(
+        "characters/trespasser.ron",
+        include_str!("../../assets/characters/trespasser.ron"),
+    )
+    .expect("valid character look");
+    assert!(look.world_height.is_finite() && look.world_height > 0.0);
+    let image = decode_png(include_bytes!("../../assets/characters/trespasser.png"));
+    assert_eq!(
+        image.width(),
+        image.height() * 4,
+        "four equal square directional cells"
     );
-    image.sampler = ImageSampler::nearest();
+    let size = Vec2::splat(image.height() as f32);
     commands.insert_resource(PixelAtlas {
         image: images.add(image),
-        size: Vec2::new(sheet.width as f32, sheet.height as f32),
-        world_height: sheet.world_height,
-        idle_seconds: sheet.idle_seconds,
-        walk_frames_per_cell: sheet.walk_frames_per_cell,
+        size,
+        world_height: look.world_height,
     });
-}
-
-/// Cues are already timed to the choreography's windup/contact/recoil.
-fn take_cues(
-    mut windups: MessageReader<WindUp>,
-    mut releases: MessageReader<Release>,
-    mut gestures: MessageReader<Gesture>,
-    mut actors: Query<&mut CharacterAnimation>,
-) {
-    for cue in windups.read() {
-        if let Ok(mut animation) = actors.get_mut(cue.entity) {
-            animation.play(Clip::Windup, cue.secs);
-        }
-    }
-    for cue in releases.read() {
-        if let Ok(mut animation) = actors.get_mut(cue.entity) {
-            animation.play(
-                if cue.strike {
-                    Clip::Strike
-                } else {
-                    Clip::Recover
-                },
-                cue.secs,
-            );
-        }
-    }
-    for cue in gestures.read() {
-        if let Ok(mut animation) = actors.get_mut(cue.entity) {
-            let clip = match cue.shape {
-                GestureShape::Shake { .. } => Clip::Hurt,
-                GestureShape::Reach { .. } => Clip::Recover,
-                _ => Clip::Strike,
-            };
-            animation.play(clip, cue.secs);
-        }
-    }
-}
-
-fn advance_animation(
-    time: Res<Time>,
-    atlas: Res<PixelAtlas>,
-    mut actors: Query<(&AnimatedPos, &mut CharacterAnimation)>,
-) {
-    for (position, mut animation) in &mut actors {
-        animation.advance(position.position, time.delta_secs(), &atlas);
-    }
 }
 
 fn drop_gone(
@@ -284,7 +179,7 @@ fn place_instances(
         Option<Res<WallVolume>>,
         Option<Res<super::extruded::ExtrudedWalls>>,
     ),
-    actors: Query<(&Facing, &CharacterAnimation)>,
+    actors: Query<&Facing, With<PixelCharacter>>,
     mut sprites: Query<
         (
             &mut ObjectSprite,
@@ -304,7 +199,7 @@ fn place_instances(
         let Some(&entity) = index.0.get(&(object.entity, object.instance)) else {
             continue;
         };
-        let Ok((facing, animation)) = actors.get(object.entity) else {
+        let Ok(facing) = actors.get(object.entity) else {
             continue;
         };
         let Ok((mut drawn, mut sprite, mut transform, mut visibility)) = sprites.get_mut(entity)
@@ -314,7 +209,7 @@ fn place_instances(
         *drawn = ObjectSprite::from_object(object);
         drawn.shown = true;
         let row = direction_row(facing.0, camera.quarter_turns() + object.quarters as i32);
-        let corner = Vec2::new(animation.frame as f32, row as f32) * atlas.size;
+        let corner = Vec2::new(row as f32, 0.0) * atlas.size;
         sprite.rect = Some(Rect::from_corners(corner, corner + atlas.size));
         sprite.custom_size = Some(atlas.size * (atlas.world_height / atlas.size.y));
         // Preserve the palette while responding to scene light and marks.
@@ -337,13 +232,31 @@ fn place_instances(
 mod tests {
     use super::*;
 
-    fn atlas() -> PixelAtlas {
-        PixelAtlas {
-            image: Handle::default(),
-            size: Vec2::new(24.0, 32.0),
-            world_height: 28.0,
-            idle_seconds: 0.65,
-            walk_frames_per_cell: 4.0,
+    #[test]
+    fn sprite_pixels_come_directly_from_the_reference() {
+        let image = decode_png(include_bytes!("../../assets/characters/trespasser.png"));
+        let source = decode_png(include_bytes!("../../docs/art/gridvail-sprite-roster.png"));
+        assert_eq!(image.size(), UVec2::new(768, 192));
+        let (pixels, original) = (image.data.unwrap(), source.data.unwrap());
+        for (column, pivot) in [162, 425, 695, 960].into_iter().enumerate() {
+            let mut opaque = 0;
+            for y in 0..192 {
+                for x in 0..192 {
+                    let offset = (y * 768 + column * 192 + x) * 4;
+                    if pixels[offset + 3] == 0 {
+                        continue;
+                    }
+                    opaque += 1;
+                    let source_x = pivot + x - 96;
+                    let source_y = y + 199 - 175;
+                    let source_offset = (source_y * 1122 + source_x) * 4;
+                    assert_eq!(
+                        &pixels[offset..offset + 3],
+                        &original[source_offset..source_offset + 3]
+                    );
+                }
+            }
+            assert!(opaque > 4000, "complete character in each direction");
         }
     }
 
@@ -359,42 +272,6 @@ mod tests {
         assert_eq!(direction_row(IVec2::X, 4), 1);
     }
 
-    #[test]
-    fn gait_tracks_distance_stops_at_rest_and_ignores_teleports() {
-        let atlas = atlas();
-        let mut a = CharacterAnimation::default();
-        a.advance(Vec2::ZERO, 0.01, &atlas);
-        for step in 1..=4 {
-            a.advance(Vec2::X * step as f32 * 0.25, 0.01, &atlas);
-            assert!((2..6).contains(&a.frame));
-        }
-        assert_eq!(a.distance, 1.0);
-        a.advance(Vec2::X, 0.01, &atlas);
-        assert!(a.frame < 2);
-        a.advance(Vec2::splat(30.0), 0.01, &atlas);
-        assert_eq!(a.distance, 1.0);
-        assert!(a.frame < 2);
-    }
-
-    #[test]
-    fn held_windup_strike_recovery_and_hit_return_to_idle() {
-        let mut a = CharacterAnimation::default();
-        a.play(Clip::Windup, 0.2);
-        a.advance(Vec2::ZERO, 2.0, &atlas());
-        assert_eq!(a.frame, 6, "windup holds until release");
-        a.play(Clip::Strike, 0.3);
-        a.advance(Vec2::ZERO, 0.05, &atlas());
-        assert_eq!(a.frame, 7);
-        a.advance(Vec2::ZERO, 0.2, &atlas());
-        assert_eq!(a.frame, 8);
-        a.advance(Vec2::ZERO, 0.1, &atlas());
-        assert!(a.frame < 2);
-        a.play(Clip::Hurt, 0.2);
-        a.advance(Vec2::ZERO, 0.05, &atlas());
-        assert_eq!(a.frame, 9);
-        a.advance(Vec2::ZERO, 0.2, &atlas());
-        assert!(a.frame < 2);
-    }
     fn boot() -> App {
         use crate::{
             animation::ObjectAnimationPlugin,
@@ -433,7 +310,7 @@ mod tests {
             let (sprite, object, visibility) = sprites.single(world).unwrap();
             assert!(object.shown);
             assert_eq!(*visibility, Visibility::Visible);
-            assert_eq!(sprite.rect.unwrap().height(), 32.0);
+            assert_eq!(sprite.rect.unwrap().height(), 192.0);
             // No fallback @ or extruded player is drawn on top of the atlas.
             let mut text = world.query::<(&Text2d, &ObjectSprite)>();
             assert!(!text
@@ -450,42 +327,30 @@ mod tests {
     }
 
     #[test]
-    fn choreography_messages_choose_attack_and_hurt_frames() {
+    fn facing_selects_one_static_image_and_time_does_not_cycle_it() {
         let mut app = boot();
         let world = app.world_mut();
         let actor = world
             .query_filtered::<Entity, With<PixelCharacter>>()
             .single(world)
             .unwrap();
-        world.write_message(WindUp {
-            entity: actor,
-            shape: GestureShape::Thrust { toward: Vec2::X },
-            secs: 0.2,
-        });
-        app.update();
-        assert_eq!(
-            app.world().get::<CharacterAnimation>(actor).unwrap().frame,
-            6
-        );
-        app.world_mut().write_message(Release {
-            entity: actor,
-            secs: 0.3,
-            strike: true,
-        });
-        app.update();
-        assert_eq!(
-            app.world().get::<CharacterAnimation>(actor).unwrap().frame,
-            7
-        );
-        app.world_mut().write_message(Gesture {
-            entity: actor,
-            shape: GestureShape::Shake { toward: Vec2::X },
-            secs: 0.3,
-        });
-        app.update();
-        assert_eq!(
-            app.world().get::<CharacterAnimation>(actor).unwrap().frame,
-            9
-        );
+        for (column, way) in [IVec2::NEG_X, IVec2::X, IVec2::NEG_Y, IVec2::Y]
+            .into_iter()
+            .enumerate()
+        {
+            app.world_mut().get_mut::<Facing>(actor).unwrap().0 = way;
+            for _ in 0..8 {
+                app.update();
+                let world = app.world_mut();
+                let sprite = world
+                    .query_filtered::<&Sprite, With<PixelInstance>>()
+                    .single(world)
+                    .unwrap();
+                assert_eq!(
+                    sprite.rect.unwrap().min,
+                    Vec2::new(column as f32 * 192.0, 0.0)
+                );
+            }
+        }
     }
 }

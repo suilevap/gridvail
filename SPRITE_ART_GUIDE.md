@@ -38,41 +38,31 @@ The player uses the four-direction pixel character described below. Other
 humanoids retain their symbol billboards. Simulation coordinates, collisions,
 FOV and actor behaviour remain independent of visual assets.
 
-## Implemented player: trespasser
+## Implemented player: four static reference sprites
 
-![Native-resolution player atlas](docs/art/trespasser-atlas.png)
+![Player extracted directly from the approved roster](assets/characters/trespasser.png)
 
-`assets/characters/trespasser.ron` contains the editable 24×32 pixel frames,
-palette and timing. The renderer packs them into a nearest-filtered RGBA atlas
-at startup; no image download or extra image codec is needed in the browser.
-The PNG above is a review export; the game reads the RON data.
+The player uses the original generated roster's first row directly: left,
+right, back and front. `assets/characters/trespasser.png` has four equal
+192×192 transparent cells in that order. No poses are redrawn or resampled.
+The extraction removes only connected dark background, preserving the mask's
+dark eyes and other enclosed details. Every retained RGB pixel is unchanged.
 
-| Rows | Left, right, back, front |
-| --- | --- |
-| Columns 0–1 | Idle breathing |
-| Columns 2–5 | Four walk contacts, advanced by distance travelled |
-| Column 6 | Held attack preparation |
-| Columns 7–8 | Strike and recovery |
-| Column 9 | Hit reaction |
+`tools/extract_player_sprites.py` reproduces the PNG from
+`docs/art/gridvail-sprite-roster.png` (run from the repository root with Pillow).
+Fixed body pivots and a shared foot baseline keep facing changes aligned.
+`assets/characters/trespasser.ron` sets the display height independently of
+source resolution.
 
-The player receives `PixelCharacter` in its spawn composition. The renderer
-reads `AnimatedPos`, `Facing` and existing `WindUp`, `Release` and `Gesture`
-cues. It draws one reusable sprite per visible portal instance, rotates the
-selected direction with camera/portal turns and removes obsolete instances on
-map reload. Glyph output remains available to the agent API and headless runs.
-The pixel sprite replaces the visual player glyph in flat, stacked, leaning
-and native 3D-walls modes; enemies and gameplay are unchanged.
+There is one static image per direction: no idle cycle, gait, attack frames,
+character animation component or combat-cue listener. The existing game's
+movement, gestures, lighting and fading still place and tint the sprite.
+Facing selection follows camera and portal turns. Other actors retain their
+symbol graphics, and headless/agent consumers keep the simulation glyph.
 
-To try it, run `cargo run -- --map assets/maps/arena.txt --reveal --hp 99`
-(or use `?map=arena&reveal&hp=99` in the web preview). Walk with WASD/arrows,
-stop to see idle, aim at an enemy and release to attack, and turn the camera
-with Q/E. Esc changes wall style; Z zooms in. The normal game supplies hit
-reactions, defeat/restart and map changes.
-
-When editing: keep 40 frames of exactly 24 columns × 32 rows, use only palette
-keys, retain transparent padding and the foot anchor, and update the review
-PNG after pixel changes. The content tests reject malformed dimensions and
-unknown pixels.
+Try `cargo run -- --map assets/maps/arena.txt --reveal --hp 99`, or
+`?map=arena&reveal&hp=99&walls=stacked` in the web preview. Walk with WASD/arrows,
+turn the camera with Q/E, zoom with Z and change wall style with Esc.
 
 ## Starting roster
 
