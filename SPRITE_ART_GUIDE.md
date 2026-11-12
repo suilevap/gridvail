@@ -78,9 +78,15 @@ For continuity, attach the approved roster and append:
 > Match the reference's palette, pixel density, proportions and simplification.
 > Change only [REQUESTED CHANGE].
 
-Use the approved initial Victorian occult roster as the image reference.
-Attach it directly when generating new concepts; keep personal reference links
-out of public project documentation.
+## Generated reference sheet
+
+![Gridvail player and enemy concepts in four directions](docs/art/gridvail-sprite-roster.png)
+
+The generated concept sheet above is included in the repository. Rows show the
+player, watchman, scavenger, furnace guard, mechanical hound and occult surveyor;
+columns show left, right, back and front. Attach this PNG when generating new
+concepts. It is a visual reference, not a production-ready animation atlas;
+apply the cleanup checks below before runtime use.
 
 ## Production cleanup and acceptance
 
