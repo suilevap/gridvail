@@ -54,3 +54,10 @@ so when the change is about them.
   pull request; the build is skipped while it is set. A later push rebuilds
   once the label is removed.
 - Do not link a preview for a pull request that has none.
+
+## Character art
+
+For player/enemy art generation or sprite work, follow
+[SPRITE_ART_GUIDE.md](SPRITE_ART_GUIDE.md). Keep the approved palette, simple
+silhouettes and four-direction consistency; generated sheets need pixel cleanup
+before becoming runtime assets.

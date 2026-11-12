@@ -336,6 +336,12 @@ assets/shaders/    world-space procedural 3D surface material
 See [ARCHITECTURE.md](ARCHITECTURE.md) for layer boundaries, dependency
 direction, and where new foundational versus game-specific code belongs.
 
+## Sprite art direction
+
+See [SPRITE_ART_GUIDE.md](SPRITE_ART_GUIDE.md) for the player/enemy visual brief,
+four-direction sheet conventions, reusable generation prompt and production
+cleanup checks.
+
 ## Run and verify
 
 ```sh
