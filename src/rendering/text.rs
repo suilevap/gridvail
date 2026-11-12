@@ -42,13 +42,22 @@ pub(super) struct MapCell(pub(super) usize);
 /// Text entity drawing one object at its animated position.
 #[derive(Component, Clone, Copy)]
 pub(super) struct ObjectSprite {
-    position: Vec2,
-    lift: f32,
+    pub(super) position: Vec2,
+    pub(super) lift: f32,
     pub(super) depth: u8,
     pub(super) shown: bool,
 }
 
 impl ObjectSprite {
+    pub(super) fn from_object(object: &ObjectCell) -> Self {
+        Self {
+            position: object.position,
+            lift: object.lift,
+            depth: object.cell.depth,
+            shown: false,
+        }
+    }
+
     /// Displayed position in grid cells.
     // Used by the 3D walls renderer, which the web build leaves out.
     #[cfg_attr(target_family = "wasm", allow(dead_code))]
@@ -414,6 +423,8 @@ pub(super) fn place_object_sprites(
     statures: Option<Res<GlyphStatures>>,
     own_statures: Query<&Stature>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
+    pixels: Option<Res<super::character::CharacterImages>>,
+    characters: Query<&PixelCharacter>,
     mut drawn: Local<String>,
     mut sprites: Query<(
         &mut ObjectSprite,
@@ -430,6 +441,13 @@ pub(super) fn place_object_sprites(
     }
 
     for object in &buffers.objects {
+        let pixel = pixels
+            .as_ref()
+            .and_then(|atlas| characters.get(object.entity).ok().map(|look| (atlas, look)));
+        let status = pixel.is_some() && matches!(object.cell.ch, '!' | '?');
+        if pixel.is_some() && !status {
+            continue;
+        }
         // The perspective backend draws walls as meshes instead.
         if extruded_walls
             .as_ref()
@@ -447,7 +465,7 @@ pub(super) fn place_object_sprites(
         let stands = statures.as_ref().is_some_and(|statures| {
             statures.of(object.cell.ch, own_statures.get(object.entity).ok()) > 0.0
         });
-        if volume != WallVolume::Flat && stands {
+        if volume != WallVolume::Flat && stands && !status {
             continue;
         }
         drawn.clear();
@@ -457,7 +475,12 @@ pub(super) fn place_object_sprites(
             billboards,
         );
         sprite.position = object.position;
-        sprite.lift = object.lift;
+        sprite.lift = object.lift
+            + if status {
+                pixel.map_or(0.0, |(atlas, look)| atlas.height(look.0) / CELL_SIZE.y)
+            } else {
+                0.0
+            };
         sprite.depth = object.cell.depth;
         sprite.shown = true;
         if text.0 != *drawn {

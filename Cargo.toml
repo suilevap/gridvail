@@ -35,6 +35,8 @@ bevy = { version = "0.19.1", default-features = false, features = [
     "bevy_ui",
     "bevy_ui_render",
     "bevy_sprite_render",
+    # The player uses the original reference PNG on every platform.
+    "png",
 ] }
 rand = "0.10"
 bitflags = "2"
@@ -65,7 +67,6 @@ bevy = { version = "0.19.1", default-features = false, features = [
     "zstd_rust",
     "bevy_remote",
     "sysinfo_plugin",
-    "png",
     # The agent API's standard Bevy Remote methods read the type registry.
     "reflect_auto_register",
 ] }

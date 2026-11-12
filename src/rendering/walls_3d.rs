@@ -95,7 +95,8 @@ impl Plugin for ExtrudedWallRendererPlugin {
                 )
                     .chain()
                     .in_set(GamePhase::Output)
-                    .after(super::text::place_object_sprites),
+                    .after(super::text::place_object_sprites)
+                    .after(super::character::CharacterOutput),
             );
     }
 }
@@ -528,7 +529,7 @@ fn project_text_cells(
         (
             Option<&MapCell>,
             Option<&ObjectSprite>,
-            &Text2d,
+            Option<&Text2d>,
             &mut Transform,
             &mut Visibility,
         ),
@@ -551,8 +552,11 @@ fn project_text_cells(
             (None, Some(object)) if object.shown => (object.position(), object.lift()),
             _ => continue,
         };
-        let is_billboard = text.0.contains('\n');
-        let height = if is_billboard {
+        let pixel_character = text.is_none();
+        let is_billboard = text.is_some_and(|text| text.0.contains('\n'));
+        let height = if pixel_character {
+            0.0
+        } else if is_billboard {
             BILLBOARD_CENTER_HEIGHT
         } else {
             1.0
@@ -574,7 +578,7 @@ fn project_text_cells(
             .unwrap_or(1.0);
         if is_billboard {
             scale *= 0.65;
-        } else if text.0.chars().count() > 1 {
+        } else if text.is_some_and(|text| text.0.chars().count() > 1) {
             scale *= 0.75;
         }
         transform.translation.x = projected.x;

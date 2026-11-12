@@ -298,6 +298,10 @@ fn draw_wall_map(
     mut materials: ResMut<Assets<WallVolumeMaterial>>,
     statures: Res<GlyphStatures>,
     own_statures: Query<&Stature>,
+    (pixels, characters): (
+        Option<Res<super::character::CharacterImages>>,
+        Query<(), With<crate::model::PixelCharacter>>,
+    ),
     mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility)>,
     mut quads: Query<&mut Visibility, (With<Mesh2d>, Without<Sprite>)>,
     mut cameras: Query<(&mut RenderTarget, &mut Transform), Without<Sprite>>,
@@ -339,6 +343,9 @@ fn draw_wall_map(
     let mut tallest: f32 = 0.0;
     if shown {
         for object in &buffers.objects {
+            if pixels.is_some() && characters.contains(object.entity) {
+                continue;
+            }
             let stature = statures
                 .of(object.cell.ch, own_statures.get(object.entity).ok())
                 .min(MAX_STATURE);

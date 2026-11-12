@@ -1,5 +1,6 @@
 //! Swappable output backends for composed game frames.
 
+mod character;
 mod extruded;
 mod light;
 mod settings;
@@ -10,6 +11,7 @@ mod volume;
 #[cfg(not(target_family = "wasm"))]
 mod walls_3d;
 
+pub use character::CharacterSpritePlugin;
 pub use light::LightEffectsPlugin;
 pub use text::{TextRenderStats, TextRendererPlugin};
 pub use volume::WallVolumePlugin;

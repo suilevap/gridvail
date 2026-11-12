@@ -7,7 +7,7 @@ use bevy::math::IVec2;
 use serde::Deserialize;
 
 use super::art;
-use crate::model::{EffectId, StyleId, Swing, WeaponId};
+use crate::model::{CharacterId, EffectId, StyleId, Swing, WeaponId};
 
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct WeaponSpec {
@@ -132,6 +132,9 @@ pub enum Tree {
 /// A kind of actor (its name is its file's).
 #[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct ActorSpec {
+    /// Optional static sprite look; absent keeps the text representation.
+    #[serde(default)]
+    pub sprite: Option<CharacterId>,
     /// The map glyph that places it: a lowercase letter without a meaning
     /// of its own in maps. The player has none (maps place it with `p`).
     #[serde(default)]

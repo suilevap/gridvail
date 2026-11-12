@@ -34,10 +34,72 @@ sizes, consistent scale and a shared foot anchor. Leave padding for weapons.
 Use a plain dark background for concept review; request transparency for asset
 exports. No labels, scenery, ground shadows, bloom or baked lighting.
 
-The current game uses multiline symbol billboards in its 3D renderer. This guide
-sets the art direction for sprite concepts; it does not introduce a texture
-atlas loader or replace that renderer. Keep simulation coordinates, collisions,
-FOV and actor behaviour independent of visual assets.
+The player uses the four-direction pixel character described below. Other
+humanoids retain their symbol billboards. Simulation coordinates, collisions,
+FOV and actor behaviour remain independent of visual assets.
+
+## Implemented characters: separate static sprite files
+
+Each look has a PNG plus a small RON file in `assets/characters/`:
+`trespasser`, `watchman`, `scavenger`, `furnace_guard`, `hound`, `surveyor`.
+Each PNG is 1024×256: four equal 256×256 cells, left/right/back/front, with a
+common foot baseline. The RON sets display height. Source RGB pixels are
+preserved; extraction changes alpha only and does not resample the artwork.
+
+![Player, four static directions](assets/characters/trespasser.png)
+
+![Enemy example, four static directions](assets/characters/watchman.png)
+
+| Actor data file | Sprite look |
+| --- | --- |
+| player | Trespasser |
+| guard, glaiver | Watchman |
+| reaper | Scavenger |
+| flailer | FurnaceGuard |
+| hunter | Hound |
+| spearman | Surveyor |
+
+These are presentation assignments; existing combat abilities stay as defined
+by each actor's weapon/style data. The roster has five enemy designs, so guard
+and glaiver share the watchman.
+
+Each `assets/actors/*.ron` names its `sprite` by generated `CharacterId`.
+`build.rs` checks that every character RON has a matching PNG and bundles the
+images automatically. The renderer caches one texture per look, shared by all
+instances of that look; there is no combined runtime atlas. Actors without a
+sprite selection keep text rendering.
+
+Separate files are the editing source of truth. A combined atlas can reduce
+texture switches/draw batches when profiling justifies it; it could be packed
+at build/load time later without changing how artists edit the files. Six
+small textures keep the current pipeline simple.
+
+### Background and opaque interiors
+
+`tools/extract_player_sprites.py` reproduces the files from the approved roster
+(run from the repository root with Pillow). It isolates each actor's source
+band, finds the outside background and seals hairline outline leaks before
+flooding. It does not globally treat black as transparent.
+
+Dark hoods, coat panels and armour can be open to the background in the source
+image. `SOLID_PARTS` gives those anatomical parts conservative guide windows.
+Within each part, original visible edges bound a row/column fill, protecting
+the dark material without forming whole-figure convex hulls or rectangular
+opaque patches. Large limb gaps outside the guides stay transparent. Inspect
+new extractions over a checkerboard or a light floor; ambiguous source pixels
+need explicit foreground guidance rather than a more aggressive colour key.
+
+`python3 tools/test_sprite_cutouts.py` checks black interiors, outline leaks,
+real limb gaps, all six PNGs' padding and source RGB preservation.
+
+There is one static image per direction, with no character frame animation.
+Existing movement, gestures, lighting and fading place and tint sprites.
+Camera and portal turns choose the direction. Enemy alert/thinking markers
+stay visible above sprites, and sinking remains retain their look and facing.
+Headless/agent consumers keep their simulation glyphs.
+
+Try `?map=arena&reveal&hp=99&walls=stacked` in the preview. WASD/arrows walk,
+Q/E rotate, Z zooms and Esc changes wall style.
 
 ## Starting roster
 

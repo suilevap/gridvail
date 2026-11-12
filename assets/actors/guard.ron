@@ -1,2 +1,2 @@
 // A kind of actor (see `player.ron`). The guard: sweeps the row in front.
-(glyph: 'e', tree: Enemy, hp: 2, weapon: Sweep, bleeds: Blood)
+(sprite: Watchman, glyph: 'e', tree: Enemy, hp: 2, weapon: Sweep, bleeds: Blood)
