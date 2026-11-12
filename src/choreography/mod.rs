@@ -641,12 +641,14 @@ pub fn leave_remains(
             &ObjectAnimation,
             &AnimatedPos,
             Option<&Bleeds>,
+            Option<&PixelCharacter>,
+            Option<&Facing>,
         ),
         Without<KeepOnDeath>,
     >,
 ) {
     for &Died(body) in died.read() {
-        let Ok((pos, glyph, animation, shown, bleeds)) = bodies.get(body) else {
+        let Ok((pos, glyph, animation, shown, bleeds, sprite, facing)) = bodies.get(body) else {
             continue;
         };
         let mut remains = commands.spawn((
@@ -657,6 +659,12 @@ pub fn leave_remains(
             animation.clone(),
             *shown,
         ));
+        if let Some(sprite) = sprite {
+            remains.insert(*sprite);
+        }
+        if let Some(facing) = facing {
+            remains.insert(*facing);
+        }
         if let Some(bleeds) = bleeds {
             remains.insert(*bleeds);
         }

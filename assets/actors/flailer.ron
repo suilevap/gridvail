@@ -1,2 +1,2 @@
 // A kind of actor (see `player.ron`): the flailer, with a flail.
-(glyph: 'f', tree: Enemy, hp: 2, weapon: Flail, bleeds: Blood)
+(sprite: FurnaceGuard, glyph: 'f', tree: Enemy, hp: 2, weapon: Flail, bleeds: Blood)

@@ -424,7 +424,7 @@ pub(super) fn place_object_sprites(
     own_statures: Query<&Stature>,
     extruded_walls: Option<Res<ExtrudedWalls>>,
     pixels: Option<Res<super::character::PixelAtlas>>,
-    characters: Query<(), With<PixelCharacter>>,
+    characters: Query<&PixelCharacter>,
     mut drawn: Local<String>,
     mut sprites: Query<(
         &mut ObjectSprite,
@@ -441,7 +441,11 @@ pub(super) fn place_object_sprites(
     }
 
     for object in &buffers.objects {
-        if pixels.is_some() && characters.contains(object.entity) {
+        let pixel = pixels
+            .as_ref()
+            .and_then(|atlas| characters.get(object.entity).ok().map(|look| (atlas, look)));
+        let status = pixel.is_some() && matches!(object.cell.ch, '!' | '?');
+        if pixel.is_some() && !status {
             continue;
         }
         // The perspective backend draws walls as meshes instead.
@@ -461,7 +465,7 @@ pub(super) fn place_object_sprites(
         let stands = statures.as_ref().is_some_and(|statures| {
             statures.of(object.cell.ch, own_statures.get(object.entity).ok()) > 0.0
         });
-        if volume != WallVolume::Flat && stands {
+        if volume != WallVolume::Flat && stands && !status {
             continue;
         }
         drawn.clear();
@@ -471,7 +475,12 @@ pub(super) fn place_object_sprites(
             billboards,
         );
         sprite.position = object.position;
-        sprite.lift = object.lift;
+        sprite.lift = object.lift
+            + if status {
+                pixel.map_or(0.0, |(atlas, look)| atlas.height(look.0) / CELL_SIZE.y)
+            } else {
+                0.0
+            };
         sprite.depth = object.cell.depth;
         sprite.shown = true;
         if text.0 != *drawn {

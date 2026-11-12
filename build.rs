@@ -10,6 +10,11 @@ const CATALOGS: &[(&str, &str, &str)] = &[
     ("weapons", "WeaponId", "crate::content::actors::WeaponSpec"),
     ("styles", "StyleId", "crate::content::actors::StyleSpec"),
     ("actors", "ActorId", "crate::content::actors::ActorSpec"),
+    (
+        "characters",
+        "CharacterId",
+        "crate::content::characters::CharacterSpec",
+    ),
 ];
 
 fn main() {

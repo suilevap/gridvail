@@ -9,4 +9,4 @@
 // it would be made, and pointed elsewhere to aim another; letting go makes
 // it (a quick flick strikes at once). The turn waits for an aim up to
 // `readies` seconds.
-(hp: 2, style: Blade, bleeds: Blood, readies: 3.0)
+(sprite: Trespasser, hp: 2, style: Blade, bleeds: Blood, readies: 3.0)

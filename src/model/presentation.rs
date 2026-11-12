@@ -318,7 +318,7 @@ pub struct MarkAges(pub bevy::platform::collections::HashMap<IVec2, f32>);
 #[derive(Resource, Debug, Default)]
 pub struct CellMarks(pub Vec<(IVec2, CellMark)>);
 
-/// Draw this actor using the four-direction trespasser pixel atlas. Its
+/// Draw this object with a four-direction row of the shared pixel atlas. Its
 /// simulation glyph remains available to headless consumers and text fallback.
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct PixelCharacter;
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PixelCharacter(pub super::CharacterId);

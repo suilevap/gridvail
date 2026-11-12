@@ -1,2 +1,2 @@
-// Four static views in trespasser.png: left, right, back, front.
-(world_height: 34.0)
+// Static atlas row: left, right, back, front.
+(row: 0, world_height: 45.0)

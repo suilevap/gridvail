@@ -38,27 +38,43 @@ The player uses the four-direction pixel character described below. Other
 humanoids retain their symbol billboards. Simulation coordinates, collisions,
 FOV and actor behaviour remain independent of visual assets.
 
-## Implemented player: four static reference sprites
+## Implemented characters: the complete static roster
 
-![Player extracted directly from the approved roster](assets/characters/trespasser.png)
+![Player and enemy sprites extracted directly from the reference](assets/characters/roster.png)
 
-The player uses the original generated roster's first row directly: left,
-right, back and front. `assets/characters/trespasser.png` has four equal
-192×192 transparent cells in that order. No poses are redrawn or resampled.
-The extraction removes only connected dark background, preserving the mask's
-dark eyes and other enclosed details. Every retained RGB pixel is unchanged.
+`assets/characters/roster.png` contains all six reference characters, one per
+row, with left/right/back/front as columns. The 256×256 cells retain original
+RGB pixels without redrawing or resampling, with transparent outer backgrounds
+and a common foot baseline. Enclosed dark details stay opaque. The hound stays
+shorter and the furnace guard broader than the humanoids.
 
-`tools/extract_player_sprites.py` reproduces the PNG from
+| Actor data file | Sprite look | Atlas row |
+| --- | --- | --- |
+| player | Trespasser | 0 |
+| guard, glaiver | Watchman | 1 |
+| reaper | Scavenger | 2 |
+| flailer | FurnaceGuard | 3 |
+| hunter | Hound | 4 |
+| spearman | Surveyor | 5 |
+
+These are presentation assignments; existing combat abilities stay as defined
+by each actor's weapon/style data. The roster has five enemy designs, so the
+guard and glaiver share the watchman.
+
+Each `assets/actors/*.ron` names its `sprite` by generated `CharacterId`.
+The corresponding `assets/characters/*.ron` selects an atlas row and display
+height. Omitting `sprite` keeps text rendering for custom actors. The renderer
+uses one shared image and one reusable sprite per visible portal instance.
+
+`tools/extract_player_sprites.py` reproduces the complete atlas from
 `docs/art/gridvail-sprite-roster.png` (run from the repository root with Pillow).
-Fixed body pivots and a shared foot baseline keep facing changes aligned.
-`assets/characters/trespasser.ron` sets the display height independently of
-source resolution.
+Its isolated row bands prevent neighbouring characters from leaking into cuts.
 
-There is one static image per direction: no idle cycle, gait, attack frames,
-character animation component or combat-cue listener. The existing game's
-movement, gestures, lighting and fading still place and tint the sprite.
-Facing selection follows camera and portal turns. Other actors retain their
-symbol graphics, and headless/agent consumers keep the simulation glyph.
+There is one static image per direction, with no character animation frames or
+cue consumers. Existing movement, gestures, lighting and fading place and tint
+sprites. Camera and portal turns choose the direction. Alert/thinking markers
+remain visible above enemies, and sinking remains retain their look and facing.
+Headless/agent consumers keep their simulation glyphs.
 
 Try `cargo run -- --map assets/maps/arena.txt --reveal --hp 99`, or
 `?map=arena&reveal&hp=99&walls=stacked` in the web preview. Walk with WASD/arrows,

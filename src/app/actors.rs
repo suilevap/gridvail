@@ -21,6 +21,7 @@ const PLAYER: ActorId = ActorId::Player;
 #[derive(Clone, Debug, PartialEq)]
 pub struct ActorKind {
     pub id: ActorId,
+    pub sprite: Option<CharacterId>,
     pub tree: Option<Tree>,
     pub hp: i32,
     pub weapon: Option<(Weapon, WeaponLook)>,
@@ -34,6 +35,9 @@ impl ActorKind {
     /// weapon, moves, a behaviour.
     pub fn equip(&self, actor: &mut EntityCommands) {
         actor.insert(Health::full(self.hp));
+        if let Some(sprite) = self.sprite {
+            actor.insert(PixelCharacter(sprite));
+        }
         if let Some(weapon) = &self.weapon {
             actor.insert(weapon.clone());
         }
@@ -168,6 +172,7 @@ impl ActorKinds {
         for (id, actor) in actors.iter() {
             let kind = ActorKind {
                 id,
+                sprite: actor.sprite,
                 tree: actor.tree,
                 hp: actor.hp,
                 weapon: match actor.weapon {
