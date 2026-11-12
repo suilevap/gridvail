@@ -280,8 +280,10 @@ fn place_instances(
     camera: Res<ViewCamera>,
     atlas: Res<PixelAtlas>,
     index: Res<PixelInstances>,
-    volume: Option<Res<WallVolume>>,
-    extruded: Option<Res<super::extruded::ExtrudedWalls>>,
+    (volume, extruded): (
+        Option<Res<WallVolume>>,
+        Option<Res<super::extruded::ExtrudedWalls>>,
+    ),
     actors: Query<(&Facing, &CharacterAnimation)>,
     mut sprites: Query<
         (
